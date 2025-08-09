@@ -1,0 +1,56 @@
+{
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"windows": {
+			"certificateThumbprint": null,
+			"digestAlgorithm": "sha256",
+			"timestampUrl": ""
+		},
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"resources": [],
+		"externalBin": [],
+		"copyright": "",
+		"category": "DeveloperTool",
+		"shortDescription": "",
+		"longDescription": "",
+		"macOS": {},
+		"linux": {
+			"deb": {}
+		}
+	},
+	"build": {
+		"beforeBuildCommand": "bun generate",
+		"frontendDist": "../dist",
+		"beforeDevCommand": "bun dev",
+		"devUrl": "http://localhost:3000"
+	},
+	"productName": "Meeqat",
+	"version": "1.0.0",
+	"identifier": "com.meeqat.app",
+	"plugins": {},
+	"app": {
+		"windows": [
+			{
+				"title": "Meeqat",
+				"width": 750,
+				"height": 480,
+				"minWidth": 750,
+				"maxWidth": 750,
+				"minHeight": 480,
+				"maxHeight": 480,
+				"resizable": true,
+				"fullscreen": false
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	}
+}
