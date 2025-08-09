@@ -41,10 +41,8 @@
 				"title": "Meeqat",
 				"width": 750,
 				"height": 480,
-				"minWidth": 750,
-				"maxWidth": 750,
+				"minWidth": 760,
 				"minHeight": 480,
-				"maxHeight": 480,
 				"resizable": true,
 				"fullscreen": false
 			}

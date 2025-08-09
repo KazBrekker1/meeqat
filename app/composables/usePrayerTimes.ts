@@ -167,24 +167,220 @@ export function usePrayerTimes() {
     }
   });
 
+  const gregorianDateVerbose = computed<string | null>(() => {
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        calendar: "gregory",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(now.value);
+    } catch {
+      return null;
+    }
+  });
+
   // Persistence using Tauri Store (auto-imported helper from nuxt module)
   type TauriStore = {
     get<T>(key: string): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
+    clear: () => Promise<void>;
     save?: () => Promise<void>;
   };
   let storePromise: Promise<TauriStore> | null = null;
+
+  function isTauriAvailable(): boolean {
+    if (typeof window === "undefined") return false;
+    const w = window as any;
+    return Boolean(w.__TAURI__?.core?.invoke || w.__TAURI_INTERNALS__?.invoke);
+  }
+
+  function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
+    const storageKey = `localStore:${localKey}`;
+    function readAll(): Record<string, unknown> {
+      if (typeof window === "undefined") return {};
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object")
+          return parsed as Record<string, unknown>;
+      } catch {}
+      return {};
+    }
+    async function writeAll(obj: Record<string, unknown>): Promise<void> {
+      if (typeof window === "undefined") return;
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(obj));
+      } catch {}
+    }
+    return {
+      async get<T>(key: string): Promise<T | undefined> {
+        const all = readAll();
+        return all[key] as T | undefined;
+      },
+      async set(key: string, value: unknown): Promise<void> {
+        const all = readAll();
+        all[key] = value;
+        await writeAll(all);
+      },
+      async save() {
+        // no-op since we persist on set
+      },
+      async clear() {
+        window.localStorage.removeItem(storageKey);
+      },
+    } as TauriStore;
+  }
+
   function getStore(): Promise<TauriStore> {
     if (!storePromise) {
-      // @ts-ignore -- auto-imported by nuxt-tauri module
-      storePromise = (
-        useTauriStoreLoad as unknown as (
-          file: string,
-          options?: { autoSave?: boolean }
-        ) => Promise<TauriStore>
-      )("settings.bin", { autoSave: true });
+      if (!isTauriAvailable()) {
+        storePromise = Promise.resolve(createWebFallbackStore("settings.bin"));
+      } else {
+        storePromise = useTauriStoreLoad("settings.bin", { autoSave: true });
+      }
     }
     return storePromise;
+  }
+
+  type CachedDay = {
+    timings: Record<string, string>;
+    dateReadable: string;
+    timezone: string;
+    methodName: string | null;
+    savedAt: number;
+  };
+
+  type CacheMap = Record<string, CachedDay>; // key: YYYY-MM-DD
+
+  function normalizeKeyPart(s: string): string {
+    return s.trim().toLowerCase();
+  }
+
+  function buildOptionsKey(params: {
+    city: string;
+    country: string;
+    methodId: number;
+    tz: string;
+    shafaq: string;
+    calendarMethod: string;
+  }): string {
+    // Stable, human-readable compound key
+    const city = normalizeKeyPart(params.city);
+    const country = normalizeKeyPart(params.country);
+    const method = String(params.methodId);
+    const tz = params.tz;
+    const sh = params.shafaq;
+    const cal = params.calendarMethod;
+    return `v1|${country}|${city}|m=${method}|tz=${tz}|sh=${sh}|cal=${cal}`;
+  }
+
+  async function getCacheForOptions(optionsKey: string): Promise<CacheMap> {
+    const store = await getStore();
+    const key = `prayerCache:${optionsKey}`;
+    const existing = (await store.get<CacheMap>(key)) ?? {};
+    return existing;
+  }
+
+  async function setCacheForOptions(
+    optionsKey: string,
+    cache: CacheMap
+  ): Promise<void> {
+    const store = await getStore();
+    const key = `prayerCache:${optionsKey}`;
+    await store.set(key, cache);
+    if (store.save) await store.save();
+  }
+
+  // Removed calendarByCity types and fetch; we fetch per-day using timingsByCity
+
+  function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
+    const m = ddmmyyyy.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (!m) return null;
+    const [_, dd, mm, yyyy] = m;
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function formatDdMmYyyy(d: Date): string {
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = String(d.getFullYear());
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  function parseYyyyMmDd(
+    yyyyMmDd: string
+  ): { year: number; month: number; day: number } | null {
+    const m = yyyyMmDd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    const day = Number(m[3]);
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day)
+    ) {
+      return null;
+    }
+    return { year, month, day };
+  }
+
+  function addDays(date: Date, days: number): Date {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  // Removed calendarByCity helpers. We will fill cache day-by-day using timingsByCity.
+
+  async function ensureCacheForRange(params: {
+    city: string;
+    country: string;
+    methodId: number;
+    tz: string;
+    shafaq: string;
+    calendarMethod: string;
+    startDate: Date;
+    numDays: number; // e.g., 35
+  }): Promise<void> {
+    const optionsKey = buildOptionsKey(params);
+    const existing = await getCacheForOptions(optionsKey);
+
+    // Fetch per day using timingsByCity for the requested range
+    for (let i = 0; i < params.numDays; i++) {
+      const dateObj = addDays(params.startDate, i);
+      const dateKey = getDateKey(dateObj);
+      if (existing[dateKey]) continue;
+      try {
+        const dateParam = formatDdMmYyyy(dateObj);
+        const url = `https://api.aladhan.com/v1/timingsByCity/${encodeURIComponent(
+          dateParam
+        )}?city=${encodeURIComponent(params.city)}&country=${encodeURIComponent(
+          params.country
+        )}&method=${encodeURIComponent(
+          String(params.methodId)
+        )}&shafaq=${encodeURIComponent(
+          params.shafaq
+        )}&timezonestring=${encodeURIComponent(
+          params.tz
+        )}&calendarMethod=${encodeURIComponent(params.calendarMethod)}`;
+        const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
+        if (!res || res.code !== 200) continue;
+        existing[dateKey] = {
+          timings: res.data.timings,
+          dateReadable: res.data.date.readable,
+          timezone: res.data.meta.timezone,
+          methodName: res.data.meta.method?.name ?? null,
+          savedAt: Date.now(),
+        };
+      } catch {
+        // ignore per-day errors
+      }
+    }
+
+    await setCacheForOptions(optionsKey, existing);
   }
 
   async function loadPreferences() {
@@ -219,6 +415,11 @@ export function usePrayerTimes() {
     }
   }
 
+  async function clearCache() {
+    const store = await getStore();
+    await store.clear();
+  }
+
   watch(
     [selectedMethodId, selectedCity, selectedCountry, selectedExtraTimezone],
     () => {
@@ -235,21 +436,117 @@ export function usePrayerTimes() {
       methodId?: number;
       shafaq?: string;
       calendarMethod?: string;
-      date?: string;
+      date?: string; // dd-mm-yyyy
     }
   ) {
     isFetchingTimings.value = true;
     fetchError.value = null;
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const methodId = options?.methodId ?? selectedMethodId.value;
+      const shafaq = options?.shafaq ?? "general";
+      const calendarMethod = options?.calendarMethod ?? "UAQ";
+
+      // Determine target date key (YYYY-MM-DD)
+      let targetDateKey: string;
+      if (options?.date) {
+        targetDateKey =
+          ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(new Date());
+      } else {
+        targetDateKey = getDateKey(new Date());
+      }
+
+      const optionsKey = buildOptionsKey({
+        city,
+        country,
+        methodId,
+        tz,
+        shafaq,
+        calendarMethod,
+      });
+
+      // 1) Try cache first
+      const cache = await getCacheForOptions(optionsKey);
+
+      const cached = cache[targetDateKey];
+      if (cached) {
+        timings.value = cached.timings;
+        dateReadable.value = cached.dateReadable;
+        timezone.value = cached.timezone;
+        methodName.value = cached.methodName;
+        // Proactively ensure the next 5 weeks are cached (non-blocking) if online
+        try {
+          let needsFill = false;
+          const parsed = parseYyyyMmDd(targetDateKey);
+          const horizonStart = parsed
+            ? new Date(parsed.year, parsed.month - 1, parsed.day)
+            : new Date();
+          for (let i = 0; i < 35; i++) {
+            const dk = getDateKey(addDays(horizonStart, i));
+            if (!cache[dk]) {
+              needsFill = true;
+              break;
+            }
+          }
+          if (
+            needsFill &&
+            (typeof navigator === "undefined" || navigator.onLine !== false)
+          ) {
+            void ensureCacheForRange({
+              city,
+              country,
+              methodId,
+              tz,
+              shafaq,
+              calendarMethod,
+              startDate: horizonStart,
+              numDays: 10,
+            });
+          }
+        } catch {
+          // ignore background prefill errors
+        }
+        return; // cache hit → done
+      }
+
+      // 2) On miss: if offline, bail with friendly error
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        throw new Error("Offline: no cached prayer times available for today.");
+      }
+
+      // 3) Fetch and cache 5 more weeks starting from the target date
+      const parsedTarget = parseYyyyMmDd(targetDateKey);
+      const startDate = parsedTarget
+        ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
+        : new Date();
+      await ensureCacheForRange({
+        city,
+        country,
+        methodId,
+        tz,
+        shafaq,
+        calendarMethod,
+        startDate,
+        numDays: 10,
+      });
+
+      // Reload cache and apply today's timings
+      const refreshed = await getCacheForOptions(optionsKey);
+      const todayCached = refreshed[targetDateKey];
+      if (todayCached) {
+        timings.value = todayCached.timings;
+        dateReadable.value = todayCached.dateReadable;
+        timezone.value = todayCached.timezone;
+        methodName.value = todayCached.methodName;
+        return;
+      }
+
+      // 4) Safety fallback: fetch single day if monthly failed
       const today = new Date();
       const dd = String(today.getDate()).padStart(2, "0");
       const mm = String(today.getMonth() + 1).padStart(2, "0");
       const yyyy = String(today.getFullYear());
-      const dateParam = options?.date ?? `${dd}-${mm}-${yyyy}`;
-      const methodId = options?.methodId ?? selectedMethodId.value; // default to selected
-      const shafaq = options?.shafaq ?? "general";
-      const calendarMethod = options?.calendarMethod ?? "UAQ";
+      const dateParam = `${dd}-${mm}-${yyyy}`;
       const url = `https://api.aladhan.com/v1/timingsByCity/${encodeURIComponent(
         dateParam
       )}?city=${encodeURIComponent(city)}&country=${encodeURIComponent(
@@ -261,17 +558,28 @@ export function usePrayerTimes() {
       )}&timezonestring=${encodeURIComponent(
         tz
       )}&calendarMethod=${encodeURIComponent(calendarMethod)}`;
-
-      console.log({ url });
-
       const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
+      console.log("res", { res });
       if (!res || res.code !== 200) {
         throw new Error(res?.status || "Failed to fetch prayer times");
       }
+
+      // Update state
       timings.value = res.data.timings;
       dateReadable.value = res.data.date.readable;
       timezone.value = res.data.meta.timezone;
       methodName.value = res.data.meta.method?.name || null;
+
+      // Also persist to cache
+      const map = await getCacheForOptions(optionsKey);
+      map[targetDateKey] = {
+        timings: res.data.timings,
+        dateReadable: res.data.date.readable,
+        timezone: res.data.meta.timezone,
+        methodName: res.data.meta.method?.name || null,
+        savedAt: Date.now(),
+      };
+      await setCacheForOptions(optionsKey, map);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       fetchError.value = message;
@@ -460,11 +768,11 @@ export function usePrayerTimes() {
     fetchError,
     timings,
     timingsList,
-    dateReadable,
     timezone,
     methodName,
     currentTimeString,
     hijriDateVerbose,
+    gregorianDateVerbose,
     selectedMethodId,
     selectedCity,
     selectedCountry,
@@ -475,6 +783,7 @@ export function usePrayerTimes() {
     loadPreferences,
     savePreferences,
     clearTimings,
+    clearCache,
 
     // derived
     upcomingKey,

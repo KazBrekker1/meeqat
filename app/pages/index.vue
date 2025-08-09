@@ -1,16 +1,22 @@
 <template>
   <div class="flex min-h-screen">
-    <UCard class="w-full rounded-none">
+    <UCard class="grid grid-rows-[auto_1fr_auto] w-full rounded-none">
       <template #header>
         <div class="flex items-center justify-between">
           <h1 class="text-xl font-semibold">Prayer Times</h1>
           <div class="flex items-center gap-2">
-            <UBadge variant="solid" color="primary" class="tabular-nums">
+            <UBadge
+              variant="subtle"
+              color="primary"
+              size="lg"
+              icon="heroicons:clock-20-solid"
+              class="tabular-nums rounded-sm px-3 py-1.5 text-base font-semibold shadow-sm"
+            >
               {{ currentTimeString }}
             </UBadge>
           </div>
           <div class="text-sm text-gray-500 space-y-0.5">
-            <p v-if="dateReadable">{{ dateReadable }}</p>
+            <p v-if="gregorianDateVerbose">{{ gregorianDateVerbose }}</p>
             <p v-if="hijriDateVerbose">{{ hijriDateVerbose }}</p>
           </div>
         </div>
@@ -56,10 +62,9 @@
           <UButton
             :loading="isLoading"
             @click="onFetchByCity"
-            icon="i-heroicons-building-office-2-20-solid"
-            block
+            icon="heroicons:building-office-2-20-solid"
           >
-            Fetch by City
+            Load
           </UButton>
         </div>
 
@@ -87,11 +92,23 @@
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center justify-between">
           <div
-            class="text-sm text-gray-500 flex items-center gap-2 tabular-nums"
+            class="text-sm text-gray-500 flex items-center tabular-nums gap-2"
             v-if="nextPrayerLabel && countdownToNext"
           >
+            <ColorToggle />
+            <UButton
+              color="error"
+              variant="soft"
+              size="xs"
+              :disabled="isLoading"
+              @click="onClearCache"
+              icon="heroicons:trash-20-solid"
+            >
+              Clear Cache
+            </UButton>
+            <USeparator orientation="vertical" class="h-4" />
             <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
             <UButton
               v-if="isAthanActive"
@@ -99,17 +116,19 @@
               variant="ghost"
               color="error"
               @click="onDismissAthan"
-              icon="i-heroicons-x-mark-20-solid"
+              icon="heroicons:x-mark-20-solid"
             >
               Dismiss
             </UButton>
           </div>
-          <div
-            class="text-sm text-gray-500"
-            v-if="selectedCity || selectedCountry"
-          >
-            Location: {{ selectedCity || "—" }},
-            {{ selectedCountryName || selectedCountry }}
+          <div class="flex items-center gap-2">
+            <span
+              class="text-sm text-gray-500"
+              v-if="selectedCity || selectedCountry"
+            >
+              Location: {{ selectedCity || "—" }},
+              {{ selectedCountryName || selectedCountry }}
+            </span>
           </div>
         </div>
       </template>
@@ -122,11 +141,13 @@ import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
 import { COUNTRY_TO_CITIES } from "@/constants/cities";
 
+const { confirm } = useConfirm();
+
 const {
   isLoading,
   fetchError,
   timingsList,
-  dateReadable,
+  gregorianDateVerbose,
   currentTimeString,
   fetchPrayerTimingsByCity,
   selectedMethodId,
@@ -142,6 +163,7 @@ const {
   nextPrayerLabel,
   countdownToNext,
   clearTimings,
+  clearCache,
 } = usePrayerTimes();
 
 const methodSelectOptions = computed(() =>
@@ -172,22 +194,28 @@ const selectedCountryName = computed(() => {
 });
 
 const timezoneSelectOptions = computed(() => {
-  const zones: string[] = [
-    "UTC",
-    "Europe/London",
-    "Europe/Paris",
-    "Africa/Cairo",
-    "Asia/Riyadh",
-    "Asia/Dubai",
-    "Asia/Qatar",
-    "Asia/Kuwait",
-    "Asia/Doha",
-    "Africa/Casablanca",
-    "America/New_York",
-    "America/Chicago",
-    "America/Denver",
-    "America/Los_Angeles",
-  ];
+  let zones: string[] = [];
+  try {
+    zones = Intl.supportedValuesOf("timeZone");
+  } catch (error) {
+    console.error(error);
+    zones = [
+      "UTC",
+      "Europe/London",
+      "Europe/Paris",
+      "Africa/Cairo",
+      "Asia/Riyadh",
+      "Asia/Dubai",
+      "Asia/Qatar",
+      "Asia/Kuwait",
+      "Asia/Doha",
+      "Africa/Casablanca",
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Los_Angeles",
+    ];
+  }
   const items = zones.map((z) => ({ label: z, value: z }));
   items.unshift({
     label: `Use my timezone (${userTimezone.value})`,
@@ -222,6 +250,20 @@ function onTestAthan() {
 
 function onDismissAthan() {
   dismissAthan();
+}
+
+async function onClearCache() {
+  if (
+    await confirm({
+      title: "Clear Cache",
+      message: `Are you sure you want to clear the cache? You have ${timingsList.value.length} cached items.`,
+      description: "Are you sure you want to clear the cache?",
+      confirmColor: "error",
+    })
+  ) {
+    clearCache();
+    clearTimings();
+  }
 }
 
 onMounted(async () => {
