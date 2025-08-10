@@ -2,147 +2,52 @@
   <div class="flex min-h-screen">
     <UCard class="grid grid-rows-[auto_1fr_auto] w-full rounded-none">
       <template #header>
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl font-semibold">Prayer Times</h1>
-          <div class="flex items-center gap-2">
-            <UBadge
-              variant="subtle"
-              color="primary"
-              size="lg"
-              icon="heroicons:clock-20-solid"
-              class="tabular-nums rounded-sm px-3 py-1.5 text-base font-semibold shadow-sm"
-            >
-              {{ currentTimeString }}
-            </UBadge>
-          </div>
-          <div class="text-sm text-gray-500 space-y-0.5">
-            <p v-if="gregorianDateVerbose">{{ gregorianDateVerbose }}</p>
-            <p v-if="hijriDateVerbose">{{ hijriDateVerbose }}</p>
-          </div>
-        </div>
+        <PrayerHeader
+          :current-time-string="currentTimeString"
+          :gregorian-date-verbose="gregorianDateVerbose || undefined"
+          :hijri-date-verbose="hijriDateVerbose || undefined"
+        />
       </template>
 
       <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-          <USelectMenu
-            v-model="selectedMethodId"
-            :items="methodSelectOptions"
-            placeholder="Select method"
-            label-key="label"
-            value-key="value"
-          />
-          <USelectMenu
-            v-model="selectedExtraTimezone"
-            :items="timezoneSelectOptions"
-            placeholder="Display timezone (optional)"
-            label-key="label"
-            value-key="value"
-            @update:model-value="onExtraTimezoneChange"
-          />
-        </div>
+        <PrayerSelectors
+          :method-select-options="methodSelectOptions"
+          :timezone-select-options="timezoneSelectOptions"
+          v-model:selected-method-id="selectedMethodId"
+          v-model:selected-extra-timezone="selectedExtraTimezone"
+        />
 
-        <div class="grid grid-cols-[1fr_1fr_auto] gap-3">
-          <USelectMenu
-            v-model="selectedCountry"
-            :items="countrySelectOptions"
-            label-key="label"
-            value-key="value"
-            placeholder="Country"
-            @update:model-value="onCountryChange"
-          />
-          <USelectMenu
-            v-model="selectedCity"
-            :items="citySelectOptions"
-            label-key="label"
-            value-key="value"
-            :disabled="!selectedCountry"
-            placeholder="City"
-            @update:model-value="onCityChange"
-          />
-          <UButton
-            :loading="isLoading"
-            @click="onFetchByCity"
-            icon="heroicons:building-office-2-20-solid"
-          >
-            Load
-          </UButton>
-        </div>
+        <PrayerLocationControls
+          v-model:selected-country="selectedCountry"
+          v-model:selected-city="selectedCity"
+          :country-select-options="countrySelectOptions"
+          :city-select-options="citySelectOptions"
+          :loading="isLoading"
+          @country-change="onCountryChange"
+          @fetch-by-city="onFetchByCity"
+        />
 
         <div v-if="fetchError" class="text-red-600">{{ fetchError }}</div>
 
-        <div v-if="timingsList.length" class="grid grid-cols-2 gap-3">
-          <UAlert
-            v-for="t in timingsList"
-            :key="t.key"
-            class="flex items-center justify-between p-3 rounded"
-            :variant="t.isPast ? 'outline' : 'subtle'"
-            :color="t.isNext ? 'primary' : 'neutral'"
-          >
-            <template #description>
-              <div class="grid items-center grid-cols-3 gap-2 tabular-nums">
-                <span class="font-medium">{{ t.label }}</span>
-                <span>{{ t.time }}</span>
-                <span v-if="t.altTime" class="text-xs text-gray-500">
-                  {{ t.altTime }}
-                </span>
-              </div>
-            </template>
-          </UAlert>
-        </div>
+        <PrayerTimingsList :timings-list="timingsList" />
       </div>
 
       <template #footer>
-        <div class="flex items-center justify-between">
-          <div
-            class="flex items-center gap-2 text-sm text-gray-500 tabular-nums"
-            v-if="nextPrayerLabel && countdownToNext"
-          >
-            <UButton
-              color="error"
-              variant="soft"
-              size="xs"
-              :disabled="isLoading"
-              @click="onClearCache"
-              icon="heroicons:trash-20-solid"
-            >
-              Clear Cache
-            </UButton>
-            <USeparator orientation="vertical" class="h-4" />
-            <ColorToggle />
-            <UButton
-              size="xs"
-              variant="ghost"
-              @click="
-                () => {
-                  timeFormat = timeFormat === '24h' ? '12h' : '24h';
-                }
-              "
-            >
-              {{ timeFormat === "24h" ? "12h" : "24h" }}
-            </UButton>
-            <USeparator orientation="vertical" class="h-4" />
-            <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
-            <UButton
-              v-if="isAthanActive"
-              size="xs"
-              variant="ghost"
-              color="error"
-              @click="onDismissAthan"
-              icon="heroicons:x-mark-20-solid"
-            >
-              Dismiss
-            </UButton>
-          </div>
-          <div class="flex items-center gap-2">
-            <span
-              class="text-sm text-gray-500"
-              v-if="selectedCity || selectedCountry"
-            >
-              Location: {{ selectedCity || "—" }},
-              {{ selectedCountryName || selectedCountry }}
-            </span>
-          </div>
-        </div>
+        <PrayerFooter
+          :next-prayer-label="nextPrayerLabel || undefined"
+          :countdown-to-next="countdownToNext || undefined"
+          :is-loading="isLoading"
+          :is-athan-active="isAthanActive"
+          :selected-city="selectedCity"
+          :selected-country="selectedCountry"
+          :selected-country-name="selectedCountryName"
+          :time-format="timeFormat"
+          @clear-cache="onClearCache"
+          @toggle-time-format="
+            () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
+          "
+          @dismiss-athan="onDismissAthan"
+        />
       </template>
     </UCard>
   </div>
@@ -170,7 +75,6 @@ const {
   selectedExtraTimezone,
   userTimezone,
   hijriDateVerbose,
-  testPlayAthan,
   isAthanActive,
   dismissAthan,
   nextPrayerLabel,
@@ -238,11 +142,6 @@ const timezoneSelectOptions = computed(() => {
   return items;
 });
 
-const timeFormatOptions = [
-  { label: "24-hour", value: "24h" },
-  { label: "12-hour", value: "12h" },
-];
-
 function onFetchByCity() {
   if (!selectedCity.value || !selectedCountry.value) return;
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
@@ -252,19 +151,6 @@ function onFetchByCity() {
 
 function onCountryChange() {
   selectedCity.value = "";
-  clearTimings();
-}
-
-function onExtraTimezoneChange(val: string) {
-  selectedExtraTimezone.value = val;
-}
-
-function onCityChange() {
-  clearTimings();
-}
-
-function onTestAthan() {
-  testPlayAthan();
 }
 
 function onDismissAthan() {
@@ -292,6 +178,10 @@ onMounted(async () => {
   }
 });
 
+watch([selectedMethodId, selectedCity, selectedCountry], () => {
+  clearTimings();
+});
+
 // Push updates to the tray via Tauri event bus
 watch(
   [gregorianDateVerbose, hijriDateVerbose, nextPrayerLabel, countdownToNext],
@@ -299,26 +189,15 @@ watch(
     try {
       const dateLineParts: string[] = [];
       if (hijriDateVerbose.value)
-        dateLineParts.push(`Hijri date: ${hijriDateVerbose.value}`);
+        dateLineParts.push(`Hijri: ${hijriDateVerbose.value}`);
       if (gregorianDateVerbose.value)
-        dateLineParts.push(`Gregorian date: ${gregorianDateVerbose.value}`);
-      const dateLine = dateLineParts.length
-        ? dateLineParts.join(" | ")
-        : undefined;
+        dateLineParts.push(`Gregorian: ${gregorianDateVerbose.value}`);
+      const dateLine = dateLineParts.join(" | ");
 
-      const hasCountdown = Boolean(
-        nextPrayerLabel.value && countdownToNext.value
-      );
-      const countdownLine = hasCountdown
-        ? `Next prayer: ${nextPrayerLabel.value} in ${countdownToNext.value}`
-        : undefined;
-      const title = hasCountdown
-        ? `${nextPrayerLabel.value} ${countdownToNext.value}`
-        : null;
+      const title = `${nextPrayerLabel.value} in ${countdownToNext.value}`;
 
       await emit("meeqat:tray:update", {
         dateLine,
-        countdownLine,
         title,
       });
     } catch {

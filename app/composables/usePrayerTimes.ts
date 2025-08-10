@@ -1,33 +1,3 @@
-export interface PrayerTimingsResponse {
-  code: number;
-  status: string;
-  data: {
-    timings: Record<string, string>;
-    date: {
-      readable: string;
-      timestamp: string;
-      gregorian: { date: string };
-      hijri: { date: string };
-    };
-    meta: {
-      timezone: string;
-      method: { id: number; name: string };
-      latitude: number;
-      longitude: number;
-    };
-  };
-}
-
-export interface PrayerTimingItem {
-  key: string;
-  label: string;
-  time: string;
-  minutes?: number;
-  isPast?: boolean;
-  isNext?: boolean;
-  altTime?: string;
-}
-
 export function usePrayerTimes() {
   const fetchError = ref<string | null>(null);
   const isFetchingTimings = ref(false);
@@ -55,110 +25,15 @@ export function usePrayerTimes() {
     if (intervalId) clearInterval(intervalId);
   });
   const currentTimeString = computed(() =>
-    now.value
-      .toLocaleTimeString(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: !is24Hour.value,
-      })
-      .replace(/^24:/, "00:")
+    formatTime(now.value, is24Hour, undefined, true)
   );
 
-  // --- Athan audio (simple Web Audio tone sequence) ---
-  let audioContext: AudioContext | null = null;
+  // --- Athan audio ---
   const playedKeysForDate = new Set<string>();
   let lastPlayedDateKey = "";
-  let athanIntervalId: number | null = null;
-  let masterGain: GainNode | null = null;
   const isAthanActive = ref(false);
-
-  function getDateKey(d: Date): string {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  function ensureAudioContext(): AudioContext {
-    const Ctor: any =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!Ctor) {
-      throw new Error("Web Audio API not supported");
-    }
-    if (!audioContext) {
-      audioContext = new Ctor();
-    }
-    if (audioContext!.state === "suspended") void audioContext!.resume();
-    return audioContext!;
-  }
-
-  function playAthanPattern(ctx: AudioContext, targetGain: GainNode): number {
-    const startAt = ctx.currentTime + 0.01;
-    const notes = [523.25, 659.25, 783.99, 659.25, 523.25];
-    const tone = 0.4; // seconds per note
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, startAt + i * tone);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, startAt + i * tone);
-      g.gain.exponentialRampToValueAtTime(0.25, startAt + i * tone + 0.05);
-      g.gain.exponentialRampToValueAtTime(
-        0.01,
-        startAt + (i + 1) * tone - 0.05
-      );
-      osc.connect(g);
-      g.connect(targetGain);
-      osc.start(startAt + i * tone);
-      osc.stop(startAt + (i + 1) * tone);
-    });
-    return notes.length * tone; // seconds for one loop
-  }
-
-  function startAthan(): void {
-    try {
-      if (isAthanActive.value) return;
-      const ctx = ensureAudioContext();
-      masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      masterGain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.2);
-      masterGain.connect(ctx.destination);
-      const loopSeconds = playAthanPattern(ctx, masterGain);
-      athanIntervalId = window.setInterval(() => {
-        if (!masterGain) return;
-        playAthanPattern(ctx, masterGain);
-      }, Math.max(250, Math.floor(loopSeconds * 1000)));
-      isAthanActive.value = true;
-    } catch {
-      // ignore
-    }
-  }
-
-  function dismissAthan(): void {
-    const ctx = audioContext;
-    if (athanIntervalId != null) {
-      clearInterval(athanIntervalId);
-      athanIntervalId = null;
-    }
-    if (ctx && masterGain) {
-      try {
-        const t = ctx.currentTime;
-        masterGain.gain.setTargetAtTime(0.0001, t, 0.05);
-        setTimeout(() => {
-          try {
-            masterGain && masterGain.disconnect();
-          } catch {}
-          masterGain = null;
-        }, 300);
-      } catch {}
-    }
-    isAthanActive.value = false;
-  }
-
-  function testPlayAthan(): void {
-    startAthan();
-  }
+  const { startAthan, dismissAthan, testPlayAthan } =
+    createAthanController(isAthanActive);
 
   const hijriDateVerbose = computed<string | null>(() => {
     try {
@@ -186,80 +61,6 @@ export function usePrayerTimes() {
     }
   });
 
-  // Persistence using Tauri Store (auto-imported helper from nuxt module)
-  type TauriStore = {
-    get<T>(key: string): Promise<T | undefined>;
-    set(key: string, value: unknown): Promise<void>;
-    clear: () => Promise<void>;
-    save?: () => Promise<void>;
-  };
-  let storePromise: Promise<TauriStore> | null = null;
-
-  function isTauriAvailable(): boolean {
-    if (typeof window === "undefined") return false;
-    const w = window as any;
-    return Boolean(w.__TAURI__?.core?.invoke || w.__TAURI_INTERNALS__?.invoke);
-  }
-
-  function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
-    const storageKey = `localStore:${localKey}`;
-    function readAll(): Record<string, unknown> {
-      if (typeof window === "undefined") return {};
-      try {
-        const raw = window.localStorage.getItem(storageKey);
-        if (!raw) return {};
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object")
-          return parsed as Record<string, unknown>;
-      } catch {}
-      return {};
-    }
-    async function writeAll(obj: Record<string, unknown>): Promise<void> {
-      if (typeof window === "undefined") return;
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify(obj));
-      } catch {}
-    }
-    return {
-      async get<T>(key: string): Promise<T | undefined> {
-        const all = readAll();
-        return all[key] as T | undefined;
-      },
-      async set(key: string, value: unknown): Promise<void> {
-        const all = readAll();
-        all[key] = value;
-        await writeAll(all);
-      },
-      async save() {
-        // no-op since we persist on set
-      },
-      async clear() {
-        window.localStorage.removeItem(storageKey);
-      },
-    } as TauriStore;
-  }
-
-  function getStore(): Promise<TauriStore> {
-    if (!storePromise) {
-      if (!isTauriAvailable()) {
-        storePromise = Promise.resolve(createWebFallbackStore("settings.bin"));
-      } else {
-        storePromise = useTauriStoreLoad("settings.bin", { autoSave: true });
-      }
-    }
-    return storePromise;
-  }
-
-  type CachedDay = {
-    timings: Record<string, string>;
-    dateReadable: string;
-    timezone: string;
-    methodName: string | null;
-    savedAt: number;
-  };
-
-  type CacheMap = Record<string, CachedDay>; // key: YYYY-MM-DD
-
   function normalizeKeyPart(s: string): string {
     return s.trim().toLowerCase();
   }
@@ -282,64 +83,12 @@ export function usePrayerTimes() {
     return `v1|${country}|${city}|m=${method}|tz=${tz}|sh=${sh}|cal=${cal}`;
   }
 
-  async function getCacheForOptions(optionsKey: string): Promise<CacheMap> {
-    const store = await getStore();
-    const key = `prayerCache:${optionsKey}`;
-    const existing = (await store.get<CacheMap>(key)) ?? {};
-    return existing;
-  }
-
-  async function setCacheForOptions(
-    optionsKey: string,
-    cache: CacheMap
-  ): Promise<void> {
-    const store = await getStore();
-    const key = `prayerCache:${optionsKey}`;
-    await store.set(key, cache);
-    if (store.save) await store.save();
-  }
-
-  // Removed calendarByCity types and fetch; we fetch per-day using timingsByCity
-
   function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
     const m = ddmmyyyy.match(/^(\d{2})-(\d{2})-(\d{4})$/);
     if (!m) return null;
     const [_, dd, mm, yyyy] = m;
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  function formatDdMmYyyy(d: Date): string {
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const yyyy = String(d.getFullYear());
-    return `${dd}-${mm}-${yyyy}`;
-  }
-
-  function parseYyyyMmDd(
-    yyyyMmDd: string
-  ): { year: number; month: number; day: number } | null {
-    const m = yyyyMmDd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return null;
-    const year = Number(m[1]);
-    const month = Number(m[2]);
-    const day = Number(m[3]);
-    if (
-      !Number.isFinite(year) ||
-      !Number.isFinite(month) ||
-      !Number.isFinite(day)
-    ) {
-      return null;
-    }
-    return { year, month, day };
-  }
-
-  function addDays(date: Date, days: number): Date {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
-  }
-
-  // Removed calendarByCity helpers. We will fill cache day-by-day using timingsByCity.
 
   async function ensureCacheForRange(params: {
     city: string;
@@ -349,29 +98,26 @@ export function usePrayerTimes() {
     shafaq: string;
     calendarMethod: string;
     startDate: Date;
-    numDays: number; // e.g., 35
+    numDays: number;
   }): Promise<void> {
     const optionsKey = buildOptionsKey(params);
     const existing = await getCacheForOptions(optionsKey);
 
-    // Fetch per day using timingsByCity for the requested range
     for (let i = 0; i < params.numDays; i++) {
       const dateObj = addDays(params.startDate, i);
       const dateKey = getDateKey(dateObj);
       if (existing[dateKey]) continue;
       try {
         const dateParam = formatDdMmYyyy(dateObj);
-        const url = `https://api.aladhan.com/v1/timingsByCity/${encodeURIComponent(
-          dateParam
-        )}?city=${encodeURIComponent(params.city)}&country=${encodeURIComponent(
-          params.country
-        )}&method=${encodeURIComponent(
-          String(params.methodId)
-        )}&shafaq=${encodeURIComponent(
-          params.shafaq
-        )}&timezonestring=${encodeURIComponent(
-          params.tz
-        )}&calendarMethod=${encodeURIComponent(params.calendarMethod)}`;
+        const url = buildTimingsByCityUrl(
+          dateParam,
+          params.city,
+          params.country,
+          params.methodId,
+          params.shafaq,
+          params.tz,
+          params.calendarMethod
+        );
         const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
         if (!res || res.code !== 200) continue;
         existing[dateKey] = {
@@ -443,8 +189,6 @@ export function usePrayerTimes() {
       void savePreferences();
     }
   );
-
-  // Geolocation-based fetching removed; rely on user-provided city and country
 
   async function fetchPrayerTimingsByCity(
     city: string,
@@ -564,17 +308,15 @@ export function usePrayerTimes() {
       const mm = String(today.getMonth() + 1).padStart(2, "0");
       const yyyy = String(today.getFullYear());
       const dateParam = `${dd}-${mm}-${yyyy}`;
-      const url = `https://api.aladhan.com/v1/timingsByCity/${encodeURIComponent(
-        dateParam
-      )}?city=${encodeURIComponent(city)}&country=${encodeURIComponent(
-        country
-      )}&method=${encodeURIComponent(
-        String(methodId)
-      )}&shafaq=${encodeURIComponent(
-        shafaq
-      )}&timezonestring=${encodeURIComponent(
-        tz
-      )}&calendarMethod=${encodeURIComponent(calendarMethod)}`;
+      const url = buildTimingsByCityUrl(
+        dateParam,
+        city,
+        country,
+        methodId,
+        shafaq,
+        tz,
+        calendarMethod
+      );
       const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
       console.log("res", { res });
       if (!res || res.code !== 200) {
@@ -605,8 +347,6 @@ export function usePrayerTimes() {
       isFetchingTimings.value = false;
     }
   }
-
-  // requestLocationAndFetch removed
 
   const isLoading = computed(() => isFetchingTimings.value);
 
@@ -641,66 +381,11 @@ export function usePrayerTimes() {
     return h * 60 + m;
   }
 
-  const nowMinutes = computed(
-    () => now.value.getHours() * 60 + now.value.getMinutes()
-  );
-
-  // Include seconds so we can switch the upcoming prayer immediately at the exact moment
-  // a prayer time is reached (avoid 1-minute lag where equality treated as upcoming).
-  const nowSecondsOfDay = computed(
-    () =>
-      now.value.getHours() * 3600 +
-      now.value.getMinutes() * 60 +
-      now.value.getSeconds()
-  );
+  const { nowMinutes, nowSecondsOfDay } = buildCurrentTimeRefs(now);
 
   const userTimezone = computed(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone
   );
-
-  function formatDateInTimezone(date: Date, tz: string): string {
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: !is24Hour.value,
-        timeZone: tz,
-      }).format(date);
-    } catch {
-      // Fallback to local formatting if tz invalid
-      return date
-        .toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: !is24Hour.value,
-        })
-        .replace(/^24:/, "00:");
-    }
-  }
-
-  function formatMinutesLocal(minutes: number): string {
-    const base = new Date();
-    base.setSeconds(0, 0);
-    base.setHours(0, 0, 0, 0);
-    base.setMinutes(minutes);
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: !is24Hour.value,
-      })
-        .format(base)
-        .replace(/^24:/, "00:");
-    } catch {
-      return base
-        .toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: !is24Hour.value,
-        })
-        .replace(/^24:/, "00:");
-    }
-  }
 
   function computeAltTimeForTimezone(
     timeStr: string,
@@ -714,7 +399,7 @@ export function usePrayerTimes() {
     base.setSeconds(0, 0);
     base.setHours(0, 0, 0, 0);
     base.setMinutes(mins);
-    const formatted = formatDateInTimezone(base, targetTz);
+    const formatted = formatDateInTimezone(base, is24Hour, targetTz);
     return formatted;
   }
 
@@ -735,7 +420,7 @@ export function usePrayerTimes() {
         const minutes = parseTimeToMinutes(timeStr) ?? undefined;
         const display =
           typeof minutes === "number"
-            ? formatMinutesLocal(minutes as number)
+            ? formatMinutesLocal(minutes as number, is24Hour)
             : timeStr;
         return {
           key,
@@ -749,7 +434,6 @@ export function usePrayerTimes() {
         } as PrayerTimingItem;
       });
 
-    // Determine next upcoming prayer (use seconds; strictly greater than current second)
     const nowS = nowSecondsOfDay.value;
     let nextIndex = list.findIndex((t) =>
       typeof t.minutes === "number" ? (t.minutes as number) * 60 > nowS : false
@@ -796,7 +480,6 @@ export function usePrayerTimes() {
     return `${hh}:${mm}:${ss}`;
   });
 
-  // Trigger Athan at exact minute of any listed time
   watch([now, timingsList], () => {
     if (!timingsList.value.length) return;
     const key = getDateKey(now.value);
