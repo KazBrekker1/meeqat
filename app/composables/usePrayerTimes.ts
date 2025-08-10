@@ -39,6 +39,9 @@ export function usePrayerTimes() {
   const selectedCity = ref<string>("");
   const selectedCountry = ref<string>("");
   const selectedExtraTimezone = ref<string>("");
+  const timeFormat = ref<"24h" | "12h">("24h");
+
+  const is24Hour = computed(() => timeFormat.value === "24h");
 
   // Track current time to compute upcoming/past
   const now = ref<Date>(new Date());
@@ -52,11 +55,14 @@ export function usePrayerTimes() {
     if (intervalId) clearInterval(intervalId);
   });
   const currentTimeString = computed(() =>
-    now.value.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
+    now.value
+      .toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: !is24Hour.value,
+      })
+      .replace(/^24:/, "00:")
   );
 
   // --- Athan audio (simple Web Audio tone sequence) ---
@@ -390,12 +396,16 @@ export function usePrayerTimes() {
       const city = await store.get<string>("city");
       const country = await store.get<string>("country");
       const extraTz = await store.get<string>("extraTimezone");
+      const fmt = await store.get<string>("timeFormat");
       if (typeof method === "number") selectedMethodId.value = method;
       if (typeof city === "string") selectedCity.value = city;
       if (typeof country === "string" && country)
         selectedCountry.value = country;
       if (typeof extraTz === "string" && extraTz) {
         selectedExtraTimezone.value = extraTz;
+      }
+      if (fmt === "24h" || fmt === "12h") {
+        timeFormat.value = fmt;
       }
     } catch {
       // ignore
@@ -409,6 +419,7 @@ export function usePrayerTimes() {
       await store.set("city", selectedCity.value);
       await store.set("country", selectedCountry.value ?? "");
       await store.set("extraTimezone", selectedExtraTimezone.value ?? "");
+      await store.set("timeFormat", timeFormat.value);
       if (store.save) await store.save();
     } catch {
       // ignore
@@ -421,7 +432,13 @@ export function usePrayerTimes() {
   }
 
   watch(
-    [selectedMethodId, selectedCity, selectedCountry, selectedExtraTimezone],
+    [
+      selectedMethodId,
+      selectedCity,
+      selectedCountry,
+      selectedExtraTimezone,
+      timeFormat,
+    ],
     () => {
       void savePreferences();
     }
@@ -628,6 +645,15 @@ export function usePrayerTimes() {
     () => now.value.getHours() * 60 + now.value.getMinutes()
   );
 
+  // Include seconds so we can switch the upcoming prayer immediately at the exact moment
+  // a prayer time is reached (avoid 1-minute lag where equality treated as upcoming).
+  const nowSecondsOfDay = computed(
+    () =>
+      now.value.getHours() * 3600 +
+      now.value.getMinutes() * 60 +
+      now.value.getSeconds()
+  );
+
   const userTimezone = computed(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone
   );
@@ -637,7 +663,7 @@ export function usePrayerTimes() {
       return new Intl.DateTimeFormat(undefined, {
         hour: "2-digit",
         minute: "2-digit",
-        hour12: false,
+        hour12: !is24Hour.value,
         timeZone: tz,
       }).format(date);
     } catch {
@@ -646,7 +672,31 @@ export function usePrayerTimes() {
         .toLocaleTimeString(undefined, {
           hour: "2-digit",
           minute: "2-digit",
-          hour12: false,
+          hour12: !is24Hour.value,
+        })
+        .replace(/^24:/, "00:");
+    }
+  }
+
+  function formatMinutesLocal(minutes: number): string {
+    const base = new Date();
+    base.setSeconds(0, 0);
+    base.setHours(0, 0, 0, 0);
+    base.setMinutes(minutes);
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: !is24Hour.value,
+      })
+        .format(base)
+        .replace(/^24:/, "00:");
+    } catch {
+      return base
+        .toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: !is24Hour.value,
         })
         .replace(/^24:/, "00:");
     }
@@ -683,10 +733,14 @@ export function usePrayerTimes() {
       .map(([key, label]) => {
         const timeStr = (timings.value?.[key] ?? "") as string;
         const minutes = parseTimeToMinutes(timeStr) ?? undefined;
+        const display =
+          typeof minutes === "number"
+            ? formatMinutesLocal(minutes as number)
+            : timeStr;
         return {
           key,
           label,
-          time: timeStr,
+          time: display,
           minutes,
           altTime: computeAltTimeForTimezone(
             timeStr,
@@ -695,19 +749,19 @@ export function usePrayerTimes() {
         } as PrayerTimingItem;
       });
 
-    // Determine next upcoming prayer
-    const nowM = nowMinutes.value;
+    // Determine next upcoming prayer (use seconds; strictly greater than current second)
+    const nowS = nowSecondsOfDay.value;
     let nextIndex = list.findIndex((t) =>
-      typeof t.minutes === "number" ? (t.minutes as number) >= nowM : false
+      typeof t.minutes === "number" ? (t.minutes as number) * 60 > nowS : false
     );
-    if (nextIndex === -1) nextIndex = 0; // wrap to next day
+    if (nextIndex === -1) nextIndex = 0; // wrap to next day (tomorrow's first prayer)
 
     return list.map((t, idx) => ({
       ...t,
       isPast:
         typeof t.minutes === "number"
           ? (idx < nextIndex && nextIndex !== 0) ||
-            (nextIndex === 0 && (t.minutes as number) < nowM)
+            (nextIndex === 0 && (t.minutes as number) * 60 < nowS)
           : false,
       isNext: idx === nextIndex,
     }));
@@ -777,6 +831,8 @@ export function usePrayerTimes() {
     selectedCity,
     selectedCountry,
     selectedExtraTimezone,
+    timeFormat,
+    is24Hour,
 
     // actions
     fetchPrayerTimingsByCity,

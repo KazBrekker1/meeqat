@@ -71,33 +71,32 @@
         <div v-if="fetchError" class="text-red-600">{{ fetchError }}</div>
 
         <div v-if="timingsList.length" class="grid grid-cols-2 gap-3">
-          <div
+          <UAlert
             v-for="t in timingsList"
             :key="t.key"
-            class="flex items-center justify-between p-3 rounded border"
-            :class="{
-              'opacity-60 text-gray-500': t.isPast,
-              'border-primary-400': t.isNext,
-            }"
+            class="flex items-center justify-between p-3 rounded"
+            :variant="t.isPast ? 'outline' : 'subtle'"
+            :color="t.isNext ? 'primary' : 'neutral'"
           >
-            <span class="font-medium">{{ t.label }}</span>
-            <span class="tabular-nums flex items-center gap-2">
-              <span>{{ t.time }}</span>
-              <span v-if="t.altTime" class="text-xs text-gray-500">
-                [{{ t.altTime }} in {{ selectedExtraTimezone }}]
-              </span>
-            </span>
-          </div>
+            <template #description>
+              <div class="grid items-center grid-cols-3 gap-2 tabular-nums">
+                <span class="font-medium">{{ t.label }}</span>
+                <span>{{ t.time }}</span>
+                <span v-if="t.altTime" class="text-xs text-gray-500">
+                  {{ t.altTime }}
+                </span>
+              </div>
+            </template>
+          </UAlert>
         </div>
       </div>
 
       <template #footer>
         <div class="flex items-center justify-between">
           <div
-            class="text-sm text-gray-500 flex items-center tabular-nums gap-2"
+            class="flex items-center gap-2 text-sm text-gray-500 tabular-nums"
             v-if="nextPrayerLabel && countdownToNext"
           >
-            <ColorToggle />
             <UButton
               color="error"
               variant="soft"
@@ -107,6 +106,19 @@
               icon="heroicons:trash-20-solid"
             >
               Clear Cache
+            </UButton>
+            <USeparator orientation="vertical" class="h-4" />
+            <ColorToggle />
+            <UButton
+              size="xs"
+              variant="ghost"
+              @click="
+                () => {
+                  timeFormat = timeFormat === '24h' ? '12h' : '24h';
+                }
+              "
+            >
+              {{ timeFormat === "24h" ? "12h" : "24h" }}
             </UButton>
             <USeparator orientation="vertical" class="h-4" />
             <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
@@ -140,6 +152,7 @@
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
 import { COUNTRY_TO_CITIES } from "@/constants/cities";
+import { emit } from "@tauri-apps/api/event";
 
 const { confirm } = useConfirm();
 
@@ -164,6 +177,7 @@ const {
   countdownToNext,
   clearTimings,
   clearCache,
+  timeFormat,
 } = usePrayerTimes();
 
 const methodSelectOptions = computed(() =>
@@ -224,6 +238,11 @@ const timezoneSelectOptions = computed(() => {
   return items;
 });
 
+const timeFormatOptions = [
+  { label: "24-hour", value: "24h" },
+  { label: "12-hour", value: "12h" },
+];
+
 function onFetchByCity() {
   if (!selectedCity.value || !selectedCountry.value) return;
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
@@ -272,6 +291,42 @@ onMounted(async () => {
     onFetchByCity();
   }
 });
+
+// Push updates to the tray via Tauri event bus
+watch(
+  [gregorianDateVerbose, hijriDateVerbose, nextPrayerLabel, countdownToNext],
+  async () => {
+    try {
+      const dateLineParts: string[] = [];
+      if (hijriDateVerbose.value)
+        dateLineParts.push(`Hijri date: ${hijriDateVerbose.value}`);
+      if (gregorianDateVerbose.value)
+        dateLineParts.push(`Gregorian date: ${gregorianDateVerbose.value}`);
+      const dateLine = dateLineParts.length
+        ? dateLineParts.join(" | ")
+        : undefined;
+
+      const hasCountdown = Boolean(
+        nextPrayerLabel.value && countdownToNext.value
+      );
+      const countdownLine = hasCountdown
+        ? `Next prayer: ${nextPrayerLabel.value} in ${countdownToNext.value}`
+        : undefined;
+      const title = hasCountdown
+        ? `${nextPrayerLabel.value} ${countdownToNext.value}`
+        : null;
+
+      await emit("meeqat:tray:update", {
+        dateLine,
+        countdownLine,
+        title,
+      });
+    } catch {
+      // ignore emit errors in non-tauri/web
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <style></style>
