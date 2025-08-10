@@ -32,7 +32,7 @@
 		"devUrl": "http://localhost:3000"
 	},
 	"productName": "Meeqat",
-	"version": "1.0.0",
+	"version": "1.2.0",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {

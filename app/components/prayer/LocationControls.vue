@@ -3,6 +3,7 @@
     <USelectMenu
       v-model="selectedCountryModel"
       :items="countrySelectOptions"
+      @update:model-value="$emit('country-change')"
       label-key="label"
       value-key="value"
       placeholder="Country"
@@ -10,6 +11,7 @@
     <USelectMenu
       v-model="selectedCityModel"
       :items="citySelectOptions"
+      @update:model-value="$emit('city-change')"
       label-key="label"
       value-key="value"
       :disabled="!selectedCountryModel"
@@ -34,6 +36,7 @@ const props = defineProps<{
 
 defineEmits<{
   (e: "country-change"): void;
+  (e: "city-change"): void;
   (e: "fetch-by-city"): void;
 }>();
 
