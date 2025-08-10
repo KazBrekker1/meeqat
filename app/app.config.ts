@@ -4,7 +4,7 @@ export default defineAppConfig({
   },
   ui: {
     colors: {
-      primary: "green",
+      primary: "indigo",
       neutral: "zinc",
     },
     button: {
@@ -12,26 +12,14 @@ export default defineAppConfig({
         base: "cursor-pointer",
       },
     },
-    formField: {
+    select: {
       slots: {
-        root: "w-full",
+        base: "cursor-pointer",
       },
     },
-    input: {
+    selectMenu: {
       slots: {
-        root: "w-full",
-      },
-    },
-    textarea: {
-      slots: {
-        root: "w-full",
-        base: "resize-none",
-      },
-    },
-    accordion: {
-      slots: {
-        trigger: "cursor-pointer",
-        item: "md:py-2",
+        base: "cursor-pointer",
       },
     },
     navigationMenu: {
