@@ -2,9 +2,7 @@ import * as tauriApp from "@tauri-apps/api/app";
 import * as tauriWebviewWindow from "@tauri-apps/api/webviewWindow";
 import * as tauriTray from "@tauri-apps/api/tray";
 import * as tauriMenu from "@tauri-apps/api/menu";
-import * as tauriFs from "@tauri-apps/plugin-fs";
 import * as tauriNotification from "@tauri-apps/plugin-notification";
-import * as tauriOs from "@tauri-apps/plugin-os";
 import * as tauriStore from "@tauri-apps/plugin-store";
 import { addImports, defineNuxtModule } from "nuxt/kit";
 
@@ -21,13 +19,11 @@ const tauriModules = [
   },
   { module: tauriTray, prefix: "Tray", importPath: "@tauri-apps/api/tray" },
   { module: tauriMenu, prefix: "Menu", importPath: "@tauri-apps/api/menu" },
-  { module: tauriOs, prefix: "Os", importPath: "@tauri-apps/plugin-os" },
   {
     module: tauriNotification,
     prefix: "Notification",
     importPath: "@tauri-apps/plugin-notification",
   },
-  { module: tauriFs, prefix: "Fs", importPath: "@tauri-apps/plugin-fs" },
   {
     module: tauriStore,
     prefix: "Store",
