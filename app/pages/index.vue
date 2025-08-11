@@ -37,7 +37,6 @@
           :next-prayer-label="nextPrayerLabel || undefined"
           :countdown-to-next="countdownToNext || undefined"
           :is-loading="isLoading"
-          :is-athan-active="isAthanActive"
           :selected-city="selectedCity"
           :selected-country="selectedCountry"
           :selected-country-name="selectedCountryName"
@@ -46,7 +45,6 @@
           @toggle-time-format="
             () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
           "
-          @dismiss-athan="onDismissAthan"
         />
       </template>
     </UCard>
@@ -75,14 +73,17 @@ const {
   selectedExtraTimezone,
   userTimezone,
   hijriDateVerbose,
-  isAthanActive,
-  dismissAthan,
   nextPrayerLabel,
   countdownToNext,
   clearTimings,
   clearCache,
   timeFormat,
 } = usePrayerTimes();
+
+// Start notifications scheduler
+const { startPrayerNotifications, stopPrayerNotifications } = useNotifications({
+  timingsList,
+});
 
 const methodSelectOptions = computed(() =>
   METHOD_OPTIONS.map((m: MethodOption) => ({
@@ -153,10 +154,6 @@ function onCountryChange() {
   selectedCity.value = "";
 }
 
-function onDismissAthan() {
-  dismissAthan();
-}
-
 async function onClearCache() {
   if (
     await confirm({
@@ -176,6 +173,7 @@ onMounted(async () => {
   if (selectedCity.value && selectedCountry.value) {
     onFetchByCity();
   }
+  startPrayerNotifications();
 });
 
 watch([selectedMethodId, selectedCity, selectedCountry], () => {
@@ -206,6 +204,10 @@ watch(
   },
   { immediate: true }
 );
+
+onBeforeUnmount(() => {
+  stopPrayerNotifications();
+});
 </script>
 
 <style></style>

@@ -1,4 +1,4 @@
-name: nuxtor
+name: meeqat-app
 options:
   bundleIdPrefix: com.meeqat.app
   deploymentTarget:
@@ -12,6 +12,7 @@ settingGroups:
     base:
       PRODUCT_NAME: Meeqat
       PRODUCT_BUNDLE_IDENTIFIER: com.meeqat.app
+      DEVELOPMENT_TEAM: Yousseif Elshahawy
 targetTemplates:
   app:
     type: application
@@ -24,20 +25,20 @@ targetTemplates:
     settings:
       groups: [app]
 targets:
-  nuxtor_iOS:
+  meeqat-app_iOS:
     type: application
     platform: iOS
     sources:
       - path: Sources
       - path: Assets.xcassets
       - path: Externals
-      - path: nuxtor_iOS
+      - path: meeqat-app_iOS
       - path: assets
         buildPhase: resources
         type: folder
       - path: LaunchScreen.storyboard
     info:
-      path: nuxtor_iOS/Info.plist
+      path: meeqat-app_iOS/Info.plist
       properties:
         LSRequiresIPhoneOS: true
         UILaunchStoryboardName: LaunchScreen
@@ -51,10 +52,10 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 1.0.0
-        CFBundleVersion: "1.0.0"
+        CFBundleShortVersionString: 1.2.0
+        CFBundleVersion: "1.2.0"
     entitlements:
-      path: nuxtor_iOS/nuxtor_iOS.entitlements
+      path: meeqat-app_iOS/meeqat-app_iOS.entitlements
     scheme:
       environmentVariables:
         RUST_BACKTRACE: full

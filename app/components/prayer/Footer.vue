@@ -19,6 +19,22 @@
       <UButton size="xs" variant="ghost" @click="$emit('toggle-time-format')">
         {{ timeFormat === "24h" ? "12h" : "24h" }}
       </UButton>
+      <template v-if="isDev">
+        <UButton
+          size="xs"
+          variant="ghost"
+          color="warning"
+          @click="testPlayAthan"
+          icon="heroicons:speaker-wave-20-solid"
+        />
+        <UButton
+          size="xs"
+          variant="ghost"
+          color="warning"
+          @click="onTestNotificationClick"
+          icon="heroicons:bell-20-solid"
+        />
+      </template>
       <USeparator orientation="vertical" class="h-4" />
       <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
       <UButton
@@ -26,7 +42,7 @@
         size="xs"
         variant="ghost"
         color="error"
-        @click="$emit('dismiss-athan')"
+        @click="dismissAthan"
         icon="heroicons:x-mark-20-solid"
       >
         Dismiss
@@ -49,17 +65,21 @@ defineProps<{
   nextPrayerLabel?: string;
   countdownToNext?: string;
   isLoading: boolean;
-  isAthanActive: boolean;
   selectedCity?: string;
   selectedCountry?: string;
   selectedCountryName?: string;
   timeFormat: "24h" | "12h";
 }>();
 
+const { testPlayAthan, isAthanActive, dismissAthan } = usePrayerTimes();
+const { send } = useNotifications();
+const onTestNotificationClick = () => send("Meeqat", "Prayer time is here");
+
+const isDev = process.env.NODE_ENV === "development";
+
 defineEmits<{
   (e: "clear-cache"): void;
   (e: "toggle-time-format"): void;
-  (e: "dismiss-athan"): void;
 }>();
 </script>
 

@@ -381,7 +381,7 @@ export function usePrayerTimes() {
     return h * 60 + m;
   }
 
-  const { nowMinutes, nowSecondsOfDay } = buildCurrentTimeRefs(now);
+  const { nowSecondsOfDay } = buildCurrentTimeRefs(now);
 
   const userTimezone = computed(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone

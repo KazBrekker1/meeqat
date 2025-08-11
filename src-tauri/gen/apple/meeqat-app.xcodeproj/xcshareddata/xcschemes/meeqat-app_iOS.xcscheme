@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1430"
+   LastUpgradeVersion = "1640"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,10 +14,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "D8387EB83066CD38452993DE"
+               BlueprintIdentifier = "2F5BD16E0381678D16B80229"
                BuildableName = "Meeqat.app"
-               BlueprintName = "nuxtor_iOS"
-               ReferencedContainer = "container:nuxtor.xcodeproj">
+               BlueprintName = "meeqat-app_iOS"
+               ReferencedContainer = "container:meeqat-app.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -30,10 +30,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D8387EB83066CD38452993DE"
+            BlueprintIdentifier = "2F5BD16E0381678D16B80229"
             BuildableName = "Meeqat.app"
-            BlueprintName = "nuxtor_iOS"
-            ReferencedContainer = "container:nuxtor.xcodeproj">
+            BlueprintName = "meeqat-app_iOS"
+            ReferencedContainer = "container:meeqat-app.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <EnvironmentVariables>
@@ -65,10 +65,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D8387EB83066CD38452993DE"
+            BlueprintIdentifier = "2F5BD16E0381678D16B80229"
             BuildableName = "Meeqat.app"
-            BlueprintName = "nuxtor_iOS"
-            ReferencedContainer = "container:nuxtor.xcodeproj">
+            BlueprintName = "meeqat-app_iOS"
+            ReferencedContainer = "container:meeqat-app.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
@@ -94,10 +94,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "D8387EB83066CD38452993DE"
+            BlueprintIdentifier = "2F5BD16E0381678D16B80229"
             BuildableName = "Meeqat.app"
-            BlueprintName = "nuxtor_iOS"
-            ReferencedContainer = "container:nuxtor.xcodeproj">
+            BlueprintName = "meeqat-app_iOS"
+            ReferencedContainer = "container:meeqat-app.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <EnvironmentVariables>
