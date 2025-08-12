@@ -37,7 +37,6 @@
           :next-prayer-label="nextPrayerLabel || undefined"
           :countdown-to-next="countdownToNext || undefined"
           :is-loading="isLoading"
-          :is-athan-active="isAthanActive"
           :selected-city="selectedCity"
           :selected-country="selectedCountry"
           :selected-country-name="selectedCountryName"
@@ -46,7 +45,6 @@
           @toggle-time-format="
             () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
           "
-          @dismiss-athan="onDismissAthan"
         />
       </template>
     </UCard>
@@ -75,14 +73,17 @@ const {
   selectedExtraTimezone,
   userTimezone,
   hijriDateVerbose,
-  isAthanActive,
-  dismissAthan,
   nextPrayerLabel,
   countdownToNext,
   clearTimings,
   clearCache,
   timeFormat,
 } = usePrayerTimes();
+
+// Start notifications scheduler
+const { startPrayerNotifications, stopPrayerNotifications } = useNotifications({
+  timingsList,
+});
 
 const methodSelectOptions = computed(() =>
   METHOD_OPTIONS.map((m: MethodOption) => ({
@@ -153,10 +154,6 @@ function onCountryChange() {
   selectedCity.value = "";
 }
 
-function onDismissAthan() {
-  dismissAthan();
-}
-
 async function onClearCache() {
   if (
     await confirm({
@@ -176,6 +173,7 @@ onMounted(async () => {
   if (selectedCity.value && selectedCountry.value) {
     onFetchByCity();
   }
+  startPrayerNotifications();
 });
 
 watch([selectedMethodId, selectedCity, selectedCountry], () => {
@@ -184,7 +182,13 @@ watch([selectedMethodId, selectedCity, selectedCountry], () => {
 
 // Push updates to the tray via Tauri event bus
 watch(
-  [gregorianDateVerbose, hijriDateVerbose, nextPrayerLabel, countdownToNext],
+  [
+    gregorianDateVerbose,
+    hijriDateVerbose,
+    nextPrayerLabel,
+    countdownToNext,
+    timingsList,
+  ],
   async () => {
     try {
       const dateLineParts: string[] = [];
@@ -194,11 +198,70 @@ watch(
         dateLineParts.push(`Gregorian: ${gregorianDateVerbose.value}`);
       const dateLine = dateLineParts.join(" | ");
 
-      const title = `${nextPrayerLabel.value} in ${countdownToNext.value}`;
+      const titleCountdown = (countdownToNext.value ?? "")
+        .split(":")
+        .slice(0, 2)
+        .join(":");
+      const title =
+        nextPrayerLabel.value && titleCountdown
+          ? `${nextPrayerLabel.value} in ${titleCountdown}`
+          : null;
+
+      // Build Next and Since lines for tray
+      const allowedPrayerKeys = new Set([
+        "Fajr",
+        "Dhuhr",
+        "Asr",
+        "Maghrib",
+        "Isha",
+      ]);
+      const list = (timingsList.value || [])
+        .filter(
+          (t) => typeof t.minutes === "number" && allowedPrayerKeys.has(t.key)
+        )
+        .sort((a, b) => a.minutes! - b.minutes!);
+
+      let nextLine = "Next: --";
+      if (nextPrayerLabel.value && countdownToNext.value) {
+        nextLine = `${nextPrayerLabel.value} in \t\t ${countdownToNext.value}`;
+      }
+
+      let sinceLine = "Last: --";
+      if (list.length > 0) {
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        // Find next strictly after now; wrap to first if none
+        let nextIdx = list.findIndex(
+          (t) => (t.minutes as number) > currentMinutes
+        );
+        if (nextIdx === -1) nextIdx = 0;
+        const last = list[(nextIdx - 1 + list.length) % list.length]!;
+        const lastMinutes = last.minutes as number;
+
+        // Compute elapsed since last prayer in hh:mm:ss
+        const lastDate = new Date();
+        lastDate.setHours(0, 0, 0, 0);
+        lastDate.setMinutes(lastMinutes, 0, 0);
+        if (lastDate.getTime() > now.getTime()) {
+          // last prayer was yesterday
+          lastDate.setDate(lastDate.getDate() - 1);
+        }
+        const diffMs = Math.max(0, now.getTime() - lastDate.getTime());
+        const totalSeconds = Math.floor(diffMs / 1000);
+        const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
+        const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+          2,
+          "0"
+        );
+        const ss = String(totalSeconds % 60).padStart(2, "0");
+        sinceLine = `${last.label} since \t ${hh}:${mm}:${ss}`;
+      }
 
       await emit("meeqat:tray:update", {
         dateLine,
         title,
+        nextLine,
+        sinceLine,
       });
     } catch {
       // ignore emit errors in non-tauri/web
@@ -206,6 +269,10 @@ watch(
   },
   { immediate: true }
 );
+
+onBeforeUnmount(() => {
+  stopPrayerNotifications();
+});
 </script>
 
 <style></style>
