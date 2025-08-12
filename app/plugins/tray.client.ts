@@ -46,6 +46,22 @@ export default defineNuxtPlugin(async () => {
     },
   });
 
+  const nextItem = await MenuItem.new({
+    id: "meeqat-next",
+    text: "Next: loading…",
+    action: async () => {
+      await openMainWindow();
+    },
+  });
+
+  const sinceItem = await MenuItem.new({
+    id: "meeqat-since",
+    text: "Last: loading…",
+    action: async () => {
+      await openMainWindow();
+    },
+  });
+
   const openItem = await MenuItem.new({
     id: "meeqat-open",
     text: "Open Meeqat",
@@ -78,7 +94,7 @@ export default defineNuxtPlugin(async () => {
   });
 
   const menu = await Menu.new({
-    items: [dateItem, separatorItem, openItem, quitItem],
+    items: [dateItem, nextItem, sinceItem, separatorItem, openItem, quitItem],
   });
 
   const tray = await TrayIcon.new({
@@ -92,11 +108,19 @@ export default defineNuxtPlugin(async () => {
   const unlisten = await listen<{
     dateLine?: string;
     title?: string | null;
+    nextLine?: string;
+    sinceLine?: string;
   }>("meeqat:tray:update", async (evt) => {
     try {
       const payload = evt.payload || {};
       if (typeof payload.dateLine === "string") {
         await dateItem.setText(payload.dateLine);
+      }
+      if (typeof payload.nextLine === "string") {
+        await nextItem.setText(payload.nextLine);
+      }
+      if (typeof payload.sinceLine === "string") {
+        await sinceItem.setText(payload.sinceLine);
       }
       if (window.__MEEQAT_TRAY__?.tray && "title" in payload) {
         await window.__MEEQAT_TRAY__!.tray!.setTitle(
