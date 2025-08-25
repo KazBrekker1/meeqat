@@ -14,7 +14,10 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
-		"resources": [],
+		"resources": [
+			"icons/icon.ico",
+			"icons/icon.png"
+		],
 		"externalBin": [],
 		"copyright": "",
 		"category": "DeveloperTool",
@@ -32,7 +35,7 @@
 		"devUrl": "http://localhost:3000"
 	},
 	"productName": "Meeqat",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {

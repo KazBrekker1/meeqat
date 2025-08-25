@@ -3,6 +3,8 @@ import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { resolveResource } from "@tauri-apps/api/path";
+import { platform } from "@tauri-apps/plugin-os";
 
 declare global {
   interface Window {
@@ -97,10 +99,20 @@ export default defineNuxtPlugin(async () => {
     items: [dateItem, nextItem, sinceItem, separatorItem, openItem, quitItem],
   });
 
+  const isMac = platform() === "macos";
+  const isWindows = platform() === "windows";
+  const iconPath = !isMac
+    ? await resolveResource(
+        isWindows ? "icons/icon.ico" : "icons/icon.png"
+      ).catch(() => null)
+    : null;
+
   const tray = await TrayIcon.new({
     id: "meeqat-tray",
     menu,
     tooltip: "Meeqat",
+    ...(isMac ? { title: "Meeqat" } : {}),
+    ...(iconPath ? { icon: iconPath } : {}),
   });
   window.__MEEQAT_TRAY__!.tray = tray;
 
