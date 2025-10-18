@@ -15,7 +15,5 @@ export const COUNTRY_OPTIONS: CountryOption[] = [
   { code: "TR", name: "Turkey" },
   { code: "MA", name: "Morocco" },
   { code: "US", name: "United States" },
-  { code: "GB", name: "United Kingdom" }
+  { code: "GB", name: "United Kingdom" },
 ];
-
-

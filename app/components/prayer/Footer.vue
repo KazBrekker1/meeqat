@@ -15,7 +15,7 @@
         Clear Cache
       </UButton>
       <USeparator orientation="vertical" class="h-4" />
-      <ColorToggle />
+      <UColorModeButton size="xs" />
       <UButton size="xs" variant="ghost" @click="$emit('toggle-time-format')">
         {{ timeFormat === "24h" ? "12h" : "24h" }}
       </UButton>
@@ -37,6 +37,14 @@
       </template>
       <USeparator orientation="vertical" class="h-4" />
       <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
+      <UButton
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        @click="$emit('toggle-calendar')"
+      >
+        {{ isCalendarShown ? "Hide Calendar" : "Show Calendar" }}
+      </UButton>
       <UButton
         v-if="isAthanActive"
         size="xs"
@@ -69,6 +77,7 @@ defineProps<{
   selectedCountry?: string;
   selectedCountryName?: string;
   timeFormat: "24h" | "12h";
+  isCalendarShown?: boolean;
 }>();
 
 const { testPlayAthan, isAthanActive, dismissAthan } = usePrayerTimes();
@@ -80,6 +89,7 @@ const isDev = process.env.NODE_ENV === "development";
 defineEmits<{
   (e: "clear-cache"): void;
   (e: "toggle-time-format"): void;
+  (e: "toggle-calendar"): void;
 }>();
 </script>
 

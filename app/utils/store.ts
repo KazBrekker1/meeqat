@@ -50,7 +50,10 @@ export function getStore(): Promise<TauriStore> {
     if (!isTauriAvailable()) {
       storePromise = Promise.resolve(createWebFallbackStore("settings.bin"));
     } else {
-      storePromise = useTauriStoreLoad("settings.bin", { autoSave: true });
+      storePromise = useTauriStoreLoad("settings.bin", {
+        autoSave: true,
+        defaults: {},
+      });
     }
   }
   return storePromise;

@@ -11,6 +11,7 @@ declare global {
     __MEEQAT_TRAY__?: {
       tray: TrayIcon | null;
       unlisten?: UnlistenFn | null;
+      initialized: boolean;
     };
   }
 }
@@ -32,11 +33,24 @@ export default defineNuxtPlugin(async () => {
   if (import.meta.server) return;
   if (!isTauriAvailable()) return;
 
-  // Avoid duplicates in dev/HMR
-  if (!window.__MEEQAT_TRAY__) {
-    window.__MEEQAT_TRAY__ = { tray: null, unlisten: null };
+  // Check if tray already exists using Tauri API to prevent HMR duplication
+  const existingTray = await TrayIcon.getById("meeqat-tray");
+  if (existingTray) {
+    console.log("[Tray] Skipping initialization - tray already exists");
+    if (!window.__MEEQAT_TRAY__) {
+      window.__MEEQAT_TRAY__ = {
+        tray: existingTray,
+        unlisten: null,
+        initialized: true,
+      };
+    }
+    return;
   }
-  if (window.__MEEQAT_TRAY__!.tray) return;
+
+  // Initialize the global tracker
+  if (!window.__MEEQAT_TRAY__) {
+    window.__MEEQAT_TRAY__ = { tray: null, unlisten: null, initialized: false };
+  }
 
   // Build tray menu with two dynamic info items
   const dateItem = await MenuItem.new({
@@ -146,4 +160,7 @@ export default defineNuxtPlugin(async () => {
     }
   });
   window.__MEEQAT_TRAY__!.unlisten = unlisten;
+
+  // Mark as initialized to prevent HMR from reinitializing
+  window.__MEEQAT_TRAY__!.initialized = true;
 });
