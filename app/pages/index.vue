@@ -9,7 +9,7 @@
         />
       </template>
 
-      <div class="space-y-4">
+      <section class="space-y-5">
         <PrayerSelectors
           :method-select-options="methodSelectOptions"
           :timezone-select-options="timezoneSelectOptions"
@@ -30,10 +30,50 @@
         <div v-if="fetchError" class="text-red-600">{{ fetchError }}</div>
 
         <PrayerTimingsList :timings-list="timingsList" />
-      </div>
+
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 -translate-y-2"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 -translate-y-2"
+        >
+          <div v-if="showCalendar">
+            <UCalendar v-model="calendarDate">
+              <template #heading="{ value }">
+                <div class="grid grid-cols-3 justify-center items-center gap-3">
+                  <UButton
+                    variant="outline"
+                    size="xs"
+                    @click="toggleCalendarSystem"
+                    :label="
+                      calendarSystem === 'islamic' ? 'Gregorian' : 'Hijri'
+                    "
+                  />
+                  {{ value }}
+                  <UButton
+                    v-if="!isToday"
+                    @click="selectToday"
+                    label="Today"
+                    size="xs"
+                  />
+                </div>
+              </template>
+              <template #day="{ day }">
+                <UTooltip :text="formatTooltip(day)" :delay-duration="0">
+                  <span>{{ day.day }}</span>
+                </UTooltip>
+              </template>
+            </UCalendar>
+          </div>
+        </Transition>
+      </section>
 
       <template #footer>
         <PrayerFooter
+          :is-calendar-shown="showCalendar"
+          @toggle-calendar="showCalendar = !showCalendar"
           :next-prayer-label="nextPrayerLabel || undefined"
           :countdown-to-next="countdownToNext || undefined"
           :is-loading="isLoading"
@@ -52,10 +92,100 @@
 </template>
 
 <script lang="ts" setup>
-import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
-import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
 import { COUNTRY_TO_CITIES } from "@/constants/cities";
+import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
+import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
+import type { DateValue, CalendarDate } from "@internationalized/date";
+import {
+  DateFormatter,
+  getLocalTimeZone,
+  GregorianCalendar,
+  IslamicUmalquraCalendar,
+  toCalendar,
+  today,
+} from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
+
+const timeZone = getLocalTimeZone();
+const islamicDate = shallowRef(
+  toCalendar(today(timeZone), new IslamicUmalquraCalendar())
+);
+const gregorianDate = shallowRef(
+  toCalendar(today(timeZone), new GregorianCalendar())
+);
+
+const calendarSystem = shallowRef<"islamic" | "gregorian">("islamic");
+
+const calendarDate = computed<CalendarDate>({
+  get() {
+    return calendarSystem.value === "islamic"
+      ? (islamicDate.value as CalendarDate)
+      : (gregorianDate.value as CalendarDate);
+  },
+  set(val: CalendarDate) {
+    if (calendarSystem.value === "islamic") {
+      islamicDate.value = toCalendar(val, new IslamicUmalquraCalendar());
+    } else {
+      gregorianDate.value = toCalendar(val, new GregorianCalendar());
+    }
+  },
+});
+
+const gregorianFormatter = new DateFormatter("en-US", { dateStyle: "long" });
+const islamicFormatter = new DateFormatter("en-US-u-ca-islamic-umalqura", {
+  dateStyle: "long",
+});
+
+function formatTooltip(date: DateValue) {
+  if (calendarSystem.value == "islamic") {
+    const greg = toCalendar(date, new GregorianCalendar());
+    return gregorianFormatter.format(greg.toDate(timeZone));
+  } else {
+    const islamic = toCalendar(date, new IslamicUmalquraCalendar());
+    return islamicFormatter.format(islamic.toDate(timeZone));
+  }
+}
+
+function selectToday() {
+  if (calendarSystem.value === "islamic") {
+    islamicDate.value = toCalendar(
+      today(timeZone),
+      new IslamicUmalquraCalendar()
+    );
+  } else {
+    gregorianDate.value = toCalendar(today(timeZone), new GregorianCalendar());
+  }
+}
+
+const showCalendar = shallowRef(true);
+
+const isToday = computed(() => {
+  const baseToday = today(timeZone);
+  if (calendarSystem.value === "islamic") {
+    const todayIslamic = toCalendar(baseToday, new IslamicUmalquraCalendar());
+    return calendarDate.value.compare(todayIslamic) === 0;
+  } else {
+    const todayGregorian = toCalendar(baseToday, new GregorianCalendar());
+    return calendarDate.value.compare(todayGregorian) === 0;
+  }
+});
+
+function toggleCalendarSystem() {
+  if (calendarSystem.value === "islamic") {
+    // convert current islamic date to gregorian and switch
+    gregorianDate.value = toCalendar(
+      islamicDate.value,
+      new GregorianCalendar()
+    );
+    calendarSystem.value = "gregorian";
+  } else {
+    islamicDate.value = toCalendar(
+      gregorianDate.value,
+      new IslamicUmalquraCalendar()
+    );
+    calendarSystem.value = "islamic";
+  }
+}
 
 const { confirm } = useConfirm();
 

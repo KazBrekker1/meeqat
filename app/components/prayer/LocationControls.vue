@@ -18,12 +18,11 @@
       placeholder="City"
     />
     <UButton
-      :loading="loading"
+      :loading
       @click="$emit('fetch-by-city')"
       icon="heroicons:building-office-2-20-solid"
-    >
-      Load
-    </UButton>
+      label="Load"
+    />
   </div>
 </template>
 
