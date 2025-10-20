@@ -107,7 +107,7 @@ jobs:
         run: test -d src-tauri/gen/android || bun run tauri:android:init
 
       - name: Build Android APK (release)
-        run: bun run tauri android build -- --release
+        run: bun run tauri android build
 
       - name: Compute version
         run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
