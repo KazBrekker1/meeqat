@@ -1,7 +1,9 @@
 <template>
-  <div class="flex items-center justify-between">
+  <div
+    class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+  >
     <div
-      class="flex items-center gap-2 text-sm text-gray-500 tabular-nums"
+      class="flex flex-wrap items-center gap-2 text-sm text-gray-500 tabular-nums"
       v-if="nextPrayerLabel && countdownToNext"
     >
       <UButton
@@ -36,7 +38,9 @@
         />
       </template>
       <USeparator orientation="vertical" class="h-4" />
-      <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
+      <span class="whitespace-nowrap"
+        >{{ nextPrayerLabel }} in {{ countdownToNext }}</span
+      >
       <UButton
         size="xs"
         variant="ghost"
@@ -61,8 +65,9 @@
         class="text-sm text-gray-500"
         v-if="selectedCity || selectedCountry"
       >
-        Location: {{ selectedCity || "—" }},
-        {{ selectedCountryName || selectedCountry }}
+        <span class="sm:hidden">Loc:</span>
+        <span class="hidden sm:inline">Location:</span>
+        {{ selectedCity || "—" }}, {{ selectedCountryName || selectedCountry }}
       </span>
     </div>
   </div>

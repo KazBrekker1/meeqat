@@ -54,7 +54,7 @@ export default defineNuxtConfig({
       strictPort: true,
       hmr: {
         protocol: "ws",
-        host: "0.0.0.0",
+        host: "localhost",
         port: 3001,
       },
       watch: {
@@ -63,7 +63,7 @@ export default defineNuxtConfig({
     },
   },
   devServer: {
-    host: "0.0.0.0",
+    host: "localhost",
   },
   router: {
     options: {
