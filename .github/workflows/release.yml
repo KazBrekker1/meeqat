@@ -115,6 +115,21 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Validate Android signing secrets
+        run: |
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_STORE_BASE64"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_ALIAS"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_STORE_PASSWORD"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_PASSWORD"; exit 1; fi
+
+      - name: Sanity-check keystore decoding
+        env:
+          ANDROID_SIGNING_KEY_STORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+        run: |
+          echo "$ANDROID_SIGNING_KEY_STORE_BASE64" | base64 -d > keystore.jks
+          keytool -list -keystore keystore.jks -storepass "$ANDROID_SIGNING_STORE_PASSWORD" >/dev/null
+
       - name: Sign Android APKs
         uses: r0adkll/sign-android-release@v1
         with:
