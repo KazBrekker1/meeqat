@@ -25,6 +25,8 @@ Prerequisites:
 - Bun installed (`curl -fsSL https://bun.sh/install | bash`)
 - For desktop builds: Tauri prerequisites (Rust toolchain, platform SDKs)
 
+- For Android builds: JDK 17, Android SDK + NDK, Android Studio or CLI tools
+
 Install dependencies:
 
 ```bash
@@ -55,6 +57,34 @@ Build desktop binaries:
 bun run tauri:build
 # or a debug build
 bun run tauri:build:debug
+```
+
+### Android (APK)
+
+Prerequisites:
+
+- Java 17 (Temurin recommended)
+- Android SDK + NDK installed (ensure `sdkmanager` and `ndk` available)
+- Rust with Android targets (installed automatically on first init)
+
+Initialize the Android project (generates files under `src-tauri/gen/android`):
+
+```bash
+bun run tauri:android:init
+```
+
+Run on a connected device/emulator (debug):
+
+```bash
+bun run tauri:android:dev
+```
+
+Build a release APK:
+
+```bash
+bun run tauri:android:build:release
+# The APK will be generated under:
+# src-tauri/gen/android/**/outputs/**/*.apk
 ```
 
 ### Project structure
