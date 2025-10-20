@@ -31,11 +31,11 @@
 	"build": {
 		"beforeBuildCommand": "bun generate",
 		"frontendDist": "../dist",
-		"beforeDevCommand": "bun dev",
-		"devUrl": "http://localhost:3000"
+		"beforeDevCommand": "PORT=3001 bun dev",
+		"devUrl": "http://localhost:3001"
 	},
 	"productName": "Meeqat",
-	"version": "1.5.0-beta.1",
+	"version": "1.5.0-beta.2",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {

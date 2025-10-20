@@ -1,4 +1,3 @@
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 use tauri::{self};
 
 #[tauri::command]
@@ -6,6 +5,7 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
