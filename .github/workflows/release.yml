@@ -110,7 +110,27 @@ jobs:
         run: bun run tauri android build
 
       - name: Compute version
-        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Sign Android APKs
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/universal/release
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+
+      - name: Sign Android AABs
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/bundle/universalRelease
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -118,5 +138,6 @@ jobs:
           tag_name: meeqat-v${{ env.VERSION }}
           files: |
             src-tauri/gen/android/**/outputs/**/*.apk
+            src-tauri/gen/android/**/outputs/**/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
