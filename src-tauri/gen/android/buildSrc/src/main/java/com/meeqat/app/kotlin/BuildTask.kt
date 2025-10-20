@@ -43,9 +43,6 @@ open class BuildTask : DefaultTask() {
             } else if (project.logger.isEnabled(LogLevel.INFO)) {
                 args("-v")
             }
-            if (release) {
-                args("--release")
-            }
             args(listOf("--target", target))
         }.assertNormalExitValue()
     }

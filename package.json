@@ -14,7 +14,7 @@
 		"tauri:build": "tauri build",
 		"tauri:build:debug": "tauri build --debug",
 		"tauri:android:dev": "tauri android dev",
-		"tauri:android:build": "tauri android build --release"
+		"tauri:android:build": "tauri android build"
 	},
 	"dependencies": {
 		"@nuxt/ui": "^4.0.1",
