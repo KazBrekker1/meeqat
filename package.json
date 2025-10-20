@@ -2,7 +2,7 @@
 	"name": "meeqat-app",
 	"type": "module",
 	"private": true,
-	"version": "1.4.0",
+	"version": "1.5.0-beta.1",
 	"scripts": {
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",
@@ -12,7 +12,9 @@
 		"tauri": "tauri",
 		"tauri:dev": "tauri dev",
 		"tauri:build": "tauri build",
-		"tauri:build:debug": "tauri build --debug"
+		"tauri:build:debug": "tauri build --debug",
+		"tauri:android:dev": "tauri android dev",
+		"tauri:android:build": "tauri android build --release"
 	},
 	"dependencies": {
 		"@nuxt/ui": "^4.0.1",
