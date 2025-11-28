@@ -1,3 +1,4 @@
+import type { ComponentPublicInstance } from "vue";
 import { LazyConfirmDialog } from "#components";
 
 type ConfirmDialogProps = {

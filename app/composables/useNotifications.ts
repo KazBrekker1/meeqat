@@ -1,6 +1,10 @@
 import type { Ref } from "vue";
 import type { PrayerTimingItem } from "@/utils/types";
+import { computePreviousPrayerInfo } from "@/utils/time";
 import { Visibility } from "@tauri-apps/plugin-notification";
+
+const NOTIFICATION_MINUTES_BEFORE = 5; // Notify 5 minutes before prayer
+const NOTIFICATION_MINUTES_AFTER = 5; // Notify 5 minutes after prayer
 
 type UseNotificationsOptions = {
   timingsList?: Ref<PrayerTimingItem[]>;
@@ -90,26 +94,42 @@ export function useNotifications(options?: UseNotificationsOptions) {
     );
     if (nextIndex === -1) nextIndex = 0;
     const next = list[nextIndex]!;
-    const last = list[(nextIndex - 1 + list.length) % list.length]!;
+    const lastInfo = computePreviousPrayerInfo(timingsList.value, now);
 
     const nextMins = (next.minutes as number) ?? null;
-    const lastMins = (last.minutes as number) ?? null;
+    // Find the last prayer's minutes by matching the label
+    const lastMins = lastInfo
+      ? list.find((t) => t.label === lastInfo.label)?.minutes ?? null
+      : null;
 
-    // 5 minutes before next Athan
-    if (nextMins != null && currentMinutes === nextMins - 5) {
+    // Notify before next Athan
+    if (
+      nextMins != null &&
+      currentMinutes === nextMins - NOTIFICATION_MINUTES_BEFORE
+    ) {
       const key = `${dateKey}|before|${next.key}`;
       if (!firedBeforeForDate.has(key)) {
         firedBeforeForDate.add(key);
-        void send("Meeqat", `Athan for ${next.label} in 5 minutes`);
+        void send(
+          "Meeqat",
+          `Athan for ${next.label} in ${NOTIFICATION_MINUTES_BEFORE} minutes`
+        );
       }
     }
 
-    // 5 minutes after last Athan
-    if (lastMins != null && currentMinutes === lastMins + 5) {
-      const key = `${dateKey}|after|${last.key}`;
-      if (!firedAfterForDate.has(key)) {
-        firedAfterForDate.add(key);
-        void send("Meeqat", `Get ready for Iqama for ${last.label}`);
+    // Notify after last Athan
+    if (
+      lastMins != null &&
+      lastInfo &&
+      currentMinutes === lastMins + NOTIFICATION_MINUTES_AFTER
+    ) {
+      const lastKey = list.find((t) => t.label === lastInfo.label)?.key;
+      if (lastKey) {
+        const key = `${dateKey}|after|${lastKey}`;
+        if (!firedAfterForDate.has(key)) {
+          firedAfterForDate.add(key);
+          void send("Meeqat", `Get ready for Iqama for ${lastInfo.label}`);
+        }
       }
     }
   }

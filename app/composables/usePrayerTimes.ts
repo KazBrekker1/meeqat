@@ -1,3 +1,5 @@
+import { computePreviousPrayerInfo } from "@/utils/time";
+
 export function usePrayerTimes() {
   const fetchError = ref<string | null>(null);
   const isFetchingTimings = ref(false);
@@ -90,6 +92,14 @@ export function usePrayerTimes() {
     return `${yyyy}-${mm}-${dd}`;
   }
 
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const CACHE_HORIZON_DAYS = 35; // 5 weeks
+  const CACHE_PREFILL_DAYS = 10; // Prefill 10 days ahead
+
+  function isCacheExpired(cached: CachedDay): boolean {
+    return Date.now() - cached.savedAt > CACHE_TTL_MS;
+  }
+
   async function ensureCacheForRange(params: {
     city: string;
     country: string;
@@ -106,7 +116,7 @@ export function usePrayerTimes() {
     for (let i = 0; i < params.numDays; i++) {
       const dateObj = addDays(params.startDate, i);
       const dateKey = getDateKey(dateObj);
-      if (existing[dateKey]) continue;
+      if (existing[dateKey] && !isCacheExpired(existing[dateKey])) continue;
       try {
         const dateParam = formatDdMmYyyy(dateObj);
         const url = buildTimingsByCityUrl(
@@ -230,7 +240,7 @@ export function usePrayerTimes() {
       const cache = await getCacheForOptions(optionsKey);
 
       const cached = cache[targetDateKey];
-      if (cached) {
+      if (cached && !isCacheExpired(cached)) {
         timings.value = cached.timings;
         dateReadable.value = cached.dateReadable;
         timezone.value = cached.timezone;
@@ -242,7 +252,7 @@ export function usePrayerTimes() {
           const horizonStart = parsed
             ? new Date(parsed.year, parsed.month - 1, parsed.day)
             : new Date();
-          for (let i = 0; i < 35; i++) {
+          for (let i = 0; i < CACHE_HORIZON_DAYS; i++) {
             const dk = getDateKey(addDays(horizonStart, i));
             if (!cache[dk]) {
               needsFill = true;
@@ -261,7 +271,7 @@ export function usePrayerTimes() {
               shafaq,
               calendarMethod,
               startDate: horizonStart,
-              numDays: 10,
+              numDays: CACHE_PREFILL_DAYS,
             });
           }
         } catch {
@@ -288,7 +298,7 @@ export function usePrayerTimes() {
         shafaq,
         calendarMethod,
         startDate,
-        numDays: 10,
+        numDays: CACHE_PREFILL_DAYS,
       });
 
       // Reload cache and apply today's timings
@@ -318,7 +328,6 @@ export function usePrayerTimes() {
         calendarMethod
       );
       const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
-      console.log("res", { res });
       if (!res || res.code !== 200) {
         throw new Error(res?.status || "Failed to fetch prayer times");
       }
@@ -480,6 +489,18 @@ export function usePrayerTimes() {
     return `${hh}:${mm}:${ss}`;
   });
 
+  const previousPrayerInfo = computed(() =>
+    computePreviousPrayerInfo(timingsList.value, now.value)
+  );
+
+  const previousPrayerLabel = computed<string | null>(() => {
+    return previousPrayerInfo.value?.label ?? null;
+  });
+
+  const timeSincePrevious = computed<string | null>(() => {
+    return previousPrayerInfo.value?.timeSince ?? null;
+  });
+
   watch([now, timingsList], () => {
     if (!timingsList.value.length) return;
     const key = getDateKey(now.value);
@@ -529,6 +550,8 @@ export function usePrayerTimes() {
     userTimezone,
     nextPrayerLabel,
     countdownToNext,
+    previousPrayerLabel,
+    timeSincePrevious,
 
     // audio
     testPlayAthan,

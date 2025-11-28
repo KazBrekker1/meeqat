@@ -20,8 +20,6 @@
 <script lang="ts" setup>
 defineProps<{
   currentTimeString: string;
-  gregorianDateVerbose?: string;
-  hijriDateVerbose?: string;
 }>();
 </script>
 
