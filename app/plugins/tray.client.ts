@@ -32,6 +32,11 @@ async function openMainWindow() {
 export default defineNuxtPlugin(async () => {
   if (import.meta.server) return;
   if (!isTauriAvailable()) return;
+  // The Tray API is not available on mobile (Android/iOS). Bail out early.
+  const currentPlatform = platform();
+  if (currentPlatform === "android" || currentPlatform === "ios") {
+    return;
+  }
 
   // Check if tray already exists using Tauri API to prevent HMR duplication
   const existingTray = await TrayIcon.getById("meeqat-tray");

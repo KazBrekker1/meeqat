@@ -2,11 +2,7 @@
   <div class="flex min-h-screen">
     <UCard class="grid grid-rows-[auto_1fr_auto] w-full rounded-none">
       <template #header>
-        <PrayerHeader
-          :current-time-string="currentTimeString"
-          :gregorian-date-verbose="gregorianDateVerbose || undefined"
-          :hijri-date-verbose="hijriDateVerbose || undefined"
-        />
+        <PrayerHeader :current-time-string="currentTimeString" />
       </template>
 
       <section class="space-y-5">
@@ -39,27 +35,36 @@
           leave-from-class="opacity-100 translate-y-0"
           leave-to-class="opacity-0 -translate-y-2"
         >
-          <div v-if="showCalendar">
+          <div v-if="showCalendar" class="space-y-3">
+            <!-- Calendar controls bar -->
+            <div class="flex items-center gap-2">
+              <UFieldGroup size="xs">
+                <UButton
+                  :variant="calendarSystem === 'islamic' ? 'solid' : 'outline'"
+                  @click="toggleCalendarSystem"
+                  label="Hijri"
+                  icon="lucide:moon"
+                />
+                <UButton
+                  :variant="
+                    calendarSystem === 'gregorian' ? 'solid' : 'outline'
+                  "
+                  @click="toggleCalendarSystem"
+                  label="Gregorian"
+                  icon="lucide:sun"
+                />
+              </UFieldGroup>
+              <UButton
+                v-if="!isToday"
+                @click="selectToday"
+                label="Today"
+                size="xs"
+                variant="soft"
+                icon="lucide:calendar-check"
+              />
+            </div>
+
             <UCalendar v-model="calendarDate">
-              <template #heading="{ value }">
-                <div class="grid grid-cols-3 justify-center items-center gap-3">
-                  <UButton
-                    variant="outline"
-                    size="xs"
-                    @click="toggleCalendarSystem"
-                    :label="
-                      calendarSystem === 'islamic' ? 'Gregorian' : 'Hijri'
-                    "
-                  />
-                  {{ value }}
-                  <UButton
-                    v-if="!isToday"
-                    @click="selectToday"
-                    label="Today"
-                    size="xs"
-                  />
-                </div>
-              </template>
               <template #day="{ day }">
                 <UTooltip :text="formatTooltip(day)" :delay-duration="0">
                   <span>{{ day.day }}</span>
@@ -76,11 +81,14 @@
           @toggle-calendar="showCalendar = !showCalendar"
           :next-prayer-label="nextPrayerLabel || undefined"
           :countdown-to-next="countdownToNext || undefined"
+          :previous-prayer-label="previousPrayerLabel || undefined"
+          :time-since-previous="timeSincePrevious || undefined"
           :is-loading="isLoading"
-          :selected-city="selectedCity"
-          :selected-country="selectedCountry"
-          :selected-country-name="selectedCountryName"
           :time-format="timeFormat"
+          :test-play-athan="testPlayAthan"
+          :is-athan-active="isAthanActive"
+          :dismiss-athan="dismissAthan"
+          :on-test-notification-click="onTestNotificationClick"
           @clear-cache="onClearCache"
           @toggle-time-format="
             () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
@@ -95,6 +103,7 @@
 import { COUNTRY_TO_CITIES } from "@/constants/cities";
 import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
+import { computePreviousPrayerInfo } from "@/utils/time";
 import type { DateValue, CalendarDate } from "@internationalized/date";
 import {
   DateFormatter,
@@ -205,15 +214,23 @@ const {
   hijriDateVerbose,
   nextPrayerLabel,
   countdownToNext,
+  previousPrayerLabel,
+  timeSincePrevious,
   clearTimings,
   clearCache,
   timeFormat,
+  testPlayAthan,
+  isAthanActive,
+  dismissAthan,
 } = usePrayerTimes();
 
 // Start notifications scheduler
-const { startPrayerNotifications, stopPrayerNotifications } = useNotifications({
-  timingsList,
-});
+const { startPrayerNotifications, stopPrayerNotifications, send } =
+  useNotifications({
+    timingsList,
+  });
+
+const onTestNotificationClick = () => send("Meeqat", "Prayer time is here");
 
 const methodSelectOptions = computed(() =>
   METHOD_OPTIONS.map((m: MethodOption) => ({
@@ -288,8 +305,8 @@ async function onClearCache() {
   if (
     await confirm({
       title: "Clear Cache",
-      message: `Are you sure you want to clear the cache? You have ${timingsList.value.length} cached items.`,
-      description: "Are you sure you want to clear the cache?",
+      message: "Are you sure you want to clear the cache?",
+      description: "This will remove all cached prayer times.",
       confirmColor: "error",
     })
   ) {
@@ -308,6 +325,19 @@ onMounted(async () => {
 
 watch([selectedMethodId, selectedCity, selectedCountry], () => {
   clearTimings();
+});
+
+watch(calendarDate, (newDate) => {
+  if (!selectedCity.value || !selectedCountry.value) return;
+  const greg = toCalendar(newDate, new GregorianCalendar());
+  const dd = String(greg.day).padStart(2, "0");
+  const mm = String(greg.month).padStart(2, "0");
+  const yyyy = String(greg.year);
+  const dateParam = `${dd}-${mm}-${yyyy}`;
+  fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
+    methodId: selectedMethodId.value,
+    date: dateParam,
+  });
 });
 
 // Push updates to the tray via Tauri event bus
@@ -357,34 +387,9 @@ watch(
       }
 
       let sinceLine = "Last: --";
-      if (list.length > 0) {
-        const now = new Date();
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        // Find next strictly after now; wrap to first if none
-        let nextIdx = list.findIndex(
-          (t) => (t.minutes as number) > currentMinutes
-        );
-        if (nextIdx === -1) nextIdx = 0;
-        const last = list[(nextIdx - 1 + list.length) % list.length]!;
-        const lastMinutes = last.minutes as number;
-
-        // Compute elapsed since last prayer in hh:mm:ss
-        const lastDate = new Date();
-        lastDate.setHours(0, 0, 0, 0);
-        lastDate.setMinutes(lastMinutes, 0, 0);
-        if (lastDate.getTime() > now.getTime()) {
-          // last prayer was yesterday
-          lastDate.setDate(lastDate.getDate() - 1);
-        }
-        const diffMs = Math.max(0, now.getTime() - lastDate.getTime());
-        const totalSeconds = Math.floor(diffMs / 1000);
-        const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, "0");
-        const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-          2,
-          "0"
-        );
-        const ss = String(totalSeconds % 60).padStart(2, "0");
-        sinceLine = `${last.label} since \t ${hh}:${mm}:${ss}`;
+      const prevInfo = computePreviousPrayerInfo(timingsList.value, new Date());
+      if (prevInfo) {
+        sinceLine = `${prevInfo.label} since \t ${prevInfo.timeSince}`;
       }
 
       await emit("meeqat:tray:update", {

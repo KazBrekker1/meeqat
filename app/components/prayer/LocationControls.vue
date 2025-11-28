@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-[1fr_1fr_auto] gap-3">
+  <div class="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3">
     <USelectMenu
       v-model="selectedCountryModel"
       :items="countrySelectOptions"

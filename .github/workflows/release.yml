@@ -59,7 +59,6 @@ jobs:
           args: ${{ matrix.args }}
 
   publish-android-apk:
-    needs: publish-tauri
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -89,10 +88,18 @@ jobs:
         run: |
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platforms;android-34" \
+            "build-tools;29.0.3" \
             "build-tools;34.0.0" \
             "platform-tools" \
             "ndk;26.1.10909125" \
             "cmake;3.22.1"
+
+      - name: Export Android NDK environment variables
+        run: |
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         run: bun install
@@ -101,10 +108,45 @@ jobs:
         run: test -d src-tauri/gen/android || bun run tauri:android:init
 
       - name: Build Android APK (release)
-        run: bun run tauri:android:build:release
+        run: bun run tauri android build
 
       - name: Compute version
-        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Validate Android signing secrets
+        run: |
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_STORE_BASE64"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_ALIAS"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_STORE_PASSWORD"; exit 1; fi
+          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_PASSWORD"; exit 1; fi
+
+      - name: Sanity-check keystore decoding
+        env:
+          ANDROID_SIGNING_KEY_STORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+        run: |
+          echo "$ANDROID_SIGNING_KEY_STORE_BASE64" | base64 -d > keystore.jks
+          keytool -list -keystore keystore.jks -storepass "$ANDROID_SIGNING_STORE_PASSWORD" >/dev/null
+
+      - name: Sign Android APKs
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/universal/release
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+
+      - name: Sign Android AABs
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/bundle/universalRelease
+          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
 
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,5 +154,6 @@ jobs:
           tag_name: meeqat-v${{ env.VERSION }}
           files: |
             src-tauri/gen/android/**/outputs/**/*.apk
+            src-tauri/gen/android/**/outputs/**/*.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,7 +1,9 @@
 <template>
-  <div class="flex items-center justify-between">
+  <div
+    class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+  >
     <div
-      class="flex items-center gap-2 text-sm text-gray-500 tabular-nums"
+      class="flex flex-wrap items-center gap-2 text-sm text-gray-500 tabular-nums"
       v-if="nextPrayerLabel && countdownToNext"
     >
       <UButton
@@ -21,6 +23,7 @@
       </UButton>
       <template v-if="isDev">
         <UButton
+          v-if="testPlayAthan"
           size="xs"
           variant="ghost"
           color="warning"
@@ -28,6 +31,7 @@
           icon="heroicons:speaker-wave-20-solid"
         />
         <UButton
+          v-if="onTestNotificationClick"
           size="xs"
           variant="ghost"
           color="warning"
@@ -36,7 +40,6 @@
         />
       </template>
       <USeparator orientation="vertical" class="h-4" />
-      <span>{{ nextPrayerLabel }} in {{ countdownToNext }}</span>
       <UButton
         size="xs"
         variant="ghost"
@@ -46,7 +49,7 @@
         {{ isCalendarShown ? "Hide Calendar" : "Show Calendar" }}
       </UButton>
       <UButton
-        v-if="isAthanActive"
+        v-if="isAthanActive && dismissAthan"
         size="xs"
         variant="ghost"
         color="error"
@@ -56,13 +59,18 @@
         Dismiss
       </UButton>
     </div>
-    <div class="flex items-center gap-2">
+    <div
+      class="flex flex-wrap items-center gap-2 text-sm text-gray-500 tabular-nums"
+    >
+      <span class="whitespace-nowrap">
+        {{ nextPrayerLabel }} in {{ countdownToNext }}
+      </span>
+      /
       <span
-        class="text-sm text-gray-500"
-        v-if="selectedCity || selectedCountry"
+        v-if="previousPrayerLabel && timeSincePrevious"
+        class="whitespace-nowrap"
       >
-        Location: {{ selectedCity || "—" }},
-        {{ selectedCountryName || selectedCountry }}
+        {{ previousPrayerLabel }} since {{ timeSincePrevious }}
       </span>
     </div>
   </div>
@@ -72,17 +80,16 @@
 defineProps<{
   nextPrayerLabel?: string;
   countdownToNext?: string;
+  previousPrayerLabel?: string;
+  timeSincePrevious?: string;
   isLoading: boolean;
-  selectedCity?: string;
-  selectedCountry?: string;
-  selectedCountryName?: string;
   timeFormat: "24h" | "12h";
   isCalendarShown?: boolean;
+  testPlayAthan?: () => void;
+  isAthanActive?: boolean;
+  dismissAthan?: () => void;
+  onTestNotificationClick?: () => void;
 }>();
-
-const { testPlayAthan, isAthanActive, dismissAthan } = usePrayerTimes();
-const { send } = useNotifications();
-const onTestNotificationClick = () => send("Meeqat", "Prayer time is here");
 
 const isDev = process.env.NODE_ENV === "development";
 

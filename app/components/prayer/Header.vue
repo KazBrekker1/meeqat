@@ -1,7 +1,9 @@
 <template>
-  <div class="flex items-center justify-between">
+  <div
+    class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+  >
     <h1 class="text-xl font-semibold">Prayer Times</h1>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 order-2 sm:order-none">
       <UBadge
         variant="subtle"
         color="primary"
@@ -12,18 +14,12 @@
         {{ currentTimeString }}
       </UBadge>
     </div>
-    <div class="text-sm text-gray-500 space-y-0.5">
-      <p v-if="gregorianDateVerbose">{{ gregorianDateVerbose }}</p>
-      <p v-if="hijriDateVerbose">{{ hijriDateVerbose }}</p>
-    </div>
   </div>
 </template>
 
 <script lang="ts" setup>
 defineProps<{
   currentTimeString: string;
-  gregorianDateVerbose?: string;
-  hijriDateVerbose?: string;
 }>();
 </script>
 
