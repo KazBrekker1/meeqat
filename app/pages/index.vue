@@ -1,10 +1,14 @@
 <template>
-  <div class="flex min-h-screen">
-    <UCard class="grid grid-rows-[auto_1fr_auto] w-full rounded-none">
-      <template #header>
+  <div class="flex flex-col h-screen w-full">
+    <!-- Sticky Header -->
+    <header class="sticky top-0 z-10 bg-[var(--ui-bg)] border-b border-[var(--ui-border)]">
+      <div class="p-4">
         <PrayerHeader :current-time-string="currentTimeString" />
-      </template>
+      </div>
+    </header>
 
+    <!-- Scrollable Content -->
+    <main class="flex-1 overflow-y-auto p-4">
       <section class="space-y-5">
         <PrayerSelectors
           :method-select-options="methodSelectOptions"
@@ -24,6 +28,28 @@
         />
 
         <div v-if="fetchError" class="text-red-600">{{ fetchError }}</div>
+
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 -translate-y-1"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 -translate-y-1"
+        >
+          <UAlert
+            v-if="isOffline || isStale"
+            :color="isOffline ? 'warning' : 'info'"
+            variant="subtle"
+            :icon="isOffline ? 'lucide:wifi-off' : 'lucide:refresh-cw'"
+            :title="isOffline ? 'You are offline' : 'Refreshing data...'"
+            :description="
+              isOffline
+                ? 'Showing cached prayer times. Data will refresh when you reconnect.'
+                : 'Showing cached data while fetching latest prayer times.'
+            "
+          />
+        </Transition>
 
         <PrayerTimingsList :timings-list="timingsList" />
 
@@ -74,8 +100,11 @@
           </div>
         </Transition>
       </section>
+    </main>
 
-      <template #footer>
+    <!-- Sticky Footer -->
+    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)]">
+      <div class="p-4">
         <PrayerFooter
           :is-calendar-shown="showCalendar"
           @toggle-calendar="showCalendar = !showCalendar"
@@ -94,8 +123,8 @@
             () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
           "
         />
-      </template>
-    </UCard>
+      </div>
+    </footer>
   </div>
 </template>
 
@@ -103,7 +132,8 @@
 import { COUNTRY_TO_CITIES } from "@/constants/cities";
 import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
-import { computePreviousPrayerInfo } from "@/utils/time";
+import { computePreviousPrayerInfo, pad2 } from "@/utils/time";
+import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import type { DateValue, CalendarDate } from "@internationalized/date";
 import {
   DateFormatter,
@@ -222,6 +252,8 @@ const {
   testPlayAthan,
   isAthanActive,
   dismissAthan,
+  isStale,
+  isOffline,
 } = usePrayerTimes();
 
 // Start notifications scheduler
@@ -330,10 +362,7 @@ watch([selectedMethodId, selectedCity, selectedCountry], () => {
 watch(calendarDate, (newDate) => {
   if (!selectedCity.value || !selectedCountry.value) return;
   const greg = toCalendar(newDate, new GregorianCalendar());
-  const dd = String(greg.day).padStart(2, "0");
-  const mm = String(greg.month).padStart(2, "0");
-  const yyyy = String(greg.year);
-  const dateParam = `${dd}-${mm}-${yyyy}`;
+  const dateParam = `${pad2(greg.day)}-${pad2(greg.month)}-${greg.year}`;
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
     methodId: selectedMethodId.value,
     date: dateParam,
@@ -368,17 +397,8 @@ watch(
           : null;
 
       // Build Next and Since lines for tray
-      const allowedPrayerKeys = new Set([
-        "Fajr",
-        "Dhuhr",
-        "Asr",
-        "Maghrib",
-        "Isha",
-      ]);
       const list = (timingsList.value || [])
-        .filter(
-          (t) => typeof t.minutes === "number" && allowedPrayerKeys.has(t.key)
-        )
+        .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
         .sort((a, b) => a.minutes! - b.minutes!);
 
       let nextLine = "Next: --";

@@ -1,6 +1,6 @@
 <template>
-  <Html class="overflow-x-hidden">
-    <Body class="font-sans antialiased">
+  <Html class="h-full overflow-hidden">
+    <Body class="h-full font-sans antialiased overflow-hidden">
       <UApp>
         <NuxtLayout>
           <NuxtPage />

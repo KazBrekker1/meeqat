@@ -1,3 +1,5 @@
+import { resetToMidnight } from "@/utils/time";
+
 export function formatTime(
   date: Date,
   is24Hour: ComputedRef<boolean> | boolean,
@@ -35,9 +37,7 @@ export function formatMinutesLocal(
   minutes: number,
   is24Hour: ComputedRef<boolean> | boolean
 ): string {
-  const base = new Date();
-  base.setSeconds(0, 0);
-  base.setHours(0, 0, 0, 0);
+  const base = resetToMidnight(new Date());
   base.setMinutes(minutes);
   return formatTime(base, is24Hour);
 }

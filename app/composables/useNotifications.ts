@@ -1,10 +1,11 @@
 import type { Ref } from "vue";
 import type { PrayerTimingItem } from "@/utils/types";
-import { computePreviousPrayerInfo } from "@/utils/time";
+import { computePreviousPrayerInfo, getDateKey, getMinutesOfDay } from "@/utils/time";
+import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { Visibility } from "@tauri-apps/plugin-notification";
 
-const NOTIFICATION_MINUTES_BEFORE = 5; // Notify 5 minutes before prayer
-const NOTIFICATION_MINUTES_AFTER = 5; // Notify 5 minutes after prayer
+const NOTIFICATION_MINUTES_BEFORE = 5;
+const NOTIFICATION_MINUTES_AFTER = 5;
 
 type UseNotificationsOptions = {
   timingsList?: Ref<PrayerTimingItem[]>;
@@ -19,7 +20,6 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const firedAfterForDate = new Set<string>();
   let lastDateKey = "";
 
-  // Prefer provided timingsList; fallback to local usePrayerTimes instance
   const timingsList = options?.timingsList ?? usePrayerTimes().timingsList;
 
   async function ensurePermission(): Promise<boolean> {
@@ -30,8 +30,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
         permissionGranted.value = permission === "granted";
       }
       return permissionGranted.value;
-    } catch (error) {
-      // Web/non-tauri or unexpected error
+    } catch {
       return false;
     }
   }
@@ -58,7 +57,6 @@ export function useNotifications(options?: UseNotificationsOptions) {
   }
 
   function tick() {
-    // Reset per-day flags when date changes
     const now = new Date();
     const dateKey = getDateKey(now);
     if (dateKey !== lastDateKey) {
@@ -68,61 +66,36 @@ export function useNotifications(options?: UseNotificationsOptions) {
     }
 
     if (!timingsList.value || timingsList.value.length === 0) return;
-
-    // Only evaluate once per minute
     if (now.getSeconds() !== 0) return;
 
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = getMinutesOfDay(now);
 
-    const allowedPrayerKeys = new Set([
-      "Fajr",
-      "Dhuhr",
-      "Asr",
-      "Maghrib",
-      "Isha",
-    ]);
     const list = timingsList.value
-      .filter(
-        (t) => typeof t.minutes === "number" && allowedPrayerKeys.has(t.key)
-      )
+      .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
       .sort((a, b) => a.minutes! - b.minutes!);
     if (!list.length) return;
 
-    // Find the next prayer strictly after now; if none, wrap to the first (tomorrow)
-    let nextIndex = list.findIndex(
-      (t) => (t.minutes as number) > currentMinutes
-    );
+    let nextIndex = list.findIndex((t) => (t.minutes as number) > currentMinutes);
     if (nextIndex === -1) nextIndex = 0;
     const next = list[nextIndex]!;
     const lastInfo = computePreviousPrayerInfo(timingsList.value, now);
 
-    const nextMins = (next.minutes as number) ?? null;
-    // Find the last prayer's minutes by matching the label
+    const nextMins = next.minutes ?? null;
     const lastMins = lastInfo
       ? list.find((t) => t.label === lastInfo.label)?.minutes ?? null
       : null;
 
     // Notify before next Athan
-    if (
-      nextMins != null &&
-      currentMinutes === nextMins - NOTIFICATION_MINUTES_BEFORE
-    ) {
+    if (nextMins != null && currentMinutes === nextMins - NOTIFICATION_MINUTES_BEFORE) {
       const key = `${dateKey}|before|${next.key}`;
       if (!firedBeforeForDate.has(key)) {
         firedBeforeForDate.add(key);
-        void send(
-          "Meeqat",
-          `Athan for ${next.label} in ${NOTIFICATION_MINUTES_BEFORE} minutes`
-        );
+        void send("Meeqat", `Athan for ${next.label} in ${NOTIFICATION_MINUTES_BEFORE} minutes`);
       }
     }
 
     // Notify after last Athan
-    if (
-      lastMins != null &&
-      lastInfo &&
-      currentMinutes === lastMins + NOTIFICATION_MINUTES_AFTER
-    ) {
+    if (lastMins != null && lastInfo && currentMinutes === lastMins + NOTIFICATION_MINUTES_AFTER) {
       const lastKey = list.find((t) => t.label === lastInfo.label)?.key;
       if (lastKey) {
         const key = `${dateKey}|after|${lastKey}`;
@@ -137,7 +110,6 @@ export function useNotifications(options?: UseNotificationsOptions) {
   function startPrayerNotifications(): void {
     if (isRunning.value) return;
     isRunning.value = true;
-    // Prime permission check but don't block start
     void ensurePermission();
     intervalId = setInterval(tick, 1000);
   }

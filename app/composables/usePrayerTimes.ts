@@ -1,6 +1,22 @@
-import { computePreviousPrayerInfo } from "@/utils/time";
+import {
+  computePreviousPrayerInfo,
+  getDateKey,
+  getMinutesOfDay,
+  getTimeDiff,
+  formatTimeDiff,
+  resetToMidnight,
+  getUserTimezone,
+} from "@/utils/time";
+import { PRAYER_ORDER } from "@/constants/prayers";
+import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
+
+// Cache configuration
+const CACHE_STALE_MS = 24 * 60 * 60 * 1000; // Consider stale after 24 hours
+const PREFETCH_DAYS = 30; // Pre-cache 30 days ahead
+const CLEANUP_DAYS = 7; // Remove entries older than 7 days in the past
 
 export function usePrayerTimes() {
+  // --- Core state ---
   const fetchError = ref<string | null>(null);
   const isFetchingTimings = ref(false);
   const timings = ref<Record<string, string> | null>(null);
@@ -13,19 +29,47 @@ export function usePrayerTimes() {
   const selectedExtraTimezone = ref<string>("");
   const timeFormat = ref<"24h" | "12h">("24h");
 
+  // --- New: Stale/Offline indicators ---
+  const isStale = ref(false);
+  const isOffline = ref(false);
+
   const is24Hour = computed(() => timeFormat.value === "24h");
 
-  // Track current time to compute upcoming/past
+  // --- Time tracking ---
   const now = ref<Date>(new Date());
   let intervalId: ReturnType<typeof setInterval> | null = null;
   onMounted(() => {
     intervalId = setInterval(() => {
       now.value = new Date();
     }, 1000);
+
+    // Track online/offline status
+    isOffline.value = typeof navigator !== "undefined" && !navigator.onLine;
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+    }
   });
   onBeforeUnmount(() => {
     if (intervalId) clearInterval(intervalId);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    }
   });
+
+  function handleOnline() {
+    isOffline.value = false;
+    // Auto-refresh if data was stale
+    if (isStale.value && selectedCity.value && selectedCountry.value) {
+      refreshInBackground();
+    }
+  }
+
+  function handleOffline() {
+    isOffline.value = true;
+  }
+
   const currentTimeString = computed(() =>
     formatTime(now.value, is24Hour, undefined, true)
   );
@@ -63,6 +107,7 @@ export function usePrayerTimes() {
     }
   });
 
+  // --- Cache key helpers ---
   function normalizeKeyPart(s: string): string {
     return s.trim().toLowerCase();
   }
@@ -75,7 +120,6 @@ export function usePrayerTimes() {
     shafaq: string;
     calendarMethod: string;
   }): string {
-    // Stable, human-readable compound key
     const city = normalizeKeyPart(params.city);
     const country = normalizeKeyPart(params.country);
     const method = String(params.methodId);
@@ -92,59 +136,273 @@ export function usePrayerTimes() {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const CACHE_HORIZON_DAYS = 35; // 5 weeks
-  const CACHE_PREFILL_DAYS = 10; // Prefill 10 days ahead
-
-  function isCacheExpired(cached: CachedDay): boolean {
-    return Date.now() - cached.savedAt > CACHE_TTL_MS;
+  function isCacheStale(cached: CachedDay): boolean {
+    return Date.now() - cached.savedAt > CACHE_STALE_MS;
   }
 
-  async function ensureCacheForRange(params: {
+  // --- Current fetch context (for background refresh) ---
+  let currentOptionsKey: string | null = null;
+  let currentTargetDateKey: string | null = null;
+  let currentFetchParams: {
     city: string;
     country: string;
     methodId: number;
     tz: string;
     shafaq: string;
     calendarMethod: string;
-    startDate: Date;
-    numDays: number;
-  }): Promise<void> {
-    const optionsKey = buildOptionsKey(params);
-    const existing = await getCacheForOptions(optionsKey);
+  } | null = null;
 
-    for (let i = 0; i < params.numDays; i++) {
-      const dateObj = addDays(params.startDate, i);
-      const dateKey = getDateKey(dateObj);
-      if (existing[dateKey] && !isCacheExpired(existing[dateKey])) continue;
-      try {
-        const dateParam = formatDdMmYyyy(dateObj);
-        const url = buildTimingsByCityUrl(
-          dateParam,
-          params.city,
-          params.country,
-          params.methodId,
-          params.shafaq,
-          params.tz,
-          params.calendarMethod
-        );
-        const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
-        if (!res || res.code !== 200) continue;
-        existing[dateKey] = {
-          timings: res.data.timings,
-          dateReadable: res.data.date.readable,
-          timezone: res.data.meta.timezone,
-          methodName: res.data.meta.method?.name ?? null,
-          savedAt: Date.now(),
-        };
-      } catch {
-        // ignore per-day errors
+  // --- Background refresh logic ---
+  let refreshPromise: Promise<void> | null = null;
+
+  async function refreshInBackground(): Promise<void> {
+    if (!currentFetchParams || !currentOptionsKey || !currentTargetDateKey) return;
+    if (refreshPromise) return; // Already refreshing
+    if (isOffline.value) return;
+
+    refreshPromise = doFreshFetch(
+      currentFetchParams,
+      currentOptionsKey,
+      currentTargetDateKey,
+      true // silent mode
+    ).finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  async function doFreshFetch(
+    params: {
+      city: string;
+      country: string;
+      methodId: number;
+      tz: string;
+      shafaq: string;
+      calendarMethod: string;
+    },
+    optionsKey: string,
+    targetDateKey: string,
+    silent: boolean
+  ): Promise<void> {
+    try {
+      // Fetch the target day
+      const parsedTarget = parseYyyyMmDd(targetDateKey);
+      const targetDate = parsedTarget
+        ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
+        : new Date();
+      const dateParam = formatDdMmYyyy(targetDate);
+
+      const url = buildTimingsByCityUrl(
+        dateParam,
+        params.city,
+        params.country,
+        params.methodId,
+        params.shafaq,
+        params.tz,
+        params.calendarMethod
+      );
+
+      const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
+
+      if (!res || res.code !== 200) {
+        if (!silent) {
+          throw new Error(res?.status || "Failed to fetch prayer times");
+        }
+        return;
+      }
+
+      // Save to cache
+      const newEntry: CachedDay = {
+        timings: res.data.timings,
+        dateReadable: res.data.date.readable,
+        timezone: res.data.meta.timezone,
+        methodName: res.data.meta.method?.name ?? null,
+        savedAt: Date.now(),
+      };
+      await setCachedDay(optionsKey, targetDateKey, newEntry);
+
+      // Update UI state
+      timings.value = res.data.timings;
+      dateReadable.value = res.data.date.readable;
+      timezone.value = res.data.meta.timezone;
+      methodName.value = res.data.meta.method?.name ?? null;
+      isStale.value = false;
+      fetchError.value = null;
+
+      // Prefetch upcoming days in background (non-blocking)
+      void prefetchUpcomingDays(params, optionsKey, targetDate);
+
+      // Cleanup old entries in background (non-blocking)
+      void cleanupOldCacheEntries(optionsKey, CLEANUP_DAYS);
+    } catch (err) {
+      if (!silent) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        fetchError.value = message;
+      }
+      // In silent mode, keep showing stale data
+    }
+  }
+
+  async function prefetchUpcomingDays(
+    params: {
+      city: string;
+      country: string;
+      methodId: number;
+      tz: string;
+      shafaq: string;
+      calendarMethod: string;
+    },
+    optionsKey: string,
+    startDate: Date
+  ): Promise<void> {
+    if (isOffline.value) return;
+
+    const cache = await getCacheForOptions(optionsKey);
+    const entriesToFetch: Date[] = [];
+
+    // Find dates that need fetching (missing or stale)
+    for (let i = 1; i <= PREFETCH_DAYS; i++) {
+      const date = addDays(startDate, i);
+      const dateKey = getDateKey(date);
+      const cached = cache[dateKey];
+      if (!cached || isCacheStale(cached)) {
+        entriesToFetch.push(date);
       }
     }
 
-    await setCacheForOptions(optionsKey, existing);
+    if (entriesToFetch.length === 0) return;
+
+    // Fetch in batches of 5 to avoid overwhelming the API
+    const batchSize = 5;
+    const newEntries: Record<string, CachedDay> = {};
+
+    for (let i = 0; i < entriesToFetch.length; i += batchSize) {
+      const batch = entriesToFetch.slice(i, i + batchSize);
+      const promises = batch.map(async (date) => {
+        try {
+          const dateParam = formatDdMmYyyy(date);
+          const url = buildTimingsByCityUrl(
+            dateParam,
+            params.city,
+            params.country,
+            params.methodId,
+            params.shafaq,
+            params.tz,
+            params.calendarMethod
+          );
+          const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
+          if (res && res.code === 200) {
+            const dateKey = getDateKey(date);
+            newEntries[dateKey] = {
+              timings: res.data.timings,
+              dateReadable: res.data.date.readable,
+              timezone: res.data.meta.timezone,
+              methodName: res.data.meta.method?.name ?? null,
+              savedAt: Date.now(),
+            };
+          }
+        } catch {
+          // Ignore individual fetch errors during prefetch
+        }
+      });
+      await Promise.all(promises);
+    }
+
+    // Save all new entries at once
+    if (Object.keys(newEntries).length > 0) {
+      await setCachedDays(optionsKey, newEntries);
+    }
   }
 
+  // --- Main fetch function (Stale-While-Revalidate) ---
+  async function fetchPrayerTimingsByCity(
+    city: string,
+    country: string,
+    options?: {
+      methodId?: number;
+      shafaq?: string;
+      calendarMethod?: string;
+      date?: string; // dd-mm-yyyy
+    }
+  ) {
+    isFetchingTimings.value = true;
+    fetchError.value = null;
+    isStale.value = false;
+
+    try {
+      const tz = getUserTimezone();
+      const methodId = options?.methodId ?? selectedMethodId.value;
+      const shafaq = options?.shafaq ?? "general";
+      const calendarMethod = options?.calendarMethod ?? "UAQ";
+
+      // Determine target date key (YYYY-MM-DD)
+      let targetDateKey: string;
+      if (options?.date) {
+        targetDateKey = ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(new Date());
+      } else {
+        targetDateKey = getDateKey(new Date());
+      }
+
+      const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod };
+      const optionsKey = buildOptionsKey(fetchParams);
+
+      // Store context for background refresh
+      currentOptionsKey = optionsKey;
+      currentTargetDateKey = targetDateKey;
+      currentFetchParams = fetchParams;
+
+      // Step 1: Check cache first
+      const cached = await getCachedDay(optionsKey, targetDateKey);
+
+      if (cached) {
+        // Show cached data immediately (even if stale)
+        timings.value = cached.timings;
+        dateReadable.value = cached.dateReadable;
+        timezone.value = cached.timezone;
+        methodName.value = cached.methodName;
+
+        const stale = isCacheStale(cached);
+        isStale.value = stale;
+
+        if (stale && !isOffline.value) {
+          // Refresh in background, don't block UI
+          isFetchingTimings.value = false;
+          void refreshInBackground();
+          return;
+        }
+
+        // Cache is fresh
+        isFetchingTimings.value = false;
+
+        // Still prefetch upcoming days in background
+        const parsedTarget = parseYyyyMmDd(targetDateKey);
+        const targetDate = parsedTarget
+          ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
+          : new Date();
+        void prefetchUpcomingDays(fetchParams, optionsKey, targetDate);
+
+        return;
+      }
+
+      // Step 2: No cache - must fetch
+      if (isOffline.value) {
+        fetchError.value = "You're offline and no cached data is available for this date.";
+        timings.value = null;
+        isFetchingTimings.value = false;
+        return;
+      }
+
+      // Fetch fresh data (blocking)
+      await doFreshFetch(fetchParams, optionsKey, targetDateKey, false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      fetchError.value = message;
+      timings.value = null;
+    } finally {
+      isFetchingTimings.value = false;
+    }
+  }
+
+  // --- Preferences ---
   async function loadPreferences() {
     try {
       const store = await getStore();
@@ -200,163 +458,7 @@ export function usePrayerTimes() {
     }
   );
 
-  async function fetchPrayerTimingsByCity(
-    city: string,
-    country: string,
-    options?: {
-      methodId?: number;
-      shafaq?: string;
-      calendarMethod?: string;
-      date?: string; // dd-mm-yyyy
-    }
-  ) {
-    isFetchingTimings.value = true;
-    fetchError.value = null;
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const methodId = options?.methodId ?? selectedMethodId.value;
-      const shafaq = options?.shafaq ?? "general";
-      const calendarMethod = options?.calendarMethod ?? "UAQ";
-
-      // Determine target date key (YYYY-MM-DD)
-      let targetDateKey: string;
-      if (options?.date) {
-        targetDateKey =
-          ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(new Date());
-      } else {
-        targetDateKey = getDateKey(new Date());
-      }
-
-      const optionsKey = buildOptionsKey({
-        city,
-        country,
-        methodId,
-        tz,
-        shafaq,
-        calendarMethod,
-      });
-
-      // 1) Try cache first
-      const cache = await getCacheForOptions(optionsKey);
-
-      const cached = cache[targetDateKey];
-      if (cached && !isCacheExpired(cached)) {
-        timings.value = cached.timings;
-        dateReadable.value = cached.dateReadable;
-        timezone.value = cached.timezone;
-        methodName.value = cached.methodName;
-        // Proactively ensure the next 5 weeks are cached (non-blocking) if online
-        try {
-          let needsFill = false;
-          const parsed = parseYyyyMmDd(targetDateKey);
-          const horizonStart = parsed
-            ? new Date(parsed.year, parsed.month - 1, parsed.day)
-            : new Date();
-          for (let i = 0; i < CACHE_HORIZON_DAYS; i++) {
-            const dk = getDateKey(addDays(horizonStart, i));
-            if (!cache[dk]) {
-              needsFill = true;
-              break;
-            }
-          }
-          if (
-            needsFill &&
-            (typeof navigator === "undefined" || navigator.onLine !== false)
-          ) {
-            void ensureCacheForRange({
-              city,
-              country,
-              methodId,
-              tz,
-              shafaq,
-              calendarMethod,
-              startDate: horizonStart,
-              numDays: CACHE_PREFILL_DAYS,
-            });
-          }
-        } catch {
-          // ignore background prefill errors
-        }
-        return; // cache hit → done
-      }
-
-      // 2) On miss: if offline, bail with friendly error
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        throw new Error("Offline: no cached prayer times available for today.");
-      }
-
-      // 3) Fetch and cache 5 more weeks starting from the target date
-      const parsedTarget = parseYyyyMmDd(targetDateKey);
-      const startDate = parsedTarget
-        ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
-        : new Date();
-      await ensureCacheForRange({
-        city,
-        country,
-        methodId,
-        tz,
-        shafaq,
-        calendarMethod,
-        startDate,
-        numDays: CACHE_PREFILL_DAYS,
-      });
-
-      // Reload cache and apply today's timings
-      const refreshed = await getCacheForOptions(optionsKey);
-      const todayCached = refreshed[targetDateKey];
-      if (todayCached) {
-        timings.value = todayCached.timings;
-        dateReadable.value = todayCached.dateReadable;
-        timezone.value = todayCached.timezone;
-        methodName.value = todayCached.methodName;
-        return;
-      }
-
-      // 4) Safety fallback: fetch single day if monthly failed
-      const today = new Date();
-      const dd = String(today.getDate()).padStart(2, "0");
-      const mm = String(today.getMonth() + 1).padStart(2, "0");
-      const yyyy = String(today.getFullYear());
-      const dateParam = `${dd}-${mm}-${yyyy}`;
-      const url = buildTimingsByCityUrl(
-        dateParam,
-        city,
-        country,
-        methodId,
-        shafaq,
-        tz,
-        calendarMethod
-      );
-      const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
-      if (!res || res.code !== 200) {
-        throw new Error(res?.status || "Failed to fetch prayer times");
-      }
-
-      // Update state
-      timings.value = res.data.timings;
-      dateReadable.value = res.data.date.readable;
-      timezone.value = res.data.meta.timezone;
-      methodName.value = res.data.meta.method?.name || null;
-
-      // Also persist to cache
-      const map = await getCacheForOptions(optionsKey);
-      map[targetDateKey] = {
-        timings: res.data.timings,
-        dateReadable: res.data.date.readable,
-        timezone: res.data.meta.timezone,
-        methodName: res.data.meta.method?.name || null,
-        savedAt: Date.now(),
-      };
-      await setCacheForOptions(optionsKey, map);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      fetchError.value = message;
-      timings.value = null;
-    } finally {
-      isFetchingTimings.value = false;
-    }
-  }
-
+  // --- UI helpers ---
   const isLoading = computed(() => isFetchingTimings.value);
 
   function clearTimings(): void {
@@ -365,11 +467,11 @@ export function usePrayerTimes() {
     timezone.value = null;
     methodName.value = null;
     fetchError.value = null;
+    isStale.value = false;
   }
 
   function parseTimeToMinutes(raw: string | undefined): number | null {
     if (!raw) return null;
-    // Handle possible formats like "05:23" or "5:23" or with suffixes
     const cleaned = raw.trim();
     // 12h with AM/PM
     const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -377,7 +479,7 @@ export function usePrayerTimes() {
       let hours = Number(ampmMatch[1]);
       const minutes = Number(ampmMatch[2]);
       const isPM = ampmMatch[3]?.toUpperCase() === "PM";
-      if (hours === 12) hours = 0; // 12AM -> 0, 12PM handled by +12
+      if (hours === 12) hours = 0;
       const total = (isPM ? hours + 12 : hours) * 60 + minutes;
       return total;
     }
@@ -392,9 +494,7 @@ export function usePrayerTimes() {
 
   const { nowSecondsOfDay } = buildCurrentTimeRefs(now);
 
-  const userTimezone = computed(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone
-  );
+  const userTimezone = computed(() => getUserTimezone());
 
   function computeAltTimeForTimezone(
     timeStr: string,
@@ -404,25 +504,14 @@ export function usePrayerTimes() {
     if (targetTz === userTimezone.value) return undefined;
     const mins = parseTimeToMinutes(timeStr);
     if (mins == null) return undefined;
-    const base = new Date();
-    base.setSeconds(0, 0);
-    base.setHours(0, 0, 0, 0);
+    const base = resetToMidnight(new Date());
     base.setMinutes(mins);
-    const formatted = formatDateInTimezone(base, is24Hour, targetTz);
-    return formatted;
+    return formatDateInTimezone(base, is24Hour, targetTz);
   }
 
   const timingsList = computed<PrayerTimingItem[]>(() => {
     if (!timings.value) return [];
-    const order = [
-      ["Fajr", "Fajr"],
-      ["Sunrise", "Sunrise"],
-      ["Dhuhr", "Dhuhr"],
-      ["Asr", "Asr"],
-      ["Maghrib", "Maghrib"],
-      ["Isha", "Isha"],
-    ] as Array<[string, string]>;
-    const list = order
+    const list = PRAYER_ORDER
       .filter(([key]) => Boolean(timings.value?.[key]))
       .map(([key, label]) => {
         const timeStr = (timings.value?.[key] ?? "") as string;
@@ -447,7 +536,7 @@ export function usePrayerTimes() {
     let nextIndex = list.findIndex((t) =>
       typeof t.minutes === "number" ? (t.minutes as number) * 60 > nowS : false
     );
-    if (nextIndex === -1) nextIndex = 0; // wrap to next day (tomorrow's first prayer)
+    if (nextIndex === -1) nextIndex = 0;
 
     return list.map((t, idx) => ({
       ...t,
@@ -472,21 +561,12 @@ export function usePrayerTimes() {
   const countdownToNext = computed<string | null>(() => {
     const next = timingsList.value.find((t) => t.isNext);
     if (!next || typeof next.minutes !== "number") return null;
-    const target = new Date(now.value);
-    target.setHours(0, 0, 0, 0);
+    const target = resetToMidnight(now.value);
     target.setMinutes(next.minutes as number, 0, 0);
     if (target.getTime() <= now.value.getTime()) {
       target.setDate(target.getDate() + 1);
     }
-    const diffMs = Math.max(0, target.getTime() - now.value.getTime());
-    const totalSeconds = Math.floor(diffMs / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const hh = String(hours).padStart(2, "0");
-    const mm = String(minutes).padStart(2, "0");
-    const ss = String(seconds).padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
+    return formatTimeDiff(getTimeDiff(now.value, target));
   });
 
   const previousPrayerInfo = computed(() =>
@@ -501,6 +581,7 @@ export function usePrayerTimes() {
     return previousPrayerInfo.value?.timeSince ?? null;
   });
 
+  // --- Athan trigger ---
   watch([now, timingsList], () => {
     if (!timingsList.value.length) return;
     const key = getDateKey(now.value);
@@ -508,11 +589,10 @@ export function usePrayerTimes() {
       playedKeysForDate.clear();
       lastPlayedDateKey = key;
     }
-    if (now.value.getSeconds() !== 0) return; // only check once per minute
-    const currentMins = now.value.getHours() * 60 + now.value.getMinutes();
+    if (now.value.getSeconds() !== 0) return;
+    const currentMins = getMinutesOfDay(now.value);
     const match = timingsList.value.find(
-      (t) =>
-        typeof t.minutes === "number" && (t.minutes as number) === currentMins
+      (t) => typeof t.minutes === "number" && t.minutes === currentMins
     );
     if (match && !playedKeysForDate.has(match.key)) {
       playedKeysForDate.add(match.key);
@@ -537,6 +617,10 @@ export function usePrayerTimes() {
     selectedExtraTimezone,
     timeFormat,
     is24Hour,
+
+    // New: stale/offline indicators
+    isStale,
+    isOffline,
 
     // actions
     fetchPrayerTimingsByCity,
