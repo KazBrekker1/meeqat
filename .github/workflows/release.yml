@@ -109,7 +109,7 @@ jobs:
         run: test -d src-tauri/gen/android || bun run tauri:android:init
 
       - name: Build Android APK (release)
-        run: bun run tauri android build
+        run: bun run tauri android build --target aarch64
 
       - name: Compute version
         run: |

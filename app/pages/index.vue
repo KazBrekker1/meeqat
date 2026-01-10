@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col h-screen w-full">
     <!-- Sticky Header -->
-    <header class="sticky top-0 z-10 bg-[var(--ui-bg)] border-b border-[var(--ui-border)]">
+    <header class="sticky top-0 z-10 bg-[var(--ui-bg)] border-b border-[var(--ui-border)] pt-[env(safe-area-inset-top)]">
       <div class="p-4">
         <PrayerHeader :current-time-string="currentTimeString" />
       </div>
@@ -103,7 +103,7 @@
     </main>
 
     <!-- Sticky Footer -->
-    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)]">
+    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)] pb-[env(safe-area-inset-bottom)]">
       <div class="p-4">
         <PrayerFooter
           :is-calendar-shown="showCalendar"
