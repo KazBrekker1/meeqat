@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveResource } from "@tauri-apps/api/path";
 import { platform } from "@tauri-apps/plugin-os";
+import { togglePopover } from "@/composables/useTrayPopover";
 
 declare global {
   interface Window {
@@ -57,32 +58,7 @@ export default defineNuxtPlugin(async () => {
     window.__MEEQAT_TRAY__ = { tray: null, unlisten: null, initialized: false };
   }
 
-  // Build tray menu with two dynamic info items
-  const dateItem = await MenuItem.new({
-    id: "meeqat-date",
-    text: "Dates loading…",
-    action: async () => {
-      // open the main window
-      await openMainWindow();
-    },
-  });
-
-  const nextItem = await MenuItem.new({
-    id: "meeqat-next",
-    text: "Next: loading…",
-    action: async () => {
-      await openMainWindow();
-    },
-  });
-
-  const sinceItem = await MenuItem.new({
-    id: "meeqat-since",
-    text: "Last: loading…",
-    action: async () => {
-      await openMainWindow();
-    },
-  });
-
+  // Build right-click menu with only Open and Quit items
   const openItem = await MenuItem.new({
     id: "meeqat-open",
     text: "Open Meeqat",
@@ -115,11 +91,12 @@ export default defineNuxtPlugin(async () => {
   });
 
   const menu = await Menu.new({
-    items: [dateItem, nextItem, sinceItem, separatorItem, openItem, quitItem],
+    items: [openItem, separatorItem, quitItem],
   });
 
   const isMac = platform() === "macos";
   const isWindows = platform() === "windows";
+  // Get icon path for non-macOS platforms (macOS uses text-only menu bar item)
   const iconPath = !isMac
     ? await resolveResource(
         isWindows ? "icons/icon.ico" : "icons/icon.png"
@@ -129,13 +106,28 @@ export default defineNuxtPlugin(async () => {
   const tray = await TrayIcon.new({
     id: "meeqat-tray",
     menu,
+    menuOnLeftClick: false, // Disable menu on left click - we'll show popover instead
     tooltip: "Meeqat",
     ...(isMac ? { title: "Meeqat" } : {}),
     ...(iconPath ? { icon: iconPath } : {}),
+    action: async (event) => {
+      console.log("[Tray] Action event:", JSON.stringify(event));
+      // Handle click to toggle popover
+      if (event.type === "Click") {
+        console.log("[Tray] Click detected - toggling popover");
+        try {
+          await togglePopover();
+        } catch (e) {
+          console.error("[Tray] Failed to toggle popover:", e);
+          // Fallback: show main window if popover fails
+          await openMainWindow();
+        }
+      }
+    },
   });
   window.__MEEQAT_TRAY__!.tray = tray;
 
-  // Listen for events from the UI to update the tray/menu contents
+  // Listen for events from the UI to update the tray title
   const unlisten = await listen<{
     dateLine?: string;
     title?: string | null;
@@ -144,15 +136,7 @@ export default defineNuxtPlugin(async () => {
   }>("meeqat:tray:update", async (evt) => {
     try {
       const payload = evt.payload || {};
-      if (typeof payload.dateLine === "string") {
-        await dateItem.setText(payload.dateLine);
-      }
-      if (typeof payload.nextLine === "string") {
-        await nextItem.setText(payload.nextLine);
-      }
-      if (typeof payload.sinceLine === "string") {
-        await sinceItem.setText(payload.sinceLine);
-      }
+      // Update tray title (shown in menu bar on macOS)
       if (window.__MEEQAT_TRAY__?.tray && "title" in payload) {
         await window.__MEEQAT_TRAY__!.tray!.setTitle(
           payload.title == null || payload.title === ""

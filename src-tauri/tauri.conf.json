@@ -35,12 +35,13 @@
 		"devUrl": "http://localhost:3001"
 	},
 	"productName": "Meeqat",
-	"version": "1.7.2",
+	"version": "1.8.0",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {
 		"windows": [
 			{
+				"label": "main",
 				"title": "Meeqat",
 				"width": 750,
 				"height": 830,
@@ -48,6 +49,19 @@
 				"minHeight": 480,
 				"resizable": true,
 				"fullscreen": false
+			},
+			{
+				"label": "tray",
+				"title": "",
+				"url": "/tray",
+				"width": 280,
+				"height": 350,
+				"decorations": false,
+				"transparent": false,
+				"alwaysOnTop": true,
+				"visible": false,
+				"skipTaskbar": true,
+				"resizable": false
 			}
 		],
 		"security": {

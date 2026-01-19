@@ -1,0 +1,1 @@
+com.meeqat.plugin.prayerservice

@@ -13,7 +13,12 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+const route = useRoute();
+
 onMounted(async () => {
+  // Skip close handler for tray window
+  if (route.path === '/tray') return;
+
   try {
     const win = getCurrentWindow();
     await win.onCloseRequested(async (event) => {

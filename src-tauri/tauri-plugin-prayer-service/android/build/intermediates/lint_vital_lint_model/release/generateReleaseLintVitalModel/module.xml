@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/Users/yousseifelshahawy/coding/personal/meeqat/src-tauri/tauri-plugin-prayer-service/android"
+    name=":tauri-plugin-prayer-service"
+    type="LIBRARY"
+    maven="android:tauri-plugin-prayer-service:unspecified"
+    agpVersion="8.11.0"
+    buildFolder="build"
+    bootClassPath="/Users/yousseifelshahawy/Library/Android/sdk/platforms/android-36/android.jar:/Users/yousseifelshahawy/Library/Android/sdk/build-tools/35.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-36"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

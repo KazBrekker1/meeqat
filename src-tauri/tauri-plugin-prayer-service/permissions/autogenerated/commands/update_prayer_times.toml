@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-update-prayer-times"
+description = "Enables the update_prayer_times command without any pre-configured scope."
+commands.allow = ["update_prayer_times"]
+
+[[permission]]
+identifier = "deny-update-prayer-times"
+description = "Denies the update_prayer_times command without any pre-configured scope."
+commands.deny = ["update_prayer_times"]

@@ -23,6 +23,8 @@
     "store:default",
     "core:webview:allow-create-webview",
     "core:webview:allow-create-webview-window",
-    "os:default"
+    "os:default",
+    "prayer-service:default",
+    "positioner:default"
   ]
 }

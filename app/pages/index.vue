@@ -1,33 +1,41 @@
 <template>
   <div class="flex flex-col h-screen w-full">
     <!-- Sticky Header -->
-    <header class="sticky top-0 z-10 bg-[var(--ui-bg)] border-b border-[var(--ui-border)] pt-[env(safe-area-inset-top)]">
-      <div class="p-4">
-        <PrayerHeader :current-time-string="currentTimeString" />
+    <header class="sticky top-0 z-10 bg-[var(--ui-bg)]/80 backdrop-blur-md border-b border-[var(--ui-border)] pt-[max(env(safe-area-inset-top),8px)] pattern-islamic-subtle">
+      <div class="max-w-2xl mx-auto px-3 pb-2 pt-1">
+        <PrayerHeader
+          :current-time-string="currentTimeString"
+          :next-prayer-label="nextPrayerLabel || undefined"
+          :countdown-to-next="countdownToNext || undefined"
+        />
       </div>
     </header>
 
     <!-- Scrollable Content -->
-    <main class="flex-1 overflow-y-auto p-4">
-      <section class="space-y-5">
-        <PrayerSelectors
-          :method-select-options="methodSelectOptions"
-          :timezone-select-options="timezoneSelectOptions"
-          v-model:selected-method-id="selectedMethodId"
-          v-model:selected-extra-timezone="selectedExtraTimezone"
-        />
+    <main class="flex-1 overflow-y-auto p-3">
+      <section class="max-w-2xl mx-auto space-y-3">
+        <div class="animate-slide-up opacity-0">
+          <PrayerSelectors
+            :method-select-options="methodSelectOptions"
+            :timezone-select-options="timezoneSelectOptions"
+            v-model:selected-method-id="selectedMethodId"
+            v-model:selected-extra-timezone="selectedExtraTimezone"
+          />
+        </div>
 
-        <PrayerLocationControls
-          v-model:selected-country="selectedCountry"
-          v-model:selected-city="selectedCity"
-          :country-select-options="countrySelectOptions"
-          :city-select-options="citySelectOptions"
-          :loading="isLoading"
-          @country-change="onCountryChange"
-          @fetch-by-city="onFetchByCity"
-        />
+        <div class="animate-slide-up opacity-0 delay-100">
+          <PrayerLocationControls
+            v-model:selected-country="selectedCountry"
+            v-model:selected-city="selectedCity"
+            :country-select-options="countrySelectOptions"
+            :city-select-options="citySelectOptions"
+            :loading="isLoading"
+            @country-change="onCountryChange"
+            @fetch-by-city="onFetchByCity"
+          />
+        </div>
 
-        <div v-if="fetchError" class="text-red-600">{{ fetchError }}</div>
+        <div v-if="fetchError" class="text-[var(--ui-color-error-500)] text-sm">{{ fetchError }}</div>
 
         <Transition
           enter-active-class="transition duration-200 ease-out"
@@ -51,7 +59,9 @@
           />
         </Transition>
 
-        <PrayerTimingsList :timings-list="timingsList" />
+        <div class="animate-slide-up opacity-0 delay-200">
+          <PrayerTimingsList :timings-list="timingsList" :loading="isLoading && !timingsList.length" />
+        </div>
 
         <Transition
           enter-active-class="transition duration-200 ease-out"
@@ -103,28 +113,30 @@
     </main>
 
     <!-- Sticky Footer -->
-    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)] pb-[env(safe-area-inset-bottom)]">
-      <div class="p-4">
+    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)] pb-[env(safe-area-inset-bottom)] pattern-islamic-subtle">
+      <div class="max-w-2xl mx-auto p-3">
         <PrayerFooter
-          :is-calendar-shown="showCalendar"
-          @toggle-calendar="showCalendar = !showCalendar"
-          :next-prayer-label="nextPrayerLabel || undefined"
-          :countdown-to-next="countdownToNext || undefined"
           :previous-prayer-label="previousPrayerLabel || undefined"
           :time-since-previous="timeSincePrevious || undefined"
-          :is-loading="isLoading"
-          :time-format="timeFormat"
-          :test-play-athan="testPlayAthan"
           :is-athan-active="isAthanActive"
           :dismiss-athan="dismissAthan"
-          :on-test-notification-click="onTestNotificationClick"
-          @clear-cache="onClearCache"
-          @toggle-time-format="
-            () => (timeFormat = timeFormat === '24h' ? '12h' : '24h')
-          "
+          @open-settings="showSettingsModal = true"
         />
       </div>
     </footer>
+
+    <!-- Settings Modal -->
+    <PrayerSettingsModal
+      v-model="showSettingsModal"
+      :time-format="timeFormat"
+      :is-calendar-shown="showCalendar"
+      :is-loading="isLoading"
+      :test-play-athan="testPlayAthan"
+      :on-test-notification-click="onTestNotificationClick"
+      @clear-cache="onClearCache"
+      @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
+      @toggle-calendar="showCalendar = !showCalendar"
+    />
   </div>
 </template>
 
@@ -197,6 +209,7 @@ function selectToday() {
 }
 
 const showCalendar = shallowRef(true);
+const showSettingsModal = shallowRef(false);
 
 const isToday = computed(() => {
   const baseToday = today(timeZone);
@@ -259,6 +272,12 @@ const {
 // Start notifications scheduler
 const { startPrayerNotifications, stopPrayerNotifications, send } =
   useNotifications({
+    timingsList,
+  });
+
+// Start Android foreground service for persistent notification
+const { start: startPrayerService, stop: stopPrayerService, isAndroid } =
+  usePrayerService({
     timingsList,
   });
 
@@ -333,6 +352,8 @@ function onCountryChange() {
   selectedCity.value = "";
 }
 
+const toast = useToast();
+
 async function onClearCache() {
   if (
     await confirm({
@@ -344,6 +365,12 @@ async function onClearCache() {
   ) {
     clearCache();
     clearTimings();
+    toast.add({
+      title: "Cache Cleared",
+      description: "All cached prayer times have been removed.",
+      color: "success",
+      icon: "heroicons:check-circle-20-solid",
+    });
   }
 }
 
@@ -353,6 +380,7 @@ onMounted(async () => {
     onFetchByCity();
   }
   startPrayerNotifications();
+  // Prayer service will auto-start when timingsList becomes available (via watcher in composable)
 });
 
 watch([selectedMethodId, selectedCity, selectedCountry], () => {
@@ -417,6 +445,12 @@ watch(
         title,
         nextLine,
         sinceLine,
+        // Additional fields for the tray popover
+        hijriDate: hijriDateVerbose.value,
+        gregorianDate: gregorianDateVerbose.value,
+        nextPrayerLabel: nextPrayerLabel.value,
+        countdown: countdownToNext.value,
+        timingsList: list,
       });
     } catch {
       // ignore emit errors in non-tauri/web
@@ -427,6 +461,8 @@ watch(
 
 onBeforeUnmount(() => {
   stopPrayerNotifications();
+  // Note: We intentionally do NOT stop the prayer service here
+  // The foreground service should continue running even when the app is closed
 });
 </script>
 
