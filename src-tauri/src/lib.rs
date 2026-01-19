@@ -11,7 +11,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_positioner::Builder::new().build())
         .plugin(tauri_plugin_prayer_service::init())
         .invoke_handler(tauri::generate_handler![quit_app])
         .run(tauri::generate_context!())
