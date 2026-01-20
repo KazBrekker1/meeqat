@@ -450,6 +450,8 @@ watch(
         gregorianDate: gregorianDateVerbose.value,
         nextPrayerLabel: nextPrayerLabel.value,
         countdown: countdownToNext.value,
+        sincePrayerLabel: prevInfo?.label ?? "",
+        sinceTime: prevInfo?.timeSince ?? "",
         timingsList: list,
       });
     } catch {

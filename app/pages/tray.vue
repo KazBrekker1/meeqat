@@ -1,17 +1,34 @@
 <template>
   <div class="min-h-screen bg-[#1e1e1e]">
-    <div class="p-6 flex flex-col gap-2">
-      <!-- Header with dates -->
-      <div class="text-center pb-2 border-b border-white/10">
+    <div class="p-4 flex flex-col gap-2">
+      <!-- Close button -->
+      <button
+        class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+        @click="closeOverlay"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <!-- Header with dates (draggable) -->
+      <div class="text-center pb-2 border-b border-white/10 cursor-move select-none" @mousedown="startDrag">
         <div v-if="hijriDate" class="text-xs text-white/90 font-medium">{{ hijriDate }}</div>
         <div v-if="gregorianDate" class="text-xs text-white/70">{{ gregorianDate }}</div>
       </div>
 
       <!-- Next prayer highlight -->
-      <div v-if="nextPrayerLabel && countdown" class="relative flex justify-between items-center px-4 py-3 bg-indigo-950 rounded-lg">
+      <div v-if="nextPrayerLabel && countdown" class="relative flex flex-col px-4 py-3 bg-indigo-950 rounded-lg">
         <div class="absolute inset-0 rounded-lg border-t-[3px] border-l-[3px] border-indigo-500 pointer-events-none" />
-        <span class="text-sm font-semibold text-indigo-300">{{ nextPrayerLabel }}</span>
-        <span class="text-lg font-bold tabular-nums text-indigo-400">{{ countdown }}</span>
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-semibold text-indigo-300">{{ nextPrayerLabel }}</span>
+          <span class="text-lg font-bold tabular-nums text-indigo-400">{{ countdown }}</span>
+        </div>
+        <div v-if="sincePrayerLabel && sinceTime" class="flex justify-between items-center mt-1 pt-1 border-t border-white/5">
+          <span class="text-xs text-white/50">{{ sincePrayerLabel }} since</span>
+          <span class="text-xs font-medium tabular-nums text-white/50">{{ sinceTime }}</span>
+        </div>
       </div>
 
       <!-- Prayer list -->
@@ -45,7 +62,7 @@ definePageMeta({
   layout: false
 });
 
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { moveWindow, Position } from "@tauri-apps/plugin-positioner";
@@ -69,12 +86,16 @@ interface TrayUpdatePayload {
   gregorianDate?: string;
   nextPrayerLabel?: string;
   countdown?: string;
+  sincePrayerLabel?: string;
+  sinceTime?: string;
 }
 
 const hijriDate = ref<string>("");
 const gregorianDate = ref<string>("");
 const nextPrayerLabel = ref<string>("");
 const countdown = ref<string>("");
+const sincePrayerLabel = ref<string>("");
+const sinceTime = ref<string>("");
 const prayers = ref<Array<{
   key: string;
   label: string;
@@ -112,8 +133,24 @@ onMounted(async () => {
     if (payload.countdown) {
       countdown.value = payload.countdown;
     }
+    if (payload.sincePrayerLabel) {
+      sincePrayerLabel.value = payload.sincePrayerLabel;
+    }
+    if (payload.sinceTime) {
+      sinceTime.value = payload.sinceTime;
+    }
     if (payload.timingsList) {
       prayers.value = payload.timingsList.filter(p => MAIN_PRAYER_KEYS_SET.has(p.key));
+    }
+
+    // Fallback: parse sinceLine if individual fields not provided
+    if (payload.sinceLine && !payload.sincePrayerLabel) {
+      // Parse "Dhuhr since 2:30:00" or "Dhuhr 2h 30m ago"
+      const sinceMatch = payload.sinceLine.match(/^(.+?)\s+(?:since\s+)?(\d.*)$/i);
+      if (sinceMatch) {
+        sincePrayerLabel.value = sinceMatch[1].trim();
+        sinceTime.value = sinceMatch[2].trim().replace(/\s*ago$/i, "");
+      }
     }
 
     // Fallback: parse from dateLine if individual fields not provided
@@ -147,6 +184,18 @@ onBeforeUnmount(() => {
     unlistenShow();
   }
 });
+
+async function startDrag() {
+  try {
+    await getCurrentWebviewWindow().startDragging();
+  } catch (e) {
+    console.error("[TrayPage] Failed to start dragging:", e);
+  }
+}
+
+async function closeOverlay() {
+  await hidePopover();
+}
 
 async function openApp() {
   await hidePopover();
