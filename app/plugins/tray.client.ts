@@ -112,9 +112,9 @@ export default defineNuxtPlugin(async () => {
     ...(iconPath ? { icon: iconPath } : {}),
     action: async (event) => {
       console.log("[Tray] Action event:", JSON.stringify(event));
-      // Handle click to toggle popover
-      if (event.type === "Click") {
-        console.log("[Tray] Click detected - toggling popover");
+      // Handle left-click only to toggle popover (right-click shows context menu)
+      if (event.type === "Click" && event.button === "Left" && event.buttonState === "Up") {
+        console.log("[Tray] Left click detected - toggling popover");
         try {
           await togglePopover();
         } catch (e) {
