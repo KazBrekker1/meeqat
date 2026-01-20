@@ -26,6 +26,8 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        // Set base name for APK/AAB output files
+        base.archivesName.set("meeqat-v${versionName}")
     }
     buildTypes {
         getByName("debug") {
