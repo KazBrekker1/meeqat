@@ -9,6 +9,11 @@ import {
 } from "@/utils/time";
 import { PRAYER_ORDER } from "@/constants/prayers";
 import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
+import {
+  toCalendar,
+  CalendarDate,
+  IslamicUmalquraCalendar,
+} from "@internationalized/date";
 
 // Cache configuration
 const CACHE_STALE_MS = 24 * 60 * 60 * 1000; // Consider stale after 24 hours
@@ -83,13 +88,36 @@ export function usePrayerTimes() {
 
   const hijriDateVerbose = computed<string | null>(() => {
     try {
-      return new Intl.DateTimeFormat("en-US", {
-        calendar: "islamic-umalqura",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }).format(now.value);
-    } catch {
+      // Use @internationalized/date for reliable Hijri date formatting
+      // Intl.DateTimeFormat with islamic-umalqura is not supported on all Android WebViews
+      const d = now.value;
+      const gregorianDate = new CalendarDate(
+        d.getFullYear(),
+        d.getMonth() + 1,
+        d.getDate()
+      );
+      const islamicDate = toCalendar(gregorianDate, new IslamicUmalquraCalendar());
+
+      // Islamic month names
+      const islamicMonths = [
+        "Muharram",
+        "Safar",
+        "Rabi' al-Awwal",
+        "Rabi' al-Thani",
+        "Jumada al-Awwal",
+        "Jumada al-Thani",
+        "Rajab",
+        "Sha'ban",
+        "Ramadan",
+        "Shawwal",
+        "Dhu al-Qi'dah",
+        "Dhu al-Hijjah",
+      ];
+
+      const monthName = islamicMonths[islamicDate.month - 1] || `Month ${islamicDate.month}`;
+      return `${islamicDate.day} ${monthName} ${islamicDate.year} AH`;
+    } catch (e) {
+      console.error("[usePrayerTimes] Failed to format Hijri date:", e);
       return null;
     }
   });

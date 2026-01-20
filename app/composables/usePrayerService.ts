@@ -26,14 +26,15 @@ async function getPluginApi() {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     return {
+      // Pass options directly - Kotlin plugin expects prayers/nextPrayerIndex at top level
       startPrayerService: (options: StartServiceOptions): Promise<void> => {
-        return invoke("plugin:prayer-service|start_service", { args: options });
+        return invoke("plugin:prayer-service|start_service", options);
       },
       stopPrayerService: (): Promise<void> => {
         return invoke("plugin:prayer-service|stop_service");
       },
       updatePrayerTimes: (options: UpdatePrayerTimesOptions): Promise<void> => {
-        return invoke("plugin:prayer-service|update_prayer_times", { args: options });
+        return invoke("plugin:prayer-service|update_prayer_times", options);
       },
       isPrayerServiceRunning: (): Promise<ServiceStatus> => {
         return invoke("plugin:prayer-service|is_service_running");
@@ -93,9 +94,23 @@ export function usePrayerService(options: {
   const isAndroid = ref(false);
   const serviceError = ref<string | null>(null);
 
-  // Check if we're on Android
+  // Check if we're on Android and start service if timings available
   onMounted(async () => {
     isAndroid.value = await isAndroidPlatform();
+
+    if (isAndroid.value) {
+      console.log("[PrayerService] Android platform detected on mount");
+
+      // Check if service is already running
+      const running = await checkStatus();
+      console.log("[PrayerService] Service running status:", running);
+
+      // If service not running and we have timings, start it
+      if (!running && timingsList.value.length > 0) {
+        console.log("[PrayerService] Starting service on mount with existing timings");
+        await start();
+      }
+    }
   });
 
   async function start(): Promise<void> {
@@ -119,7 +134,8 @@ export function usePrayerService(options: {
       const prayers = convertTimingsToServiceData(timingsList.value);
       const nextPrayerIndex = findNextPrayerIndex(timingsList.value);
 
-      console.log("[PrayerService] Starting service with", prayers.length, "prayers");
+      console.log("[PrayerService] Starting service with", prayers.length, "prayers, next index:", nextPrayerIndex);
+      console.log("[PrayerService] Prayer data:", JSON.stringify(prayers.slice(0, 2)));
 
       await api.startPrayerService({
         prayers,
@@ -131,8 +147,9 @@ export function usePrayerService(options: {
       console.log("[PrayerService] Service started successfully");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[PrayerService] Failed to start service:", message);
+      console.error("[PrayerService] Failed to start service:", message, err);
       serviceError.value = message;
+      isServiceRunning.value = false;
     }
   }
 

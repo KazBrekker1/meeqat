@@ -15,6 +15,8 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import org.json.JSONArray
+import org.json.JSONObject
 
 @InvokeArg
 class StartServiceArgs {
@@ -170,9 +172,25 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    /**
+     * Convert prayers array to JSON string using proper JSON encoding.
+     * This handles special characters in prayer names/labels correctly.
+     */
     private fun prayersToJson(prayers: Array<PrayerArg>): String {
-        return prayers.joinToString(",", "[", "]") { prayer ->
-            """{"prayerName":"${prayer.prayerName}","prayerTime":${prayer.prayerTime},"label":"${prayer.label}"}"""
+        return try {
+            val jsonArray = JSONArray()
+            for (prayer in prayers) {
+                val obj = JSONObject().apply {
+                    put("prayerName", prayer.prayerName)
+                    put("prayerTime", prayer.prayerTime)
+                    put("label", prayer.label)
+                }
+                jsonArray.put(obj)
+            }
+            jsonArray.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error converting prayers to JSON: ${e.message}", e)
+            "[]"
         }
     }
 }

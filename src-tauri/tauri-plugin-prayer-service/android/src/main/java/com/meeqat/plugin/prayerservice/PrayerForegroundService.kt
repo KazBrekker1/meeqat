@@ -13,10 +13,19 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Foreground service that displays a persistent notification with
- * a countdown timer to the next prayer time
+ * a countdown timer to the next prayer time.
+ *
+ * Lifecycle:
+ * - Started via ACTION_START with prayer data
+ * - Updated via ACTION_UPDATE or broadcast receiver
+ * - Stopped via ACTION_STOP
+ * - Auto-restarts on device boot if previously enabled (via BootReceiver)
  */
 class PrayerForegroundService : Service() {
 
@@ -37,13 +46,16 @@ class PrayerForegroundService : Service() {
         const val EXTRA_PRAYERS_JSON = "prayers_json"
         const val EXTRA_NEXT_PRAYER_INDEX = "next_prayer_index"
 
-        var isRunning = false
-            private set
+        // Thread-safe running flag using AtomicBoolean
+        private val _isRunning = AtomicBoolean(false)
+        val isRunning: Boolean
+            get() = _isRunning.get()
     }
 
     private var prayers: List<PrayerTimeData> = emptyList()
     private var nextPrayerIndex: Int = 0
 
+    // Receiver for prayer time updates via broadcast
     private val updateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == ACTION_UPDATE) {
@@ -60,17 +72,43 @@ class PrayerForegroundService : Service() {
         }
     }
 
+    // Receiver for system time changes (NTP sync, manual adjustment, timezone change)
+    private val timeChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED,
+                Intent.ACTION_DATE_CHANGED -> {
+                    Log.d(TAG, "System time changed, updating notification")
+                    updateNotification()
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service onCreate")
         createNotificationChannel()
 
-        // Register broadcast receiver for updates
-        val filter = IntentFilter(ACTION_UPDATE)
+        // Register broadcast receiver for prayer updates
+        val updateFilter = IntentFilter(ACTION_UPDATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(updateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(updateReceiver, updateFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(updateReceiver, filter)
+            registerReceiver(updateReceiver, updateFilter)
+        }
+
+        // Register broadcast receiver for system time changes
+        val timeFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(timeChangeReceiver, timeFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(timeChangeReceiver, timeFilter)
         }
     }
 
@@ -86,15 +124,16 @@ class PrayerForegroundService : Service() {
                     prayers = parsePrayersJson(prayersJson)
                     nextPrayerIndex = index
                 } else {
-                    // Try to restore from saved state
+                    // Try to restore from saved state (e.g., after boot)
                     restorePrayerState()
                 }
 
                 savePrayerState()
                 startForeground(NOTIFICATION_ID, buildNotification())
-                isRunning = true
+                _isRunning.set(true)
             }
             ACTION_STOP -> {
+                _isRunning.set(false)
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -116,18 +155,24 @@ class PrayerForegroundService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "Service onDestroy")
-        isRunning = false
+        _isRunning.set(false)
 
-        try {
-            unregisterReceiver(updateReceiver)
-        } catch (e: Exception) {
-            Log.w(TAG, "Error unregistering receiver: ${e.message}")
-        }
+        // Safely unregister receivers
+        safeUnregisterReceiver(updateReceiver)
+        safeUnregisterReceiver(timeChangeReceiver)
 
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun safeUnregisterReceiver(receiver: BroadcastReceiver) {
+        try {
+            unregisterReceiver(receiver)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Receiver not registered: ${e.message}")
+        }
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -141,21 +186,28 @@ class PrayerForegroundService : Service() {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(): Notification {
-        val nextPrayer = if (prayers.isNotEmpty() && nextPrayerIndex < prayers.size) {
+        val nextPrayer = if (prayers.isNotEmpty() && nextPrayerIndex in prayers.indices) {
             prayers[nextPrayerIndex]
         } else {
+            if (prayers.isNotEmpty()) {
+                Log.w(TAG, "Invalid prayer index: $nextPrayerIndex (size: ${prayers.size})")
+            }
             null
         }
 
         // Create intent to open the app when notification is tapped
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        val launchIntent = try {
+            packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get launch intent: ${e.message}")
+            null
         }
 
         val pendingIntent = launchIntent?.let {
@@ -167,8 +219,16 @@ class PrayerForegroundService : Service() {
             )
         }
 
+        // Use app's launcher icon for notification
+        val iconResId = try {
+            resources.getIdentifier("ic_launcher", "mipmap", packageName).takeIf { it != 0 }
+                ?: android.R.drawable.ic_dialog_info
+        } catch (e: Exception) {
+            android.R.drawable.ic_dialog_info
+        }
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(iconResId)
             .setOngoing(true)
             .setShowWhen(true)
             .setContentIntent(pendingIntent)
@@ -180,7 +240,7 @@ class PrayerForegroundService : Service() {
             builder.setContentTitle("Next: ${nextPrayer.label}")
             builder.setContentText("${nextPrayer.prayerName} at ${formatTime(nextPrayer.prayerTime)}")
 
-            // Use chronometer for countdown
+            // Use chronometer for countdown - Android handles the display automatically
             builder.setUsesChronometer(true)
             builder.setChronometerCountDown(true)
             builder.setWhen(nextPrayer.prayerTime)
@@ -194,8 +254,8 @@ class PrayerForegroundService : Service() {
 
     private fun updateNotification() {
         val notification = buildNotification()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, notification)
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+            ?: Log.e(TAG, "NotificationManager is null, cannot update notification")
     }
 
     private fun savePrayerState() {
@@ -226,25 +286,49 @@ class PrayerForegroundService : Service() {
         }
     }
 
+    /**
+     * Parse prayers JSON using Android's built-in JSONArray/JSONObject.
+     * Expected format: [{"prayerName":"Fajr","prayerTime":1234567890,"label":"Fajr"}]
+     */
     private fun parsePrayersJson(json: String): List<PrayerTimeData> {
         return try {
             val result = mutableListOf<PrayerTimeData>()
-            // Simple JSON parsing without external library
-            val pattern = """\{"prayerName":"([^"]+)","prayerTime":(\d+),"label":"([^"]+)"\}""".toRegex()
-            pattern.findAll(json).forEach { match ->
-                val (name, time, label) = match.destructured
-                result.add(PrayerTimeData(name, time.toLong(), label))
+            val jsonArray = JSONArray(json)
+
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val prayerName = obj.getString("prayerName")
+                val prayerTime = obj.getLong("prayerTime")
+                val label = obj.getString("label")
+                result.add(PrayerTimeData(prayerName, prayerTime, label))
             }
+
+            Log.d(TAG, "Parsed ${result.size} prayers from JSON")
             result
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing prayers JSON: ${e.message}")
+            Log.e(TAG, "Error parsing prayers JSON: ${e.message}", e)
             emptyList()
         }
     }
 
+    /**
+     * Convert prayers list to JSON string using Android's built-in JSONArray/JSONObject.
+     */
     private fun prayersToJson(prayers: List<PrayerTimeData>): String {
-        return prayers.joinToString(",", "[", "]") { prayer ->
-            """{"prayerName":"${prayer.prayerName}","prayerTime":${prayer.prayerTime},"label":"${prayer.label}"}"""
+        return try {
+            val jsonArray = JSONArray()
+            for (prayer in prayers) {
+                val obj = JSONObject().apply {
+                    put("prayerName", prayer.prayerName)
+                    put("prayerTime", prayer.prayerTime)
+                    put("label", prayer.label)
+                }
+                jsonArray.put(obj)
+            }
+            jsonArray.toString()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error converting prayers to JSON: ${e.message}", e)
+            "[]"
         }
     }
 
