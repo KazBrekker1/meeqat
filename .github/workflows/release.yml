@@ -1,95 +1,158 @@
-name: release
+name: Release
 
 on:
   push:
     branches:
       - main
-      - dev
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create as draft release'
+        required: false
+        default: true
+        type: boolean
+
+# Prevent concurrent releases
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  publish-tauri:
+  # First job: Build and release desktop apps
+  publish-desktop:
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest # Arm based macs
+          - platform: macos-latest
             args: --target aarch64-apple-darwin
-          - platform: macos-latest # Intel based macs
+            arch: arm64
+          - platform: macos-latest
             args: --target x86_64-apple-darwin
+            arch: x64
           - platform: ubuntu-22.04
-            args: ""
+            args: ''
+            arch: x64
+          # Linux ARM64 - only available for public repos
+          # - platform: ubuntu-22.04-arm
+          #   args: ''
+          #   arch: arm64
           - platform: windows-latest
-            args: ""
+            args: ''
+            arch: x64
 
     runs-on: ${{ matrix.platform }}
+    outputs:
+      release_id: ${{ steps.tauri.outputs.releaseId }}
+      version: ${{ steps.version.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: install Rust stable
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src-tauri -> target
+          shared-key: ${{ matrix.platform }}-${{ matrix.arch }}
 
-      - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Install dependencies (Ubuntu only)
+        if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-        # webkitgtk 4.0 is for Tauri v1 - webkitgtk 4.1 is for Tauri v2.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Build frontend
-        run: bun generate
+      # Note: tauri-action runs beforeBuildCommand from tauri.conf.json automatically
+      # so we don't need a separate "bun generate" step
 
-      - name: Verify frontend build
+      - name: Import Apple Developer Certificate
+        if: matrix.platform == 'macos-latest' && env.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          echo "=== Checking dist folder ==="
-          ls -la dist/ || echo "No dist folder!"
-          ls -la dist/_nuxt/ 2>/dev/null | head -10 || echo "No _nuxt folder!"
-          echo "=== Dist folder size ==="
-          du -sh dist/ || echo "Failed to get dist size"
+          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and release
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing (optional - only if secrets are set)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows code signing (optional - only if secrets are set)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: meeqat-v__VERSION__
           releaseName: Meeqat v__VERSION__
-          releaseBody: After installing the Apple app you have to run "xattr -c /Applications/Meeqat.app" once before launching
-          releaseDraft: false
+          releaseBody: |
+            ## What's New
+
+            See the [full changelog](https://github.com/KazBrekker1/meeqat/commits/main) for details.
+
+            ## Installation
+
+            ### macOS
+            After installing, you may need to run: `xattr -c /Applications/Meeqat.app`
+
+            ### Windows
+            Download the `.msi` installer for Windows.
+
+            ### Linux
+            Download the `.deb` package or `.AppImage`.
+          releaseDraft: ${{ github.event.inputs.draft == 'true' || github.event.inputs.draft == '' }}
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: List build artifacts
-        run: |
-          echo "=== Build artifacts ==="
-          find src-tauri/target -name "*.dmg" -o -name "*.app" -o -name "*.exe" -o -name "*.msi" -o -name "*.deb" -o -name "*.AppImage" 2>/dev/null | head -20
-          echo "=== Artifact sizes ==="
-          find src-tauri/target -name "*.dmg" -exec ls -lh {} \; 2>/dev/null || true
-          find src-tauri/target -name "*.exe" -exec ls -lh {} \; 2>/dev/null || true
-          find src-tauri/target -name "*.msi" -exec ls -lh {} \; 2>/dev/null || true
-          find src-tauri/target -name "*.deb" -exec ls -lh {} \; 2>/dev/null || true
-          find src-tauri/target -name "*.AppImage" -exec ls -lh {} \; 2>/dev/null || true
-
-  publish-android-apk:
+  # Second job: Build Android APK (runs after desktop to use same release)
+  publish-android:
+    needs: publish-desktop
     permissions:
       contents: write
     runs-on: ubuntu-latest
     environment: Main
+
     steps:
       - uses: actions/checkout@v4
 
@@ -98,10 +161,24 @@ jobs:
         with:
           bun-version: latest
 
-      - name: install Rust stable
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: android-arm64
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -116,13 +193,12 @@ jobs:
         run: |
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platforms;android-34" \
-            "build-tools;29.0.3" \
             "build-tools;34.0.0" \
             "platform-tools" \
             "ndk;26.1.10909125" \
             "cmake;3.22.1"
 
-      - name: Export Android NDK environment variables
+      - name: Export Android environment variables
         run: |
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
@@ -130,10 +206,23 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Initialize Android project (if missing)
-        run: test -d src-tauri/gen/android || bun run tauri:android:init
+        run: test -d src-tauri/gen/android || bun run tauri android init
+
+      - name: Setup Android signing
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          cd src-tauri/gen/android
+          echo "keyAlias=$ANDROID_KEY_ALIAS" > keystore.properties
+          echo "password=$ANDROID_KEY_PASSWORD" >> keystore.properties
+          echo "$ANDROID_KEY_BASE64" | base64 -d > $RUNNER_TEMP/keystore.jks
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+          echo "storePassword=${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" >> keystore.properties
 
       - name: Build Android APK (release)
         run: bun run tauri android build
@@ -143,52 +232,26 @@ jobs:
           echo "=== APK files ==="
           find src-tauri/gen/android -name "*.apk" -exec ls -lh {} \;
           echo "=== AAB files ==="
-          find src-tauri/gen/android -name "*.aab" -exec ls -lh {} \;
+          find src-tauri/gen/android -name "*.aab" -exec ls -lh {} \; || echo "No AAB files found"
 
-      - name: Compute version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
-      - name: Validate Android signing secrets
-        run: |
-          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_STORE_BASE64"; exit 1; fi
-          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_ALIAS"; exit 1; fi
-          if [ -z "${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_STORE_PASSWORD"; exit 1; fi
-          if [ -z "${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}" ]; then echo "Missing secret ANDROID_SIGNING_KEY_PASSWORD"; exit 1; fi
-
-      - name: Sanity-check keystore decoding
-        env:
-          ANDROID_SIGNING_KEY_STORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
-          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-        run: |
-          echo "$ANDROID_SIGNING_KEY_STORE_BASE64" | base64 -d > keystore.jks
-          keytool -list -keystore keystore.jks -storepass "$ANDROID_SIGNING_STORE_PASSWORD" >/dev/null
-
-      - name: Sign Android APKs
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/universal/release
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
-          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
-
-      - name: Sign Android AABs
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: src-tauri/gen/android/app/build/outputs/bundle/universalRelease
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY_STORE_BASE64 }}
-          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
-
-      - name: Upload APK to GitHub Release
+      - name: Upload Android artifacts to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: meeqat-v${{ env.VERSION }}
+          tag_name: meeqat-v${{ needs.publish-desktop.outputs.version }}
           files: |
-            src-tauri/gen/android/**/outputs/**/*.apk
+            src-tauri/gen/android/**/outputs/**/*-signed.apk
             src-tauri/gen/android/**/outputs/**/*.aab
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Build iOS (requires macOS runner and Apple Developer account)
+  # publish-ios:
+  #   needs: publish-desktop
+  #   permissions:
+  #     contents: write
+  #   runs-on: macos-latest
+  #   environment: Main
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     # ... iOS build steps ...

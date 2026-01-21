@@ -11,3 +11,8 @@ node_modules
 dist
 src-tauri/target
 .osgrep
+
+# Android signing (should never be committed)
+*.jks
+*.keystore
+keystore.properties
