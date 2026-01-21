@@ -7,7 +7,7 @@ import {
   resetToMidnight,
   getUserTimezone,
 } from "@/utils/time";
-import { PRAYER_ORDER } from "@/constants/prayers";
+import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS } from "@/constants/prayers";
 import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
 import {
   toCalendar,
@@ -33,6 +33,7 @@ export function usePrayerTimes() {
   const selectedCountry = ref<string>("");
   const selectedExtraTimezone = ref<string>("");
   const timeFormat = ref<"24h" | "12h">("24h");
+  const showAdditionalTimes = ref(false); // Show Ishraq, Duha, Tahajjud, etc.
 
   // --- New: Stale/Offline indicators ---
   const isStale = ref(false);
@@ -439,6 +440,7 @@ export function usePrayerTimes() {
       const country = await store.get<string>("country");
       const extraTz = await store.get<string>("extraTimezone");
       const fmt = await store.get<string>("timeFormat");
+      const additionalTimes = await store.get<boolean>("showAdditionalTimes");
       if (typeof method === "number") selectedMethodId.value = method;
       if (typeof city === "string") selectedCity.value = city;
       if (typeof country === "string" && country)
@@ -448,6 +450,9 @@ export function usePrayerTimes() {
       }
       if (fmt === "24h" || fmt === "12h") {
         timeFormat.value = fmt;
+      }
+      if (typeof additionalTimes === "boolean") {
+        showAdditionalTimes.value = additionalTimes;
       }
     } catch {
       // ignore
@@ -462,6 +467,7 @@ export function usePrayerTimes() {
       await store.set("country", selectedCountry.value ?? "");
       await store.set("extraTimezone", selectedExtraTimezone.value ?? "");
       await store.set("timeFormat", timeFormat.value);
+      await store.set("showAdditionalTimes", showAdditionalTimes.value);
       if (store.save) await store.save();
     } catch {
       // ignore
@@ -480,6 +486,7 @@ export function usePrayerTimes() {
       selectedCountry,
       selectedExtraTimezone,
       timeFormat,
+      showAdditionalTimes,
     ],
     () => {
       void savePreferences();
@@ -537,9 +544,27 @@ export function usePrayerTimes() {
     return formatDateInTimezone(base, is24Hour, targetTz);
   }
 
+  // Extended prayer order including additional times
+  const EXTENDED_ORDER: [string, string][] = [
+    ["Imsak", "Imsak"],
+    ["Fajr", "Fajr"],
+    ["Sunrise", "Sunrise"],
+    ["Dhuhr", "Dhuhr"],
+    ["Asr", "Asr"],
+    ["Maghrib", "Maghrib"],
+    ["Isha", "Isha"],
+    ["Midnight", "Midnight"],
+    ["Firstthird", "First Third"],
+    ["Lastthird", "Last Third"],
+  ];
+
   const timingsList = computed<PrayerTimingItem[]>(() => {
     if (!timings.value) return [];
-    const list = PRAYER_ORDER
+
+    // Choose which prayer order to use based on settings
+    const orderToUse = showAdditionalTimes.value ? EXTENDED_ORDER : PRAYER_ORDER;
+
+    const list = orderToUse
       .filter(([key]) => Boolean(timings.value?.[key]))
       .map(([key, label]) => {
         const timeStr = (timings.value?.[key] ?? "") as string;
@@ -548,6 +573,8 @@ export function usePrayerTimes() {
           typeof minutes === "number"
             ? formatMinutesLocal(minutes as number, is24Hour)
             : timeStr;
+        const description = PRAYER_DESCRIPTIONS[key] || undefined;
+        const isAdditional = ADDITIONAL_PRAYER_KEYS_SET.has(key);
         return {
           key,
           label,
@@ -557,7 +584,15 @@ export function usePrayerTimes() {
             timeStr,
             selectedExtraTimezone.value
           ),
+          description,
+          isAdditional,
         } as PrayerTimingItem;
+      })
+      // Sort by minutes to ensure correct order
+      .sort((a, b) => {
+        if (typeof a.minutes !== "number") return 1;
+        if (typeof b.minutes !== "number") return -1;
+        return a.minutes - b.minutes;
       });
 
     const nowS = nowSecondsOfDay.value;
@@ -645,6 +680,7 @@ export function usePrayerTimes() {
     selectedExtraTimezone,
     timeFormat,
     is24Hour,
+    showAdditionalTimes,
 
     // New: stale/offline indicators
     isStale,

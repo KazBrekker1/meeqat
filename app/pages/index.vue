@@ -35,7 +35,29 @@
           />
         </div>
 
+        <!-- Favorite Locations -->
+        <div class="animate-slide-up opacity-0 delay-150">
+          <PrayerFavoriteLocations
+            :favorites="favorites"
+            :current-city="selectedCity"
+            :current-country-code="selectedCountry"
+            :max-favorites="MAX_FAVORITES"
+            @select="onSelectFavorite"
+            @remove="onRemoveFavorite"
+            @add-current="onAddCurrentToFavorites"
+          />
+        </div>
+
         <div v-if="fetchError" class="text-[var(--ui-color-error-500)] text-sm">{{ fetchError }}</div>
+
+        <!-- Ramadan Mode Banner -->
+        <div class="animate-slide-up opacity-0 delay-175">
+          <PrayerRamadanBanner
+            :show-ramadan-mode="showRamadanMode"
+            :ramadan-info="ramadanInfo"
+            :suhoor-iftar-times="suhoorIftarTimes"
+          />
+        </div>
 
         <Transition
           enter-active-class="transition duration-200 ease-out"
@@ -131,11 +153,17 @@
       :time-format="timeFormat"
       :is-calendar-shown="showCalendar"
       :is-loading="isLoading"
+      :show-additional-times="showAdditionalTimes"
+      :ramadan-mode-enabled="ramadanModeEnabled"
+      :notification-settings="notificationSettings"
       :test-play-athan="testPlayAthan"
       :on-test-notification-click="onTestNotificationClick"
       @clear-cache="onClearCache"
       @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
       @toggle-calendar="showCalendar = !showCalendar"
+      @toggle-additional-times="showAdditionalTimes = !showAdditionalTimes"
+      @toggle-ramadan-mode="setRamadanModeEnabled(!ramadanModeEnabled)"
+      @update:notification-settings="onUpdateNotificationSettings"
     />
   </div>
 </template>
@@ -156,6 +184,9 @@ import {
   today,
 } from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
+import { nextTick } from "vue";
+import type { NotificationSettings } from "@/composables/useNotifications";
+import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
 
 const timeZone = getLocalTimeZone();
 const islamicDate = shallowRef(
@@ -262,6 +293,7 @@ const {
   clearTimings,
   clearCache,
   timeFormat,
+  showAdditionalTimes,
   testPlayAthan,
   isAthanActive,
   dismissAthan,
@@ -269,8 +301,8 @@ const {
   isOffline,
 } = usePrayerTimes();
 
-// Start notifications scheduler
-const { startPrayerNotifications, stopPrayerNotifications, send } =
+// Start notifications scheduler with custom settings
+const { startPrayerNotifications, stopPrayerNotifications, send, settings: notificationSettings } =
   useNotifications({
     timingsList,
   });
@@ -281,7 +313,53 @@ const { start: startPrayerService, stop: stopPrayerService, isAndroid } =
     timingsList,
   });
 
+// Islamic calendar and Ramadan mode
+const {
+  currentIslamicDate,
+  ramadanInfo,
+  suhoorIftarTimes,
+  showRamadanMode,
+  ramadanModeEnabled,
+  setRamadanModeEnabled,
+} = useIslamicCalendar(timingsList);
+
+// Favorite locations
+const {
+  favorites,
+  addFavorite,
+  removeFavorite,
+  MAX_FAVORITES,
+} = useFavoriteLocations();
+
 const onTestNotificationClick = () => send("Meeqat", "Prayer time is here");
+
+// Favorite locations handlers
+async function onSelectFavorite(fav: FavoriteLocation) {
+  selectedCity.value = fav.city;
+  selectedCountry.value = fav.countryCode;
+  selectedMethodId.value = fav.methodId;
+  await nextTick();
+  onFetchByCity();
+}
+
+async function onAddCurrentToFavorites() {
+  if (!selectedCity.value || !selectedCountry.value) return;
+  await addFavorite({
+    city: selectedCity.value,
+    country: selectedCountryName.value,
+    countryCode: selectedCountry.value,
+    methodId: selectedMethodId.value,
+  });
+}
+
+async function onRemoveFavorite(id: string) {
+  await removeFavorite(id);
+}
+
+// Notification settings handler
+function onUpdateNotificationSettings(newSettings: NotificationSettings) {
+  notificationSettings.value = newSettings;
+}
 
 const methodSelectOptions = computed(() =>
   METHOD_OPTIONS.map((m: MethodOption) => ({

@@ -94,33 +94,79 @@ jobs:
       # Note: tauri-action runs beforeBuildCommand from tauri.conf.json automatically
       # so we don't need a separate "bun generate" step
 
+      # Apple code signing - only attempt if ALL required secrets are set
+      # To enable: set APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, KEYCHAIN_PASSWORD,
+      # APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID in repository secrets
       - name: Import Apple Developer Certificate
-        if: matrix.platform == 'macos-latest' && env.APPLE_CERTIFICATE != ''
+        id: apple-cert
+        if: matrix.platform == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          # Check if certificate secret is set and non-empty
+          if [ -z "$APPLE_CERTIFICATE" ] || [ "$APPLE_CERTIFICATE" = "" ]; then
+            echo "::notice::Apple certificate not configured - building unsigned app"
+            echo "signing_enabled=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Attempting to import Apple certificate..."
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12 2>/dev/null || {
+            echo "::warning::Failed to decode certificate - building unsigned app"
+            echo "signing_enabled=false" >> $GITHUB_OUTPUT
+            rm -f certificate.p12
+            exit 0
+          }
+
+          # Check if decoded file is valid (non-empty)
+          if [ ! -s certificate.p12 ]; then
+            echo "::warning::Certificate file is empty - building unsigned app"
+            echo "signing_enabled=false" >> $GITHUB_OUTPUT
+            rm -f certificate.p12
+            exit 0
+          fi
+
+          # Create and configure keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain || {
+            echo "::warning::Failed to create keychain - building unsigned app"
+            echo "signing_enabled=false" >> $GITHUB_OUTPUT
+            rm -f certificate.p12
+            exit 0
+          }
+
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+
+          # Import certificate
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign 2>/dev/null || {
+            echo "::warning::Failed to import certificate (invalid password or format) - building unsigned app"
+            security delete-keychain build.keychain 2>/dev/null || true
+            echo "signing_enabled=false" >> $GITHUB_OUTPUT
+            rm -f certificate.p12
+            exit 0
+          }
+
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          echo "::notice::Apple certificate imported successfully - code signing enabled"
+          echo "signing_enabled=true" >> $GITHUB_OUTPUT
+          rm -f certificate.p12
 
       - name: Build and release
         id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code signing (optional - only if secrets are set)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS code signing - only pass if certificate was successfully imported
+          APPLE_CERTIFICATE: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ steps.apple-cert.outputs.signing_enabled == 'true' && secrets.APPLE_TEAM_ID || '' }}
           # Windows code signing (optional - only if secrets are set)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -146,9 +192,8 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-  # Second job: Build Android APK (runs after desktop to use same release)
+  # Android job - runs in parallel with desktop builds
   publish-android:
-    needs: publish-desktop
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -156,6 +201,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -238,7 +289,8 @@ jobs:
       - name: Upload Android artifacts to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: meeqat-v${{ needs.publish-desktop.outputs.version }}
+          tag_name: meeqat-v${{ steps.version.outputs.version }}
+          draft: ${{ github.event.inputs.draft == 'true' || github.event.inputs.draft == '' }}
           files: |
             src-tauri/gen/android/**/outputs/**/*-signed.apk
             src-tauri/gen/android/**/outputs/**/*.aab

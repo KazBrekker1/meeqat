@@ -26,6 +26,8 @@ export interface PrayerTimingItem {
   isPast?: boolean;
   isNext?: boolean;
   altTime?: string;
+  description?: string;
+  isAdditional?: boolean; // True for Ishraq, Duha, Tahajjud, etc.
 }
 
 export type CacheMap = Record<string, CachedDay>; // key: YYYY-MM-DD

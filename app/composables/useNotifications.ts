@@ -11,11 +11,27 @@ import {
   cancel,
 } from "@tauri-apps/plugin-notification";
 
-const NOTIFICATION_MINUTES_BEFORE = 5;
-const NOTIFICATION_MINUTES_AFTER = 5;
+// Notification timing options (in minutes)
+export const NOTIFICATION_TIMING_OPTIONS = [0, 5, 10, 15, 20, 30] as const;
+export type NotificationTiming = (typeof NOTIFICATION_TIMING_OPTIONS)[number];
+
+export interface NotificationSettings {
+  enabled: boolean;
+  minutesBefore: NotificationTiming;
+  minutesAfter: NotificationTiming;
+  atPrayerTime: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  minutesBefore: 5,
+  minutesAfter: 5,
+  atPrayerTime: true,
+};
 
 type UseNotificationsOptions = {
   timingsList?: Ref<PrayerTimingItem[]>;
+  settings?: Ref<NotificationSettings>;
 };
 
 export function useNotifications(options?: UseNotificationsOptions) {
@@ -25,6 +41,41 @@ export function useNotifications(options?: UseNotificationsOptions) {
   let lastScheduledDateKey = "";
 
   const timingsList = options?.timingsList ?? usePrayerTimes().timingsList;
+
+  // Use provided settings or create local reactive settings
+  const settings = options?.settings ?? ref<NotificationSettings>({ ...DEFAULT_NOTIFICATION_SETTINGS });
+
+  // Load/save settings from store
+  async function loadNotificationSettings(): Promise<void> {
+    try {
+      const store = await getStore();
+      const saved = await store.get<NotificationSettings>("notificationSettings");
+      if (saved) {
+        settings.value = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function saveNotificationSettings(): Promise<void> {
+    try {
+      const store = await getStore();
+      await store.set("notificationSettings", settings.value);
+      if (store.save) await store.save();
+    } catch {
+      // ignore
+    }
+  }
+
+  // Watch settings changes and reschedule
+  watch(settings, () => {
+    void saveNotificationSettings();
+    if (isRunning.value) {
+      lastScheduledDateKey = ""; // Force reschedule
+      void schedulePrayerNotifications();
+    }
+  }, { deep: true });
 
   async function ensurePermission(): Promise<boolean> {
     try {
@@ -61,6 +112,11 @@ export function useNotifications(options?: UseNotificationsOptions) {
    * Uses the native Schedule API so notifications work even when app is backgrounded.
    */
   async function schedulePrayerNotifications(): Promise<void> {
+    if (!settings.value.enabled) {
+      isRunning.value = false;
+      return;
+    }
+
     const ok = await ensurePermission();
     if (!ok) return;
 
@@ -89,6 +145,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
     if (!list.length) return;
 
     let notificationId = 1;
+    const { minutesBefore, minutesAfter, atPrayerTime } = settings.value;
 
     for (const prayer of list) {
       const prayerMinutes = prayer.minutes as number;
@@ -96,33 +153,54 @@ export function useNotifications(options?: UseNotificationsOptions) {
       // Create date objects for notification times
       const todayBase = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // Schedule "before" notification (5 minutes before prayer)
-      const beforeTime = new Date(todayBase.getTime() + (prayerMinutes - NOTIFICATION_MINUTES_BEFORE) * 60 * 1000);
-      if (beforeTime > now) {
-        try {
-          sendNotification({
-            id: notificationId++,
-            title: "Meeqat",
-            body: `Athan for ${prayer.label} in ${NOTIFICATION_MINUTES_BEFORE} minutes`,
-            schedule: Schedule.at(beforeTime),
-          });
-        } catch {
-          // ignore scheduling errors
+      // Schedule "before" notification
+      if (minutesBefore > 0) {
+        const beforeTime = new Date(todayBase.getTime() + (prayerMinutes - minutesBefore) * 60 * 1000);
+        if (beforeTime > now) {
+          try {
+            sendNotification({
+              id: notificationId++,
+              title: "Meeqat",
+              body: `Athan for ${prayer.label} in ${minutesBefore} minutes`,
+              schedule: Schedule.at(beforeTime),
+            });
+          } catch {
+            // ignore scheduling errors
+          }
         }
       }
 
-      // Schedule "after" notification (5 minutes after prayer - iqama reminder)
-      const afterTime = new Date(todayBase.getTime() + (prayerMinutes + NOTIFICATION_MINUTES_AFTER) * 60 * 1000);
-      if (afterTime > now) {
-        try {
-          sendNotification({
-            id: notificationId++,
-            title: "Meeqat",
-            body: `Get ready for Iqama for ${prayer.label}`,
-            schedule: Schedule.at(afterTime),
-          });
-        } catch {
-          // ignore scheduling errors
+      // Schedule "at prayer time" notification
+      if (atPrayerTime) {
+        const atTime = new Date(todayBase.getTime() + prayerMinutes * 60 * 1000);
+        if (atTime > now) {
+          try {
+            sendNotification({
+              id: notificationId++,
+              title: "Meeqat",
+              body: `It's time for ${prayer.label}`,
+              schedule: Schedule.at(atTime),
+            });
+          } catch {
+            // ignore scheduling errors
+          }
+        }
+      }
+
+      // Schedule "after" notification (iqama reminder)
+      if (minutesAfter > 0) {
+        const afterTime = new Date(todayBase.getTime() + (prayerMinutes + minutesAfter) * 60 * 1000);
+        if (afterTime > now) {
+          try {
+            sendNotification({
+              id: notificationId++,
+              title: "Meeqat",
+              body: `Get ready for Iqama for ${prayer.label}`,
+              schedule: Schedule.at(afterTime),
+            });
+          } catch {
+            // ignore scheduling errors
+          }
         }
       }
     }
@@ -164,6 +242,9 @@ export function useNotifications(options?: UseNotificationsOptions) {
     // Don't cancel notifications on unmount - let them fire even if app is closed
   });
 
+  // Load settings on init
+  void loadNotificationSettings();
+
   return {
     permissionGranted,
     ensurePermission,
@@ -172,5 +253,9 @@ export function useNotifications(options?: UseNotificationsOptions) {
     stopPrayerNotifications,
     schedulePrayerNotifications,
     isRunning,
+    // Notification settings
+    settings,
+    loadNotificationSettings,
+    saveNotificationSettings,
   };
 }
