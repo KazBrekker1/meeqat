@@ -1,6 +1,6 @@
 [package]
 name = "meeqat-app"
-version = "2.0.0"
+version = "2.1.0"
 description = "Meeqat App"
 authors = [ "KazBrekker1" ]
 repository = "https://github.com/KazBrekker1/meeqat"

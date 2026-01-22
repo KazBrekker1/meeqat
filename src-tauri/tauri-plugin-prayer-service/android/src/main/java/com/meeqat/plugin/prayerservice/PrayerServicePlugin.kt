@@ -4,7 +4,10 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -291,6 +294,101 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         val result = JSObject()
         result.put("granted", granted)
         invoke.resolve(result)
+    }
+
+    /**
+     * Check if the app is exempted from battery optimization (Doze mode).
+     * When exempted, the app can run background services more reliably.
+     */
+    @Command
+    fun checkBatteryOptimization(invoke: Invoke) {
+        try {
+            val powerManager = activity.getSystemService(Activity.POWER_SERVICE) as PowerManager
+            val isIgnoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                powerManager.isIgnoringBatteryOptimizations(activity.packageName)
+            } else {
+                // Battery optimization wasn't as aggressive before Android 6
+                true
+            }
+
+            Log.d(TAG, "checkBatteryOptimization: isIgnoring=$isIgnoring")
+
+            val result = JSObject()
+            result.put("isIgnoringBatteryOptimizations", isIgnoring)
+            result.put("canRequest", Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            invoke.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking battery optimization: ${e.message}", e)
+            invoke.reject("Failed to check battery optimization: ${e.message}")
+        }
+    }
+
+    /**
+     * Request the user to disable battery optimization for this app.
+     * This opens the system settings where the user can whitelist the app.
+     */
+    @Command
+    fun requestBatteryOptimizationExemption(invoke: Invoke) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = activity.getSystemService(Activity.POWER_SERVICE) as PowerManager
+
+                if (!powerManager.isIgnoringBatteryOptimizations(activity.packageName)) {
+                    // Open battery optimization settings for this app
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${activity.packageName}")
+                    }
+
+                    try {
+                        activity.startActivity(intent)
+                        Log.d(TAG, "Opened battery optimization settings")
+                    } catch (e: Exception) {
+                        // Some devices may block this intent, fall back to general battery settings
+                        Log.w(TAG, "Direct request blocked, opening general battery settings: ${e.message}")
+                        val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                        activity.startActivity(fallbackIntent)
+                    }
+
+                    val result = JSObject()
+                    result.put("requestSent", true)
+                    invoke.resolve(result)
+                } else {
+                    // Already exempt
+                    Log.d(TAG, "Already ignoring battery optimizations")
+                    val result = JSObject()
+                    result.put("alreadyExempt", true)
+                    invoke.resolve(result)
+                }
+            } else {
+                // Not needed on older Android versions
+                val result = JSObject()
+                result.put("notRequired", true)
+                invoke.resolve(result)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting battery optimization exemption: ${e.message}", e)
+            invoke.reject("Failed to request battery optimization exemption: ${e.message}")
+        }
+    }
+
+    /**
+     * Open the app's system settings page where users can manage permissions
+     * and battery settings manually.
+     */
+    @Command
+    fun openAppSettings(invoke: Invoke) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${activity.packageName}")
+            }
+            activity.startActivity(intent)
+
+            Log.d(TAG, "Opened app settings")
+            invoke.resolve()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening app settings: ${e.message}", e)
+            invoke.reject("Failed to open app settings: ${e.message}")
+        }
     }
 
     /**

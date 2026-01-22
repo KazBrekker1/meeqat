@@ -152,6 +152,120 @@
           </Transition>
         </div>
 
+        <!-- Android Permissions Section (only shown on Android) -->
+        <template v-if="isAndroid">
+          <USeparator />
+
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <p class="font-medium">Android Permissions</p>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="isCheckingPermissions"
+                @click="checkAllPermissions"
+                icon="heroicons:arrow-path-20-solid"
+              >
+                Refresh
+              </UButton>
+            </div>
+            <p class="text-sm text-muted">Required for background timer and notifications</p>
+
+            <div class="space-y-3 pl-4 border-l-2 border-[var(--ui-border)]">
+              <!-- Notification Permission -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-2">
+                  <UIcon
+                    :name="notificationPermissionGranted ? 'heroicons:check-circle-20-solid' : 'heroicons:x-circle-20-solid'"
+                    :class="notificationPermissionGranted ? 'text-green-500' : 'text-red-500'"
+                  />
+                  <div>
+                    <p class="text-sm font-medium">Notifications</p>
+                    <p class="text-xs text-muted">Show prayer alerts</p>
+                  </div>
+                </div>
+                <UButton
+                  v-if="notificationPermissionGranted === false"
+                  size="xs"
+                  variant="soft"
+                  @click="handleRequestNotificationPermission"
+                >
+                  Enable
+                </UButton>
+                <UBadge
+                  v-else-if="notificationPermissionGranted === true"
+                  color="success"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Granted
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Checking...
+                </UBadge>
+              </div>
+
+              <!-- Battery Optimization -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex items-center gap-2">
+                  <UIcon
+                    :name="batteryOptimizationIgnored ? 'heroicons:check-circle-20-solid' : 'heroicons:exclamation-triangle-20-solid'"
+                    :class="batteryOptimizationIgnored ? 'text-green-500' : 'text-amber-500'"
+                  />
+                  <div>
+                    <p class="text-sm font-medium">Battery Optimization</p>
+                    <p class="text-xs text-muted">Keep timer running in background</p>
+                  </div>
+                </div>
+                <UButton
+                  v-if="batteryOptimizationIgnored === false"
+                  size="xs"
+                  variant="soft"
+                  color="warning"
+                  @click="handleRequestBatteryOptimization"
+                >
+                  Disable
+                </UButton>
+                <UBadge
+                  v-else-if="batteryOptimizationIgnored === true"
+                  color="success"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Unrestricted
+                </UBadge>
+                <UBadge
+                  v-else
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                >
+                  Checking...
+                </UBadge>
+              </div>
+
+              <!-- Open App Settings Button -->
+              <div class="pt-2">
+                <UButton
+                  size="xs"
+                  variant="outline"
+                  color="neutral"
+                  @click="handleOpenAppSettings"
+                  icon="heroicons:cog-6-tooth-20-solid"
+                >
+                  Open App Settings
+                </UButton>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <USeparator />
 
         <!-- Clear Cache -->
@@ -221,6 +335,22 @@
 <script lang="ts" setup>
 import { NOTIFICATION_TIMING_OPTIONS, type NotificationSettings } from '@/composables/useNotifications';
 
+interface NotificationPermissionStatus {
+  granted: boolean;
+  canRequest: boolean;
+}
+
+interface BatteryOptimizationStatus {
+  isIgnoringBatteryOptimizations: boolean;
+  canRequest: boolean;
+}
+
+interface BatteryOptimizationResult {
+  requestSent?: boolean;
+  alreadyExempt?: boolean;
+  notRequired?: boolean;
+}
+
 const props = defineProps<{
   modelValue: boolean;
   timeFormat: '24h' | '12h';
@@ -231,6 +361,13 @@ const props = defineProps<{
   notificationSettings?: NotificationSettings;
   testPlayAthan?: () => void;
   onTestNotificationClick?: () => void;
+  // Android-specific props
+  isAndroid?: boolean;
+  checkNotificationPermission?: () => Promise<NotificationPermissionStatus>;
+  requestNotificationPermission?: () => Promise<boolean>;
+  checkBatteryOptimization?: () => Promise<BatteryOptimizationStatus>;
+  requestBatteryOptimizationExemption?: () => Promise<BatteryOptimizationResult>;
+  openAppSettings?: () => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -296,6 +433,67 @@ function toggleAtPrayerTime() {
       ...props.notificationSettings,
       atPrayerTime: !props.notificationSettings.atPrayerTime,
     });
+  }
+}
+
+// Android permissions state
+const notificationPermissionGranted = ref<boolean | null>(null);
+const batteryOptimizationIgnored = ref<boolean | null>(null);
+const isCheckingPermissions = ref(false);
+
+// Check permissions when modal opens on Android
+watch(() => props.modelValue, async (isOpen) => {
+  if (isOpen && props.isAndroid) {
+    await checkAllPermissions();
+  }
+});
+
+async function checkAllPermissions() {
+  if (!props.isAndroid) return;
+
+  isCheckingPermissions.value = true;
+  try {
+    // Check notification permission
+    if (props.checkNotificationPermission) {
+      const status = await props.checkNotificationPermission();
+      notificationPermissionGranted.value = status.granted;
+    }
+
+    // Check battery optimization
+    if (props.checkBatteryOptimization) {
+      const status = await props.checkBatteryOptimization();
+      batteryOptimizationIgnored.value = status.isIgnoringBatteryOptimizations;
+    }
+  } catch (err) {
+    console.error('Error checking permissions:', err);
+  } finally {
+    isCheckingPermissions.value = false;
+  }
+}
+
+async function handleRequestNotificationPermission() {
+  if (props.requestNotificationPermission) {
+    const granted = await props.requestNotificationPermission();
+    notificationPermissionGranted.value = granted;
+  }
+}
+
+async function handleRequestBatteryOptimization() {
+  if (props.requestBatteryOptimizationExemption) {
+    await props.requestBatteryOptimizationExemption();
+    // Re-check after a short delay (user needs to grant permission in system settings)
+    setTimeout(async () => {
+      if (props.checkBatteryOptimization) {
+        const status = await props.checkBatteryOptimization();
+        batteryOptimizationIgnored.value = status.isIgnoringBatteryOptimizations;
+      }
+    }, 1000);
+  }
+}
+
+async function handleOpenAppSettings() {
+  if (props.openAppSettings) {
+    await props.openAppSettings();
   }
 }
 </script>

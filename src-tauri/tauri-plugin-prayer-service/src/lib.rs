@@ -34,6 +34,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::is_service_running,
             commands::check_notification_permission,
             commands::request_notification_permission,
+            commands::check_battery_optimization,
+            commands::request_battery_optimization_exemption,
+            commands::open_app_settings,
         ])
         .setup(|app, api| {
             let prayer_service = mobile::init(app, api)?;

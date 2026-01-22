@@ -2445,16 +2445,46 @@
           "markdownDescription": "Denies the version command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`",
+          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`",
           "type": "string",
           "const": "prayer-service:default",
-          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`"
+          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`"
+        },
+        {
+          "description": "Enables the check_battery_optimization command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:allow-check-battery-optimization",
+          "markdownDescription": "Enables the check_battery_optimization command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the check_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:allow-check-notification-permission",
+          "markdownDescription": "Enables the check_notification_permission command without any pre-configured scope."
         },
         {
           "description": "Enables the is_service_running command without any pre-configured scope.",
           "type": "string",
           "const": "prayer-service:allow-is-service-running",
           "markdownDescription": "Enables the is_service_running command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_app_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:allow-open-app-settings",
+          "markdownDescription": "Enables the open_app_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_battery_optimization_exemption command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:allow-request-battery-optimization-exemption",
+          "markdownDescription": "Enables the request_battery_optimization_exemption command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:allow-request-notification-permission",
+          "markdownDescription": "Enables the request_notification_permission command without any pre-configured scope."
         },
         {
           "description": "Enables the start_service command without any pre-configured scope.",
@@ -2475,10 +2505,40 @@
           "markdownDescription": "Enables the update_prayer_times command without any pre-configured scope."
         },
         {
+          "description": "Denies the check_battery_optimization command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:deny-check-battery-optimization",
+          "markdownDescription": "Denies the check_battery_optimization command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:deny-check-notification-permission",
+          "markdownDescription": "Denies the check_notification_permission command without any pre-configured scope."
+        },
+        {
           "description": "Denies the is_service_running command without any pre-configured scope.",
           "type": "string",
           "const": "prayer-service:deny-is-service-running",
           "markdownDescription": "Denies the is_service_running command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_app_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:deny-open-app-settings",
+          "markdownDescription": "Denies the open_app_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_battery_optimization_exemption command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:deny-request-battery-optimization-exemption",
+          "markdownDescription": "Denies the request_battery_optimization_exemption command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_notification_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "prayer-service:deny-request-notification-permission",
+          "markdownDescription": "Denies the request_notification_permission command without any pre-configured scope."
         },
         {
           "description": "Denies the start_service command without any pre-configured scope.",

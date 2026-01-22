@@ -131,6 +131,10 @@ class PrayerForegroundService : Service() {
                 savePrayerState()
                 startForeground(NOTIFICATION_ID, buildNotification())
                 _isRunning.set(true)
+
+                // Schedule periodic widget updates via AlarmManager
+                // This ensures updates happen even in Doze mode
+                WidgetUpdateReceiver.scheduleNextUpdate(this)
             }
             ACTION_STOP -> {
                 _isRunning.set(false)
@@ -146,6 +150,9 @@ class PrayerForegroundService : Service() {
                     nextPrayerIndex = index
                     savePrayerState()
                     updateNotification()
+
+                    // Reschedule widget updates to ensure they continue
+                    WidgetUpdateReceiver.scheduleNextUpdate(this)
                 }
             }
         }
@@ -156,6 +163,9 @@ class PrayerForegroundService : Service() {
     override fun onDestroy() {
         Log.d(TAG, "Service onDestroy")
         _isRunning.set(false)
+
+        // Cancel scheduled widget update alarms
+        WidgetUpdateReceiver.cancelScheduledUpdates(this)
 
         // Safely unregister receivers
         safeUnregisterReceiver(updateReceiver)

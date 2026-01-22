@@ -1,14 +1,16 @@
 use tauri::{command, AppHandle, Runtime};
 
-use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs};
+use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, BatteryOptimizationStatus, BatteryOptimizationResult};
 use crate::error::Result;
 use crate::PrayerServiceExt;
 
 #[command]
 pub fn start_service<R: Runtime>(
     app: AppHandle<R>,
-    args: StartServiceArgs,
+    prayers: Vec<PrayerTimeData>,
+    next_prayer_index: usize,
 ) -> Result<()> {
+    let args = StartServiceArgs { prayers, next_prayer_index };
     app.prayer_service().start_service(args)
 }
 
@@ -20,8 +22,10 @@ pub fn stop_service<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 #[command]
 pub fn update_prayer_times<R: Runtime>(
     app: AppHandle<R>,
-    args: UpdatePrayerTimesArgs,
+    prayers: Vec<PrayerTimeData>,
+    next_prayer_index: usize,
 ) -> Result<()> {
+    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index };
     app.prayer_service().update_prayer_times(args)
 }
 
@@ -38,4 +42,19 @@ pub fn check_notification_permission<R: Runtime>(app: AppHandle<R>) -> Result<No
 #[command]
 pub fn request_notification_permission<R: Runtime>(app: AppHandle<R>) -> Result<PermissionResult> {
     app.prayer_service().request_notification_permission()
+}
+
+#[command]
+pub fn check_battery_optimization<R: Runtime>(app: AppHandle<R>) -> Result<BatteryOptimizationStatus> {
+    app.prayer_service().check_battery_optimization()
+}
+
+#[command]
+pub fn request_battery_optimization_exemption<R: Runtime>(app: AppHandle<R>) -> Result<BatteryOptimizationResult> {
+    app.prayer_service().request_battery_optimization_exemption()
+}
+
+#[command]
+pub fn open_app_settings<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.prayer_service().open_app_settings()
 }

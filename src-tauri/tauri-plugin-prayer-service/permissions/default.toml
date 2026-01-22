@@ -7,4 +7,9 @@ permissions = [
     "allow-stop-service",
     "allow-update-prayer-times",
     "allow-is-service-running",
+    "allow-check-notification-permission",
+    "allow-request-notification-permission",
+    "allow-check-battery-optimization",
+    "allow-request-battery-optimization-exemption",
+    "allow-open-app-settings",
 ]

@@ -30,6 +30,17 @@ interface PermissionResult {
   granted: boolean;
 }
 
+interface BatteryOptimizationStatus {
+  isIgnoringBatteryOptimizations: boolean;
+  canRequest: boolean;
+}
+
+interface BatteryOptimizationResult {
+  requestSent?: boolean;
+  alreadyExempt?: boolean;
+  notRequired?: boolean;
+}
+
 // Dynamic imports to avoid issues on non-Android platforms
 async function getPluginApi() {
   try {
@@ -53,6 +64,15 @@ async function getPluginApi() {
       },
       requestNotificationPermission: (): Promise<PermissionResult> => {
         return invoke("plugin:prayer-service|request_notification_permission");
+      },
+      checkBatteryOptimization: (): Promise<BatteryOptimizationStatus> => {
+        return invoke("plugin:prayer-service|check_battery_optimization");
+      },
+      requestBatteryOptimizationExemption: (): Promise<BatteryOptimizationResult> => {
+        return invoke("plugin:prayer-service|request_battery_optimization_exemption");
+      },
+      openAppSettings: (): Promise<void> => {
+        return invoke("plugin:prayer-service|open_app_settings");
       },
     };
   } catch {
@@ -265,6 +285,51 @@ export function usePrayerService(options: {
     }
   }
 
+  async function checkBatteryOptimization(): Promise<BatteryOptimizationStatus> {
+    if (!isAndroid.value) {
+      return { isIgnoringBatteryOptimizations: true, canRequest: false };
+    }
+
+    try {
+      const api = await getPluginApi();
+      if (!api) return { isIgnoringBatteryOptimizations: true, canRequest: false };
+
+      return await api.checkBatteryOptimization();
+    } catch {
+      return { isIgnoringBatteryOptimizations: true, canRequest: false };
+    }
+  }
+
+  async function requestBatteryOptimizationExemption(): Promise<BatteryOptimizationResult> {
+    if (!isAndroid.value) {
+      return { notRequired: true };
+    }
+
+    try {
+      const api = await getPluginApi();
+      if (!api) return { notRequired: true };
+
+      return await api.requestBatteryOptimizationExemption();
+    } catch {
+      return {};
+    }
+  }
+
+  async function openAppSettings(): Promise<void> {
+    if (!isAndroid.value) {
+      return;
+    }
+
+    try {
+      const api = await getPluginApi();
+      if (!api) return;
+
+      await api.openAppSettings();
+    } catch (err) {
+      console.error("[PrayerService] Failed to open app settings:", err);
+    }
+  }
+
   // Watch for timings changes and update the service
   watch(
     timingsList,
@@ -303,5 +368,8 @@ export function usePrayerService(options: {
     checkStatus,
     checkNotificationPermission,
     requestNotificationPermission,
+    checkBatteryOptimization,
+    requestBatteryOptimizationExemption,
+    openAppSettings,
   };
 }

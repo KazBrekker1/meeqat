@@ -83,15 +83,19 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         // Get widget size to determine layout
         val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
         val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
+        val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
 
-        // Select layout based on height
+        // Select layout based on width and height
+        // Wide layout when widget is horizontally stretched
+        val isWide = minWidth >= 300 && minHeight < 250 && minWidth > minHeight * 1.5
         val layoutId = when {
-            minHeight >= 250 -> R.layout.widget_prayer_4x4  // Full (all 5 prayers)
-            minHeight >= 180 -> R.layout.widget_prayer_4x3  // Medium (3 prayers)
-            else -> R.layout.widget_prayer_4x2              // Compact (countdown only)
+            isWide -> R.layout.widget_prayer_wide               // Wide horizontal layout
+            minHeight >= 250 -> R.layout.widget_prayer_4x4      // Full (all 6 prayers vertical)
+            minHeight >= 160 -> R.layout.widget_prayer_compact  // Compact 2-column with prev prayer
+            else -> R.layout.widget_prayer_4x2                  // Minimal (countdown only)
         }
 
-        Log.d(TAG, "Widget $appWidgetId: height=$minHeight, using layout=${getLayoutName(layoutId)}")
+        Log.d(TAG, "Widget $appWidgetId: ${minWidth}x$minHeight, using layout=${getLayoutName(layoutId)}")
 
         val views = RemoteViews(context.packageName, layoutId)
 
@@ -133,7 +137,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     }
 
     private fun populateWidget(
-        context: Context,
+        @Suppress("UNUSED_PARAMETER") context: Context,
         views: RemoteViews,
         prayers: List<PrayerTimeData>,
         nextPrayerIndex: Int,
@@ -147,30 +151,59 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.countdown, formatCountdown(nextPrayer.prayerTime))
         }
 
-        // Populate prayer list for larger layouts
-        if (layoutId == R.layout.widget_prayer_4x3 || layoutId == R.layout.widget_prayer_4x4) {
-            val maxRows = if (layoutId == R.layout.widget_prayer_4x4) 5 else 3
+        // Set previous prayer info (for layouts that support it)
+        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide) {
+            // Find the most recent prayer that has actually passed
+            val now = System.currentTimeMillis()
+            val prevPrayer = prayers
+                .filter { it.prayerTime < now }
+                .maxByOrNull { it.prayerTime }
+
+            if (prevPrayer != null) {
+                try {
+                    views.setTextViewText(R.id.prev_prayer_name, prevPrayer.label)
+                    views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(prevPrayer.prayerTime))
+                    views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
+                } catch (e: Exception) {
+                    // Layout might not have these views
+                }
+            } else {
+                // No prayer has passed yet today, hide the container
+                try {
+                    views.setViewVisibility(R.id.prev_prayer_container, View.GONE)
+                } catch (e: Exception) {
+                    // Layout might not have this view
+                }
+            }
+        }
+
+        // Populate prayer list for layouts with prayer rows
+        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide) {
+            val maxRows = 6
             val prayersToShow = prayers.take(maxRows)
 
             // Row IDs for name and time TextViews
             val rowNameIds = intArrayOf(
                 R.id.prayer_name_1, R.id.prayer_name_2, R.id.prayer_name_3,
-                R.id.prayer_name_4, R.id.prayer_name_5
+                R.id.prayer_name_4, R.id.prayer_name_5, R.id.prayer_name_6
             )
             val rowTimeIds = intArrayOf(
                 R.id.prayer_time_1, R.id.prayer_time_2, R.id.prayer_time_3,
-                R.id.prayer_time_4, R.id.prayer_time_5
+                R.id.prayer_time_4, R.id.prayer_time_5, R.id.prayer_time_6
             )
             val rowContainerIds = intArrayOf(
                 R.id.prayer_row_1, R.id.prayer_row_2, R.id.prayer_row_3,
-                R.id.prayer_row_4, R.id.prayer_row_5
+                R.id.prayer_row_4, R.id.prayer_row_5, R.id.prayer_row_6
             )
+
+            // Use shorter time format for compact/wide layouts
+            val useShortTime = layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_wide
 
             for (i in 0 until maxRows) {
                 if (i < prayersToShow.size && i < rowNameIds.size) {
                     val prayer = prayersToShow[i]
                     views.setTextViewText(rowNameIds[i], prayer.label)
-                    views.setTextViewText(rowTimeIds[i], formatTime(prayer.prayerTime))
+                    views.setTextViewText(rowTimeIds[i], if (useShortTime) formatTimeShort(prayer.prayerTime) else formatTime(prayer.prayerTime))
                     views.setViewVisibility(rowContainerIds[i], View.VISIBLE)
 
                     // Highlight current prayer row
@@ -199,9 +232,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
         views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(Date()))
 
-        // Hijri date - load from SharedPreferences if saved by the app
-        val prefs = views.layoutId?.let { /* can't access context here */ }
-        // Use approximation for now - the app should ideally save Hijri date to SharedPreferences
+        // Hijri date - use approximation for now
+        // The app should ideally save the calculated Hijri date to SharedPreferences
         views.setTextViewText(R.id.hijri_date, getApproximateHijriDate())
     }
 
@@ -225,6 +257,28 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         return sdf.format(Date(timestamp))
     }
 
+    private fun formatTimeShort(timestamp: Long): String {
+        val sdf = SimpleDateFormat("h:mm", Locale.getDefault())
+        return sdf.format(Date(timestamp))
+    }
+
+    private fun formatElapsed(prayerTime: Long): String {
+        val now = System.currentTimeMillis()
+        val diff = now - prayerTime
+
+        if (diff <= 0) {
+            return "now"
+        }
+
+        val hours = diff / (1000 * 60 * 60)
+        val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
+
+        return when {
+            hours > 0 -> "${hours}h ${minutes}m ago"
+            else -> "${minutes}m ago"
+        }
+    }
+
     private fun formatCountdown(targetTime: Long): String {
         val now = System.currentTimeMillis()
         val diff = targetTime - now
@@ -235,10 +289,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         val hours = diff / (1000 * 60 * 60)
         val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
+        val seconds = (diff % (1000 * 60)) / 1000
 
         return when {
-            hours > 0 -> "${hours}h ${minutes}m"
-            else -> "${minutes}m"
+            hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+            minutes > 0 -> "${minutes}m ${seconds}s"
+            else -> "${seconds}s"
         }
     }
 
@@ -265,7 +321,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     private fun getLayoutName(layoutId: Int): String {
         return when (layoutId) {
             R.layout.widget_prayer_4x4 -> "4x4"
-            R.layout.widget_prayer_4x3 -> "4x3"
+            R.layout.widget_prayer_compact -> "compact"
+            R.layout.widget_prayer_wide -> "wide"
             R.layout.widget_prayer_4x2 -> "4x2"
             else -> "unknown"
         }

@@ -7,6 +7,13 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Permissions for exact alarms (widget updates even in Doze mode) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Request to ignore battery optimizations -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application>
         <!-- Foreground Service for Prayer Times -->
         <service
@@ -41,6 +48,15 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/prayer_widget_info" />
+        </receiver>
+
+        <!-- Widget Update Receiver for scheduled alarm-based updates -->
+        <receiver
+            android:name=".WidgetUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.meeqat.plugin.prayerservice.UPDATE_WIDGET" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>

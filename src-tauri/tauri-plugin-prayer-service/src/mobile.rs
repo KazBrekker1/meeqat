@@ -7,7 +7,7 @@ use tauri::{
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs};
+use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, BatteryOptimizationStatus, BatteryOptimizationResult};
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "android")]
@@ -102,6 +102,51 @@ impl<R: Runtime> PrayerService<R> {
     pub fn request_notification_permission(&self) -> Result<PermissionResult> {
         // On non-Android platforms, permission is always granted
         Ok(PermissionResult { granted: true })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn check_battery_optimization(&self) -> Result<BatteryOptimizationStatus> {
+        self.0
+            .run_mobile_plugin("checkBatteryOptimization", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn check_battery_optimization(&self) -> Result<BatteryOptimizationStatus> {
+        // On non-Android platforms, battery optimization is not a concern
+        Ok(BatteryOptimizationStatus {
+            is_ignoring_battery_optimizations: true,
+            can_request: false,
+        })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn request_battery_optimization_exemption(&self) -> Result<BatteryOptimizationResult> {
+        self.0
+            .run_mobile_plugin("requestBatteryOptimizationExemption", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn request_battery_optimization_exemption(&self) -> Result<BatteryOptimizationResult> {
+        // On non-Android platforms, not required
+        Ok(BatteryOptimizationResult {
+            request_sent: None,
+            already_exempt: None,
+            not_required: Some(true),
+        })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn open_app_settings(&self) -> Result<()> {
+        self.0
+            .run_mobile_plugin::<()>("openAppSettings", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn open_app_settings(&self) -> Result<()> {
+        Err(Error::PlatformNotSupported)
     }
 }
 

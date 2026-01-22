@@ -8,6 +8,11 @@ Default permissions for the prayer service plugin
 - `allow-stop-service`
 - `allow-update-prayer-times`
 - `allow-is-service-running`
+- `allow-check-notification-permission`
+- `allow-request-notification-permission`
+- `allow-check-battery-optimization`
+- `allow-request-battery-optimization-exemption`
+- `allow-open-app-settings`
 
 ## Permission Table
 
@@ -17,6 +22,58 @@ Default permissions for the prayer service plugin
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`prayer-service:allow-check-battery-optimization`
+
+</td>
+<td>
+
+Enables the check_battery_optimization command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-check-battery-optimization`
+
+</td>
+<td>
+
+Denies the check_battery_optimization command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-check-notification-permission`
+
+</td>
+<td>
+
+Enables the check_notification_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-check-notification-permission`
+
+</td>
+<td>
+
+Denies the check_notification_permission command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -40,6 +97,84 @@ Enables the is_service_running command without any pre-configured scope.
 <td>
 
 Denies the is_service_running command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-open-app-settings`
+
+</td>
+<td>
+
+Enables the open_app_settings command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-open-app-settings`
+
+</td>
+<td>
+
+Denies the open_app_settings command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-request-battery-optimization-exemption`
+
+</td>
+<td>
+
+Enables the request_battery_optimization_exemption command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-request-battery-optimization-exemption`
+
+</td>
+<td>
+
+Denies the request_battery_optimization_exemption command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-request-notification-permission`
+
+</td>
+<td>
+
+Enables the request_notification_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-request-notification-permission`
+
+</td>
+<td>
+
+Denies the request_notification_permission command without any pre-configured scope.
 
 </td>
 </tr>

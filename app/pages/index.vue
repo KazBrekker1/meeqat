@@ -158,6 +158,12 @@
       :notification-settings="notificationSettings"
       :test-play-athan="testPlayAthan"
       :on-test-notification-click="onTestNotificationClick"
+      :is-android="isAndroid"
+      :check-notification-permission="checkNotificationPermission"
+      :request-notification-permission="requestNotificationPermission"
+      :check-battery-optimization="checkBatteryOptimization"
+      :request-battery-optimization-exemption="requestBatteryOptimizationExemption"
+      :open-app-settings="openAppSettings"
       @clear-cache="onClearCache"
       @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
       @toggle-calendar="showCalendar = !showCalendar"
@@ -308,10 +314,18 @@ const { startPrayerNotifications, stopPrayerNotifications, send, settings: notif
   });
 
 // Start Android foreground service for persistent notification
-const { start: startPrayerService, stop: stopPrayerService, isAndroid } =
-  usePrayerService({
-    timingsList,
-  });
+const {
+  start: startPrayerService,
+  stop: stopPrayerService,
+  isAndroid,
+  checkNotificationPermission,
+  requestNotificationPermission,
+  checkBatteryOptimization,
+  requestBatteryOptimizationExemption,
+  openAppSettings,
+} = usePrayerService({
+  timingsList,
+});
 
 // Islamic calendar and Ramadan mode
 const {
