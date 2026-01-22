@@ -289,12 +289,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         val hours = diff / (1000 * 60 * 60)
         val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
-        val seconds = (diff % (1000 * 60)) / 1000
 
         return when {
-            hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
-            minutes > 0 -> "${minutes}m ${seconds}s"
-            else -> "${seconds}s"
+            hours > 0 -> "${hours}h ${minutes}m"
+            minutes > 0 -> "${minutes}m"
+            else -> "<1m"
         }
     }
 

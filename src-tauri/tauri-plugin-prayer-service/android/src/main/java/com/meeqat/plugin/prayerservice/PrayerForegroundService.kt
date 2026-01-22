@@ -155,6 +155,24 @@ class PrayerForegroundService : Service() {
                     WidgetUpdateReceiver.scheduleNextUpdate(this)
                 }
             }
+            else -> {
+                // Service restarted by system after being killed (START_STICKY)
+                // Restore state and resume operation
+                Log.d(TAG, "Service restarted by system, restoring state")
+                restorePrayerState()
+
+                if (prayers.isNotEmpty()) {
+                    startForeground(NOTIFICATION_ID, buildNotification())
+                    _isRunning.set(true)
+
+                    // Resume widget updates
+                    WidgetUpdateReceiver.scheduleNextUpdate(this)
+                } else {
+                    Log.w(TAG, "No prayer data to restore, stopping service")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+            }
         }
 
         return START_STICKY
