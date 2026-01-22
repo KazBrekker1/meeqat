@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header with dates -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/hijri_date"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="15 Rajab 1446"
+            android:textColor="#E6FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/gregorian_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Wed, Jan 22"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:background="#33FFFFFF" />
+
+    <!-- Next prayer highlight box -->
+    <LinearLayout
+        android:id="@+id/next_prayer_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/widget_highlight_bg"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/next_prayer_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Next Prayer"
+            android:textColor="#A5B4FC"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/next_prayer_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Dhuhr"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp" />
+
+        <TextView
+            android:id="@+id/countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2h 34m"
+            android:textColor="#818CF8"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginTop="4dp" />
+
+        <TextView
+            android:id="@+id/next_prayer_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="at 12:30 PM"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+</LinearLayout>

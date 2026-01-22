@@ -27,3 +27,16 @@ pub struct UpdatePrayerTimesArgs {
 pub struct ServiceStatus {
     pub is_running: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationPermissionStatus {
+    pub granted: bool,
+    pub can_request: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionResult {
+    pub granted: bool,
+}

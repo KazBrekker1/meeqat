@@ -21,6 +21,15 @@ interface ServiceStatus {
   isRunning: boolean;
 }
 
+interface NotificationPermissionStatus {
+  granted: boolean;
+  canRequest: boolean;
+}
+
+interface PermissionResult {
+  granted: boolean;
+}
+
 // Dynamic imports to avoid issues on non-Android platforms
 async function getPluginApi() {
   try {
@@ -38,6 +47,12 @@ async function getPluginApi() {
       },
       isPrayerServiceRunning: (): Promise<ServiceStatus> => {
         return invoke("plugin:prayer-service|is_service_running");
+      },
+      checkNotificationPermission: (): Promise<NotificationPermissionStatus> => {
+        return invoke("plugin:prayer-service|check_notification_permission");
+      },
+      requestNotificationPermission: (): Promise<PermissionResult> => {
+        return invoke("plugin:prayer-service|request_notification_permission");
       },
     };
   } catch {
@@ -219,6 +234,37 @@ export function usePrayerService(options: {
     }
   }
 
+  async function checkNotificationPermission(): Promise<NotificationPermissionStatus> {
+    if (!isAndroid.value) {
+      return { granted: true, canRequest: false };
+    }
+
+    try {
+      const api = await getPluginApi();
+      if (!api) return { granted: true, canRequest: false };
+
+      return await api.checkNotificationPermission();
+    } catch {
+      return { granted: true, canRequest: false };
+    }
+  }
+
+  async function requestNotificationPermission(): Promise<boolean> {
+    if (!isAndroid.value) {
+      return true;
+    }
+
+    try {
+      const api = await getPluginApi();
+      if (!api) return true;
+
+      const result = await api.requestNotificationPermission();
+      return result.granted;
+    } catch {
+      return false;
+    }
+  }
+
   // Watch for timings changes and update the service
   watch(
     timingsList,
@@ -255,5 +301,7 @@ export function usePrayerService(options: {
     stop,
     update,
     checkStatus,
+    checkNotificationPermission,
+    requestNotificationPermission,
   };
 }

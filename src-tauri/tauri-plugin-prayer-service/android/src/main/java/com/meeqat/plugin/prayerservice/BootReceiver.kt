@@ -42,6 +42,9 @@ class BootReceiver : BroadcastReceiver() {
             } else {
                 Log.d(TAG, "Service was not running before reboot, not restarting")
             }
+
+            // Always update widgets on boot (they may have stale data)
+            PrayerWidgetProvider.updateAllWidgets(context)
         }
     }
 }

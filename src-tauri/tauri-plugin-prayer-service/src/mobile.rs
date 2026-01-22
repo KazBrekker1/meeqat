@@ -7,7 +7,7 @@ use tauri::{
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs};
+use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs};
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "android")]
@@ -73,6 +73,35 @@ impl<R: Runtime> PrayerService<R> {
     #[cfg(not(target_os = "android"))]
     pub fn is_service_running(&self) -> Result<ServiceStatus> {
         Ok(ServiceStatus { is_running: false })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
+        self.0
+            .run_mobile_plugin("checkNotificationPermission", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
+        // On non-Android platforms, permission is always granted
+        Ok(NotificationPermissionStatus {
+            granted: true,
+            can_request: false,
+        })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn request_notification_permission(&self) -> Result<PermissionResult> {
+        self.0
+            .run_mobile_plugin("requestNotificationPermission", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn request_notification_permission(&self) -> Result<PermissionResult> {
+        // On non-Android platforms, permission is always granted
+        Ok(PermissionResult { granted: true })
     }
 }
 

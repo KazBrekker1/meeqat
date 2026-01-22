@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
@@ -64,27 +65,79 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
     }
 
+    // Store pending invoke and args while waiting for permission result
+    private var pendingStartInvoke: Invoke? = null
+    private var pendingStartArgs: StartServiceArgs? = null
+
     @Command
     fun startService(invoke: Invoke) {
         try {
             Log.d(TAG, "startService called")
 
-            // Check and request notification permission on Android 13+
+            val args = invoke.parseArgs(StartServiceArgs::class.java)
+
+            // Check notification permission on Android 13+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (ContextCompat.checkSelfPermission(
                         activity,
                         Manifest.permission.POST_NOTIFICATIONS
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    ActivityCompat.requestPermissions(
-                        activity,
-                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                        NOTIFICATION_PERMISSION_REQUEST_CODE
-                    )
+                    // Store pending invoke and args, then request permission
+                    pendingStartInvoke = invoke
+                    pendingStartArgs = args
+                    Log.d(TAG, "Requesting POST_NOTIFICATIONS permission")
+                    requestPermissionForAlias("postNotifications", invoke, "onNotificationPermissionResult")
+                    return
                 }
             }
 
-            val args = invoke.parseArgs(StartServiceArgs::class.java)
+            // Permission granted or not needed, start service directly
+            doStartService(invoke, args)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting service: ${e.message}", e)
+            invoke.reject("Failed to start service: ${e.message}")
+        }
+    }
+
+    @PermissionCallback
+    private fun onNotificationPermissionResult(invoke: Invoke) {
+        val savedInvoke = pendingStartInvoke
+        val savedArgs = pendingStartArgs
+
+        // Clear pending state
+        pendingStartInvoke = null
+        pendingStartArgs = null
+
+        if (savedInvoke == null || savedArgs == null) {
+            Log.w(TAG, "Permission callback but no pending invoke/args")
+            invoke.reject("No pending service start request")
+            return
+        }
+
+        // Check if permission was granted
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        if (granted) {
+            Log.d(TAG, "POST_NOTIFICATIONS permission granted, starting service")
+            doStartService(savedInvoke, savedArgs)
+        } else {
+            Log.w(TAG, "POST_NOTIFICATIONS permission denied, starting service anyway (notification won't show)")
+            // Still start the service - it will run but notification won't be visible
+            // This allows the app to function and user can grant permission later
+            doStartService(savedInvoke, savedArgs)
+        }
+    }
+
+    private fun doStartService(invoke: Invoke, args: StartServiceArgs) {
+        try {
             val prayersJson = prayersToJson(args.prayers)
 
             Log.d(TAG, "Starting service with ${args.prayers.size} prayers, next index: ${args.nextPrayerIndex}")
@@ -103,7 +156,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
             invoke.resolve()
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting service: ${e.message}", e)
+            Log.e(TAG, "Error in doStartService: ${e.message}", e)
             invoke.reject("Failed to start service: ${e.message}")
         }
     }
@@ -170,6 +223,74 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.e(TAG, "Error checking service status: ${e.message}", e)
             invoke.reject("Failed to check service status: ${e.message}")
         }
+    }
+
+    @Command
+    fun checkNotificationPermission(invoke: Invoke) {
+        try {
+            val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    activity,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                // Permission not required before Android 13
+                true
+            }
+
+            Log.d(TAG, "checkNotificationPermission: granted=$granted")
+
+            val result = JSObject()
+            result.put("granted", granted)
+            result.put("canRequest", Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            invoke.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking notification permission: ${e.message}", e)
+            invoke.reject("Failed to check notification permission: ${e.message}")
+        }
+    }
+
+    @Command
+    fun requestNotificationPermission(invoke: Invoke) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(
+                        activity,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.d(TAG, "Requesting POST_NOTIFICATIONS permission")
+                    requestPermissionForAlias("postNotifications", invoke, "onRequestPermissionResult")
+                    return
+                }
+            }
+
+            // Permission already granted or not needed
+            val result = JSObject()
+            result.put("granted", true)
+            invoke.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting notification permission: ${e.message}", e)
+            invoke.reject("Failed to request notification permission: ${e.message}")
+        }
+    }
+
+    @PermissionCallback
+    private fun onRequestPermissionResult(invoke: Invoke) {
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                activity,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        Log.d(TAG, "onRequestPermissionResult: granted=$granted")
+
+        val result = JSObject()
+        result.put("granted", granted)
+        invoke.resolve(result)
     }
 
     /**

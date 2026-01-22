@@ -219,9 +219,11 @@ class PrayerForegroundService : Service() {
             )
         }
 
-        // Use app's launcher icon for notification
+        // Use dedicated notification icon for status bar (white silhouette)
+        // Falls back to ic_launcher if ic_notification not found
         val iconResId = try {
-            resources.getIdentifier("ic_launcher", "mipmap", packageName).takeIf { it != 0 }
+            resources.getIdentifier("ic_notification", "drawable", packageName).takeIf { it != 0 }
+                ?: resources.getIdentifier("ic_launcher", "mipmap", packageName).takeIf { it != 0 }
                 ?: android.R.drawable.ic_dialog_info
         } catch (e: Exception) {
             android.R.drawable.ic_dialog_info
@@ -256,6 +258,9 @@ class PrayerForegroundService : Service() {
         val notification = buildNotification()
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
             ?: Log.e(TAG, "NotificationManager is null, cannot update notification")
+
+        // Also update home screen widgets
+        PrayerWidgetProvider.updateAllWidgets(this)
     }
 
     private fun savePrayerState() {
@@ -266,6 +271,9 @@ class PrayerForegroundService : Service() {
             putInt(KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
             apply()
         }
+
+        // Update home screen widgets with new prayer data
+        PrayerWidgetProvider.updateAllWidgets(this)
     }
 
     private fun restorePrayerState() {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_name">Meeqat Prayer Times</string>
+    <string name="widget_description">Shows prayer times with countdown to next prayer</string>
+    <string name="next_prayer_label">Next Prayer</string>
+    <string name="prayer_times_loading">Loading prayer times…</string>
+</resources>
