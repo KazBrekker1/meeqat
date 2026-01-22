@@ -9,7 +9,7 @@ on:
       draft:
         description: "Create as draft release"
         required: false
-        default: true
+        default: false
         type: boolean
 
 # Prevent concurrent releases
@@ -119,7 +119,7 @@ jobs:
 
             ### Linux
             Download the `.deb` package or `.AppImage`.
-          releaseDraft: ${{ github.event.inputs.draft == 'true' || github.event.inputs.draft == '' }}
+          releaseDraft: ${{ github.event.inputs.draft == 'true' }}
           prerelease: false
           args: ${{ matrix.args }}
 
@@ -221,9 +221,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: meeqat-v${{ steps.version.outputs.version }}
-          draft: ${{ github.event.inputs.draft == 'true' || github.event.inputs.draft == '' }}
+          draft: ${{ github.event.inputs.draft == 'true' }}
           files: |
-            src-tauri/gen/android/**/outputs/**/*-signed.apk
+            src-tauri/gen/android/**/outputs/**/*release*.apk
             src-tauri/gen/android/**/outputs/**/*.aab
           fail_on_unmatched_files: false
         env:

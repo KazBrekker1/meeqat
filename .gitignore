@@ -16,3 +16,6 @@ src-tauri/target
 *.jks
 *.keystore
 keystore.properties
+
+# Plugin build artifacts
+src-tauri/tauri-plugin-*/android/build/
