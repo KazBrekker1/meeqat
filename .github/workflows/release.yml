@@ -123,8 +123,9 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-  # Android job - runs in parallel with desktop builds
+  # Android job - waits for desktop to create the release first
   publish-android:
+    needs: publish-desktop
     permissions:
       contents: write
     runs-on: ubuntu-latest
