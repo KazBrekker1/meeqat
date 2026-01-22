@@ -201,12 +201,15 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
         run: |
-          cd src-tauri/gen/android
-          echo "keyAlias=$ANDROID_KEY_ALIAS" > keystore.properties
-          echo "password=$ANDROID_KEY_PASSWORD" >> keystore.properties
+          # keystore.properties must be in app/ directory where build.gradle.kts is located
+          cd src-tauri/gen/android/app
           echo "$ANDROID_KEY_BASE64" | base64 -d > $RUNNER_TEMP/keystore.jks
-          echo "storeFile=$RUNNER_TEMP/keystore.jks" >> keystore.properties
+          echo "storeFile=$RUNNER_TEMP/keystore.jks" > keystore.properties
           echo "storePassword=${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}" >> keystore.properties
+          echo "keyAlias=$ANDROID_KEY_ALIAS" >> keystore.properties
+          echo "password=$ANDROID_KEY_PASSWORD" >> keystore.properties
+          echo "Created keystore.properties in $(pwd)"
+          cat keystore.properties | grep -v Password
 
       - name: Build Android APK (release)
         run: bun run tauri android build
@@ -219,16 +222,36 @@ jobs:
           find src-tauri/gen/android -name "*.aab" -exec ls -lh {} \; || echo "No AAB files found"
 
       - name: Upload Android artifacts to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: meeqat-v${{ steps.version.outputs.version }}
-          draft: ${{ github.event.inputs.draft == 'true' }}
-          files: |
-            src-tauri/gen/android/**/outputs/**/*release*.apk
-            src-tauri/gen/android/**/outputs/**/*.aab
-          fail_on_unmatched_files: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the signed APK (exclude unsigned)
+          # Signed APKs don't have "unsigned" in the filename
+          APK=$(find src-tauri/gen/android -path "*outputs*" -name "*release*.apk" ! -name "*unsigned*" | head -1)
+
+          # If no signed APK found, fall back to unsigned
+          if [ -z "$APK" ]; then
+            echo "Warning: No signed APK found, falling back to unsigned"
+            APK=$(find src-tauri/gen/android -path "*outputs*" -name "*release*.apk" | head -1)
+          fi
+
+          AAB=$(find src-tauri/gen/android -path "*outputs*" -name "*.aab" | head -1)
+
+          TAG="meeqat-v${{ steps.version.outputs.version }}"
+
+          echo "Uploading to release $TAG"
+          echo "APK: $APK"
+          echo "AAB: $AAB"
+
+          # Upload files using gh CLI (more reliable than the action)
+          if [ -n "$APK" ]; then
+            gh release upload "$TAG" "$APK" --clobber || echo "APK upload failed"
+          fi
+          if [ -n "$AAB" ]; then
+            gh release upload "$TAG" "$AAB" --clobber || echo "AAB upload failed"
+          fi
+
+          echo "Upload complete"
 
   # Optional: Build iOS (requires macOS runner and Apple Developer account)
   # publish-ios:
