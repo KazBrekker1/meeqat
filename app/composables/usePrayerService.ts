@@ -10,11 +10,15 @@ interface PrayerTimeData {
 interface StartServiceOptions {
   prayers: PrayerTimeData[];
   nextPrayerIndex: number;
+  hijriDate?: string;
+  gregorianDate?: string;
 }
 
 interface UpdatePrayerTimesOptions {
   prayers: PrayerTimeData[];
   nextPrayerIndex: number;
+  hijriDate?: string;
+  gregorianDate?: string;
 }
 
 interface ServiceStatus {
@@ -122,8 +126,10 @@ function findNextPrayerIndex(timingsList: PrayerTimingItem[]): number {
 
 export function usePrayerService(options: {
   timingsList: Ref<PrayerTimingItem[]>;
+  hijriDate?: Ref<string | null>;
+  gregorianDate?: Ref<string | null>;
 }) {
-  const { timingsList } = options;
+  const { timingsList, hijriDate, gregorianDate } = options;
 
   const isServiceRunning = ref(false);
   const isAndroid = ref(false);
@@ -175,6 +181,8 @@ export function usePrayerService(options: {
       await api.startPrayerService({
         prayers,
         nextPrayerIndex,
+        hijriDate: hijriDate?.value ?? undefined,
+        gregorianDate: gregorianDate?.value ?? undefined,
       });
 
       isServiceRunning.value = true;
@@ -227,6 +235,8 @@ export function usePrayerService(options: {
       await api.updatePrayerTimes({
         prayers,
         nextPrayerIndex,
+        hijriDate: hijriDate?.value ?? undefined,
+        gregorianDate: gregorianDate?.value ?? undefined,
       });
 
       console.log("[PrayerService] Service updated");

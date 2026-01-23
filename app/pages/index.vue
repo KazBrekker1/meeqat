@@ -14,44 +14,24 @@
     <!-- Scrollable Content -->
     <main class="flex-1 overflow-y-auto p-3">
       <section class="max-w-2xl mx-auto space-y-3">
+        <!-- Unified Location Selector -->
         <div class="animate-slide-up opacity-0">
-          <PrayerSelectors
-            :method-select-options="methodSelectOptions"
-            :timezone-select-options="timezoneSelectOptions"
-            v-model:selected-method-id="selectedMethodId"
-            v-model:selected-extra-timezone="selectedExtraTimezone"
-          />
-        </div>
-
-        <div class="animate-slide-up opacity-0 delay-100">
-          <PrayerLocationControls
-            v-model:selected-country="selectedCountry"
-            v-model:selected-city="selectedCity"
-            :country-select-options="countrySelectOptions"
-            :city-select-options="citySelectOptions"
-            :loading="isLoading"
-            @country-change="onCountryChange"
-            @fetch-by-city="onFetchByCity"
-          />
-        </div>
-
-        <!-- Favorite Locations -->
-        <div class="animate-slide-up opacity-0 delay-150">
-          <PrayerFavoriteLocations
+          <PrayerLocationSelector
             :favorites="favorites"
             :current-city="selectedCity"
             :current-country-code="selectedCountry"
             :max-favorites="MAX_FAVORITES"
-            @select="onSelectFavorite"
-            @remove="onRemoveFavorite"
-            @add-current="onAddCurrentToFavorites"
+            :loading="isLoading"
+            @select="onLocationSelect"
+            @add-favorite="onAddCurrentToFavorites"
+            @remove-favorite="onRemoveFavorite"
           />
         </div>
 
         <div v-if="fetchError" class="text-[var(--ui-color-error-500)] text-sm">{{ fetchError }}</div>
 
         <!-- Ramadan Mode Banner -->
-        <div class="animate-slide-up opacity-0 delay-175">
+        <div class="animate-slide-up opacity-0 delay-100">
           <PrayerRamadanBanner
             :show-ramadan-mode="showRamadanMode"
             :ramadan-info="ramadanInfo"
@@ -81,7 +61,7 @@
           />
         </Transition>
 
-        <div class="animate-slide-up opacity-0 delay-200">
+        <div class="animate-slide-up opacity-0 delay-150">
           <PrayerTimingsList :timings-list="timingsList" :loading="isLoading && !timingsList.length" />
         </div>
 
@@ -158,6 +138,10 @@
       :notification-settings="notificationSettings"
       :test-play-athan="testPlayAthan"
       :on-test-notification-click="onTestNotificationClick"
+      :method-select-options="methodSelectOptions"
+      :timezone-select-options="timezoneSelectOptions"
+      v-model:selected-method-id="selectedMethodId"
+      v-model:selected-extra-timezone="selectedExtraTimezone"
       :is-android="isAndroid"
       :check-notification-permission="checkNotificationPermission"
       :request-notification-permission="requestNotificationPermission"
@@ -175,8 +159,7 @@
 </template>
 
 <script lang="ts" setup>
-import { COUNTRY_TO_CITIES } from "@/constants/cities";
-import { COUNTRY_OPTIONS, type CountryOption } from "@/constants/countries";
+import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { computePreviousPrayerInfo, pad2 } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
@@ -325,6 +308,8 @@ const {
   openAppSettings,
 } = usePrayerService({
   timingsList,
+  hijriDate: hijriDateVerbose,
+  gregorianDate: gregorianDateVerbose,
 });
 
 // Islamic calendar and Ramadan mode
@@ -346,6 +331,14 @@ const {
 } = useFavoriteLocations();
 
 const onTestNotificationClick = () => send("Meeqat", "Prayer time is here");
+
+// Location selection handler (from unified LocationSelector)
+async function onLocationSelect(city: string, countryCode: string) {
+  selectedCity.value = city;
+  selectedCountry.value = countryCode;
+  await nextTick();
+  onFetchByCity();
+}
 
 // Favorite locations handlers
 async function onSelectFavorite(fav: FavoriteLocation) {
@@ -381,25 +374,8 @@ const methodSelectOptions = computed(() =>
     value: m.value,
   }))
 );
-const countrySelectOptions = computed(() =>
-  COUNTRY_OPTIONS.map((c: CountryOption) => ({
-    label: c.name,
-    value: c.code,
-  }))
-);
-
-const citySelectOptions = computed(() => {
-  const base = COUNTRY_TO_CITIES[selectedCountry.value] ?? [];
-  const set = new Set(base);
-  if (selectedCity.value && !set.has(selectedCity.value)) {
-    set.add(selectedCity.value);
-  }
-  return Array.from(set).map((name) => ({ label: name, value: name }));
-});
-
 const selectedCountryName = computed(() => {
-  const found = COUNTRY_OPTIONS.find((c) => c.code === selectedCountry.value);
-  return found?.name ?? "";
+  return getCountryByCode(selectedCountry.value)?.name ?? "";
 });
 
 const timezoneSelectOptions = computed(() => {
@@ -438,10 +414,6 @@ function onFetchByCity() {
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
     methodId: selectedMethodId.value,
   });
-}
-
-function onCountryChange() {
-  selectedCity.value = "";
 }
 
 const toast = useToast();

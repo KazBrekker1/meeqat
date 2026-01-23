@@ -38,6 +38,8 @@ class PrayerForegroundService : Service() {
         const val KEY_SERVICE_ENABLED = "service_enabled"
         const val KEY_PRAYERS_JSON = "prayers_json"
         const val KEY_NEXT_PRAYER_INDEX = "next_prayer_index"
+        const val KEY_HIJRI_DATE = "hijri_date"
+        const val KEY_GREGORIAN_DATE = "gregorian_date"
 
         const val ACTION_START = "com.meeqat.plugin.prayerservice.ACTION_START"
         const val ACTION_STOP = "com.meeqat.plugin.prayerservice.ACTION_STOP"
@@ -45,6 +47,8 @@ class PrayerForegroundService : Service() {
 
         const val EXTRA_PRAYERS_JSON = "prayers_json"
         const val EXTRA_NEXT_PRAYER_INDEX = "next_prayer_index"
+        const val EXTRA_HIJRI_DATE = "hijri_date"
+        const val EXTRA_GREGORIAN_DATE = "gregorian_date"
 
         // Thread-safe running flag using AtomicBoolean
         private val _isRunning = AtomicBoolean(false)
@@ -54,6 +58,8 @@ class PrayerForegroundService : Service() {
 
     private var prayers: List<PrayerTimeData> = emptyList()
     private var nextPrayerIndex: Int = 0
+    private var hijriDate: String? = null
+    private var gregorianDate: String? = null
 
     // Receiver for prayer time updates via broadcast
     private val updateReceiver = object : BroadcastReceiver() {
@@ -65,6 +71,8 @@ class PrayerForegroundService : Service() {
                 if (prayersJson != null) {
                     prayers = parsePrayersJson(prayersJson)
                     nextPrayerIndex = index
+                    intent.getStringExtra(EXTRA_HIJRI_DATE)?.let { hijriDate = it }
+                    intent.getStringExtra(EXTRA_GREGORIAN_DATE)?.let { gregorianDate = it }
                     savePrayerState()
                     updateNotification()
                 }
@@ -73,9 +81,14 @@ class PrayerForegroundService : Service() {
     }
 
     // Receiver for system time changes (NTP sync, manual adjustment, timezone change)
+    // and minute ticks for precise widget updates
     private val timeChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
+                Intent.ACTION_TIME_TICK -> {
+                    // Minute tick - update widget only (no log spam)
+                    PrayerWidgetProvider.updateAllWidgets(context)
+                }
                 Intent.ACTION_TIME_CHANGED,
                 Intent.ACTION_TIMEZONE_CHANGED,
                 Intent.ACTION_DATE_CHANGED -> {
@@ -99,8 +112,9 @@ class PrayerForegroundService : Service() {
             registerReceiver(updateReceiver, updateFilter)
         }
 
-        // Register broadcast receiver for system time changes
+        // Register broadcast receiver for system time changes and minute ticks
         val timeFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_TICK)      // Fires every minute at :00 seconds (screen on only)
             addAction(Intent.ACTION_TIME_CHANGED)
             addAction(Intent.ACTION_TIMEZONE_CHANGED)
             addAction(Intent.ACTION_DATE_CHANGED)
@@ -123,6 +137,8 @@ class PrayerForegroundService : Service() {
                 if (prayersJson != null) {
                     prayers = parsePrayersJson(prayersJson)
                     nextPrayerIndex = index
+                    intent.getStringExtra(EXTRA_HIJRI_DATE)?.let { hijriDate = it }
+                    intent.getStringExtra(EXTRA_GREGORIAN_DATE)?.let { gregorianDate = it }
                 } else {
                     // Try to restore from saved state (e.g., after boot)
                     restorePrayerState()
@@ -148,6 +164,8 @@ class PrayerForegroundService : Service() {
                 if (prayersJson != null) {
                     prayers = parsePrayersJson(prayersJson)
                     nextPrayerIndex = index
+                    intent.getStringExtra(EXTRA_HIJRI_DATE)?.let { hijriDate = it }
+                    intent.getStringExtra(EXTRA_GREGORIAN_DATE)?.let { gregorianDate = it }
                     savePrayerState()
                     updateNotification()
 
@@ -283,6 +301,9 @@ class PrayerForegroundService : Service() {
     }
 
     private fun updateNotification() {
+        // Check if we need to advance to the next prayer
+        checkAndAdvancePrayerIndex()
+
         val notification = buildNotification()
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
             ?: Log.e(TAG, "NotificationManager is null, cannot update notification")
@@ -291,12 +312,50 @@ class PrayerForegroundService : Service() {
         PrayerWidgetProvider.updateAllWidgets(this)
     }
 
+    /**
+     * Check if the current "next prayer" has passed and advance to the actual next prayer.
+     * This handles the case where the app is in background and prayer time passes.
+     */
+    private fun checkAndAdvancePrayerIndex() {
+        if (prayers.isEmpty()) return
+
+        val now = System.currentTimeMillis()
+
+        // If current next prayer hasn't passed, nothing to do
+        if (nextPrayerIndex in prayers.indices && prayers[nextPrayerIndex].prayerTime > now) {
+            return
+        }
+
+        // Find the first prayer that hasn't passed yet
+        var newIndex = -1
+        for (i in prayers.indices) {
+            if (prayers[i].prayerTime > now) {
+                newIndex = i
+                break
+            }
+        }
+
+        // If found a new next prayer, update the index
+        if (newIndex >= 0 && newIndex != nextPrayerIndex) {
+            Log.d(TAG, "Advancing prayer index from $nextPrayerIndex to $newIndex")
+            nextPrayerIndex = newIndex
+            savePrayerState()
+        } else if (newIndex < 0 && nextPrayerIndex != prayers.lastIndex) {
+            // All prayers have passed - set to last prayer (end of day state)
+            Log.d(TAG, "All prayers passed, setting index to last prayer")
+            nextPrayerIndex = prayers.lastIndex
+            savePrayerState()
+        }
+    }
+
     private fun savePrayerState() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         prefs.edit().apply {
             putBoolean(KEY_SERVICE_ENABLED, true)
             putString(KEY_PRAYERS_JSON, prayersToJson(prayers))
             putInt(KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
+            hijriDate?.let { putString(KEY_HIJRI_DATE, it) }
+            gregorianDate?.let { putString(KEY_GREGORIAN_DATE, it) }
             apply()
         }
 
@@ -308,6 +367,8 @@ class PrayerForegroundService : Service() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         val prayersJson = prefs.getString(KEY_PRAYERS_JSON, null)
         nextPrayerIndex = prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0)
+        hijriDate = prefs.getString(KEY_HIJRI_DATE, null)
+        gregorianDate = prefs.getString(KEY_GREGORIAN_DATE, null)
 
         if (prayersJson != null) {
             prayers = parsePrayersJson(prayersJson)

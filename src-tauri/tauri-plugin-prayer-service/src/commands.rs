@@ -9,8 +9,10 @@ pub fn start_service<R: Runtime>(
     app: AppHandle<R>,
     prayers: Vec<PrayerTimeData>,
     next_prayer_index: usize,
+    hijri_date: Option<String>,
+    gregorian_date: Option<String>,
 ) -> Result<()> {
-    let args = StartServiceArgs { prayers, next_prayer_index };
+    let args = StartServiceArgs { prayers, next_prayer_index, hijri_date, gregorian_date };
     app.prayer_service().start_service(args)
 }
 
@@ -24,8 +26,10 @@ pub fn update_prayer_times<R: Runtime>(
     app: AppHandle<R>,
     prayers: Vec<PrayerTimeData>,
     next_prayer_index: usize,
+    hijri_date: Option<String>,
+    gregorian_date: Option<String>,
 ) -> Result<()> {
-    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index };
+    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index, hijri_date, gregorian_date };
     app.prayer_service().update_prayer_times(args)
 }
 

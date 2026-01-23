@@ -26,12 +26,16 @@ import org.json.JSONObject
 class StartServiceArgs {
     lateinit var prayers: Array<PrayerArg>
     var nextPrayerIndex: Int = 0
+    var hijriDate: String? = null
+    var gregorianDate: String? = null
 }
 
 @InvokeArg
 class UpdatePrayerTimesArgs {
     lateinit var prayers: Array<PrayerArg>
     var nextPrayerIndex: Int = 0
+    var hijriDate: String? = null
+    var gregorianDate: String? = null
 }
 
 @InvokeArg
@@ -149,6 +153,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                 action = PrayerForegroundService.ACTION_START
                 putExtra(PrayerForegroundService.EXTRA_PRAYERS_JSON, prayersJson)
                 putExtra(PrayerForegroundService.EXTRA_NEXT_PRAYER_INDEX, args.nextPrayerIndex)
+                args.hijriDate?.let { putExtra(PrayerForegroundService.EXTRA_HIJRI_DATE, it) }
+                args.gregorianDate?.let { putExtra(PrayerForegroundService.EXTRA_GREGORIAN_DATE, it) }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -203,6 +209,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                 setPackage(activity.packageName)
                 putExtra(PrayerForegroundService.EXTRA_PRAYERS_JSON, prayersJson)
                 putExtra(PrayerForegroundService.EXTRA_NEXT_PRAYER_INDEX, args.nextPrayerIndex)
+                args.hijriDate?.let { putExtra(PrayerForegroundService.EXTRA_HIJRI_DATE, it) }
+                args.gregorianDate?.let { putExtra(PrayerForegroundService.EXTRA_GREGORIAN_DATE, it) }
             }
             activity.sendBroadcast(updateIntent)
 

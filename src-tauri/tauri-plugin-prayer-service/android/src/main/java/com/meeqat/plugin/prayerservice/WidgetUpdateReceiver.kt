@@ -41,7 +41,10 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val triggerTime = System.currentTimeMillis() + UPDATE_INTERVAL_MS
+            // Calculate next minute boundary (ceiling to :00 seconds)
+            // This ensures updates align precisely with clock minutes
+            val now = System.currentTimeMillis()
+            val triggerTime = ((now / 60_000) + 1) * 60_000
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

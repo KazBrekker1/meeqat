@@ -122,7 +122,17 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         if (prayersJson != null) {
             val prayers = parsePrayersJson(prayersJson)
             if (prayers.isNotEmpty()) {
-                populateWidget(context, views, prayers, nextPrayerIndex, layoutId)
+                // Recalculate the actual next prayer index based on current time
+                // This handles the case where the app is in background and prayer time passes
+                val actualNextIndex = findActualNextPrayerIndex(prayers, nextPrayerIndex)
+
+                // Update SharedPreferences if index changed
+                if (actualNextIndex != nextPrayerIndex) {
+                    Log.d(TAG, "Prayer index advanced from $nextPrayerIndex to $actualNextIndex")
+                    prefs.edit().putInt(PrayerForegroundService.KEY_NEXT_PRAYER_INDEX, actualNextIndex).apply()
+                }
+
+                populateWidget(context, views, prayers, actualNextIndex, layoutId)
             } else {
                 showLoadingState(views)
             }
@@ -130,8 +140,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             showLoadingState(views)
         }
 
-        // Set calendar dates
-        setCalendarDates(views)
+        // Set calendar dates from SharedPreferences (passed from frontend)
+        setCalendarDates(views, prefs)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
@@ -227,29 +237,51 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.countdown, "--:--")
     }
 
-    private fun setCalendarDates(views: RemoteViews) {
-        // Gregorian date
-        val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-        views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(Date()))
+    private fun setCalendarDates(views: RemoteViews, prefs: android.content.SharedPreferences) {
+        // Read dates from SharedPreferences (passed from frontend which calculates correctly)
+        val hijriDate = prefs.getString(PrayerForegroundService.KEY_HIJRI_DATE, null)
+        val gregorianDate = prefs.getString(PrayerForegroundService.KEY_GREGORIAN_DATE, null)
 
-        // Hijri date - use approximation for now
-        // The app should ideally save the calculated Hijri date to SharedPreferences
-        views.setTextViewText(R.id.hijri_date, getApproximateHijriDate())
+        // Set Gregorian date - use saved value or fall back to local formatting
+        if (gregorianDate != null) {
+            views.setTextViewText(R.id.gregorian_date, gregorianDate)
+        } else {
+            val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
+            views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(Date()))
+        }
+
+        // Set Hijri date - use saved value from frontend (calculated using proper Islamic calendar)
+        if (hijriDate != null) {
+            views.setTextViewText(R.id.hijri_date, hijriDate)
+        } else {
+            // Fallback: show empty or placeholder until data arrives from frontend
+            views.setTextViewText(R.id.hijri_date, "")
+        }
     }
 
-    private fun getApproximateHijriDate(): String {
-        // Simple approximation - in production, use a proper Hijri calendar library
-        // The app should ideally save the calculated Hijri date to SharedPreferences
-        val cal = Calendar.getInstance()
-        val dayOfMonth = cal.get(Calendar.DAY_OF_MONTH)
-        val monthNames = arrayOf(
-            "Muharram", "Safar", "Rabi' I", "Rabi' II", "Jumada I", "Jumada II",
-            "Rajab", "Sha'ban", "Ramadan", "Shawwal", "Dhul Qi'dah", "Dhul Hijjah"
-        )
-        // Very rough approximation - Hijri calendar lags ~11 days per solar year
-        // This is placeholder - ideally use data from the main app
-        val hijriMonth = (cal.get(Calendar.MONTH) + 1) % 12
-        return "$dayOfMonth ${monthNames[hijriMonth]} 1446"
+    /**
+     * Find the actual next prayer index based on current time.
+     * If the stored next prayer has passed, find the first prayer that hasn't passed yet.
+     * If all prayers have passed, return the last prayer index (end of day state).
+     */
+    private fun findActualNextPrayerIndex(prayers: List<PrayerTimeData>, storedIndex: Int): Int {
+        val now = System.currentTimeMillis()
+
+        // If stored index is valid and that prayer hasn't passed, use it
+        if (storedIndex in prayers.indices && prayers[storedIndex].prayerTime > now) {
+            return storedIndex
+        }
+
+        // Find the first prayer that hasn't passed yet
+        for (i in prayers.indices) {
+            if (prayers[i].prayerTime > now) {
+                return i
+            }
+        }
+
+        // All prayers have passed - return the last one (shows "Now" state for last prayer)
+        // This handles end-of-day scenario where we're past Isha
+        return prayers.lastIndex.coerceAtLeast(0)
     }
 
     private fun formatTime(timestamp: Long): String {

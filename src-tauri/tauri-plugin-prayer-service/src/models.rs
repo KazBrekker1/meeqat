@@ -13,6 +13,10 @@ pub struct PrayerTimeData {
 pub struct StartServiceArgs {
     pub prayers: Vec<PrayerTimeData>,
     pub next_prayer_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hijri_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gregorian_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +24,10 @@ pub struct StartServiceArgs {
 pub struct UpdatePrayerTimesArgs {
     pub prayers: Vec<PrayerTimeData>,
     pub next_prayer_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hijri_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gregorian_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
