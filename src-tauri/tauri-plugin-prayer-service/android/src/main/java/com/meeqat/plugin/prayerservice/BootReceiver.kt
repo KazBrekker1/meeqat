@@ -1,13 +1,15 @@
 package com.meeqat.plugin.prayerservice
 
+import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
 
 /**
- * BroadcastReceiver that restarts the prayer service after device boot
+ * BroadcastReceiver that restarts widget updates after device boot.
+ * Ensures widgets continue to update even after a device restart.
  */
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -18,33 +20,25 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
             intent.action == "android.intent.action.QUICKBOOT_POWERON") {
 
-            Log.d(TAG, "Boot completed, checking if service should restart")
+            Log.d(TAG, "Boot completed, resuming widget updates")
 
-            val prefs = context.getSharedPreferences(
-                PrayerForegroundService.PREFS_NAME,
-                Context.MODE_PRIVATE
+            // Check if there are any active widgets
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val widgetIds = appWidgetManager.getAppWidgetIds(
+                ComponentName(context, PrayerWidgetProvider::class.java)
             )
 
-            val shouldRestart = prefs.getBoolean(PrayerForegroundService.KEY_SERVICE_ENABLED, false)
+            if (widgetIds.isNotEmpty()) {
+                Log.d(TAG, "Found ${widgetIds.size} active widgets, scheduling updates")
 
-            if (shouldRestart) {
-                Log.d(TAG, "Service was running before reboot, restarting...")
+                // Update all widgets immediately (they may have stale data)
+                PrayerWidgetProvider.updateAllWidgets(context)
 
-                val serviceIntent = Intent(context, PrayerForegroundService::class.java).apply {
-                    action = PrayerForegroundService.ACTION_START
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
+                // Resume periodic widget updates
+                WidgetUpdateReceiver.scheduleNextUpdate(context)
             } else {
-                Log.d(TAG, "Service was not running before reboot, not restarting")
+                Log.d(TAG, "No active widgets found, skipping update scheduling")
             }
-
-            // Always update widgets on boot (they may have stale data)
-            PrayerWidgetProvider.updateAllWidgets(context)
         }
     }
 }

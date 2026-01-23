@@ -7,7 +7,7 @@ use tauri::{
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, BatteryOptimizationStatus, BatteryOptimizationResult};
+use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult};
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "android")]
@@ -76,6 +76,18 @@ impl<R: Runtime> PrayerService<R> {
     }
 
     #[cfg(target_os = "android")]
+    pub fn open_app_settings(&self) -> Result<()> {
+        self.0
+            .run_mobile_plugin::<()>("openAppSettings", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn open_app_settings(&self) -> Result<()> {
+        Err(Error::PlatformNotSupported)
+    }
+
+    #[cfg(target_os = "android")]
     pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
         self.0
             .run_mobile_plugin("checkNotificationPermission", ())
@@ -84,24 +96,19 @@ impl<R: Runtime> PrayerService<R> {
 
     #[cfg(not(target_os = "android"))]
     pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
-        // On non-Android platforms, permission is always granted
-        Ok(NotificationPermissionStatus {
-            granted: true,
-            can_request: false,
-        })
+        Ok(NotificationPermissionStatus { granted: true })
     }
 
     #[cfg(target_os = "android")]
-    pub fn request_notification_permission(&self) -> Result<PermissionResult> {
+    pub fn request_notification_permission(&self) -> Result<()> {
         self.0
-            .run_mobile_plugin("requestNotificationPermission", ())
+            .run_mobile_plugin::<()>("requestNotificationPermission", ())
             .map_err(|e| Error::PluginInvoke(e.to_string()))
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn request_notification_permission(&self) -> Result<PermissionResult> {
-        // On non-Android platforms, permission is always granted
-        Ok(PermissionResult { granted: true })
+    pub fn request_notification_permission(&self) -> Result<()> {
+        Err(Error::PlatformNotSupported)
     }
 
     #[cfg(target_os = "android")]
@@ -113,39 +120,54 @@ impl<R: Runtime> PrayerService<R> {
 
     #[cfg(not(target_os = "android"))]
     pub fn check_battery_optimization(&self) -> Result<BatteryOptimizationStatus> {
-        // On non-Android platforms, battery optimization is not a concern
-        Ok(BatteryOptimizationStatus {
-            is_ignoring_battery_optimizations: true,
-            can_request: false,
-        })
+        Ok(BatteryOptimizationStatus { is_ignoring: true })
     }
 
     #[cfg(target_os = "android")]
-    pub fn request_battery_optimization_exemption(&self) -> Result<BatteryOptimizationResult> {
+    pub fn request_battery_optimization_exemption(&self) -> Result<()> {
         self.0
-            .run_mobile_plugin("requestBatteryOptimizationExemption", ())
+            .run_mobile_plugin::<()>("requestBatteryOptimizationExemption", ())
             .map_err(|e| Error::PluginInvoke(e.to_string()))
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn request_battery_optimization_exemption(&self) -> Result<BatteryOptimizationResult> {
-        // On non-Android platforms, not required
-        Ok(BatteryOptimizationResult {
-            request_sent: None,
-            already_exempt: None,
-            not_required: Some(true),
-        })
+    pub fn request_battery_optimization_exemption(&self) -> Result<()> {
+        Err(Error::PlatformNotSupported)
     }
 
     #[cfg(target_os = "android")]
-    pub fn open_app_settings(&self) -> Result<()> {
+    pub fn set_mock_time_offset(&self, args: SetMockTimeOffsetArgs) -> Result<()> {
         self.0
-            .run_mobile_plugin::<()>("openAppSettings", ())
+            .run_mobile_plugin("setMockTimeOffset", args)
             .map_err(|e| Error::PluginInvoke(e.to_string()))
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn open_app_settings(&self) -> Result<()> {
+    pub fn set_mock_time_offset(&self, _args: SetMockTimeOffsetArgs) -> Result<()> {
+        Err(Error::PlatformNotSupported)
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn get_mock_time_offset(&self) -> Result<MockTimeOffsetResult> {
+        self.0
+            .run_mobile_plugin("getMockTimeOffset", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn get_mock_time_offset(&self) -> Result<MockTimeOffsetResult> {
+        Ok(MockTimeOffsetResult { offset_ms: 0 })
+    }
+
+    #[cfg(target_os = "android")]
+    pub fn clear_mock_time_offset(&self) -> Result<()> {
+        self.0
+            .run_mobile_plugin::<()>("clearMockTimeOffset", ())
+            .map_err(|e| Error::PluginInvoke(e.to_string()))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn clear_mock_time_offset(&self) -> Result<()> {
         Err(Error::PlatformNotSupported)
     }
 }

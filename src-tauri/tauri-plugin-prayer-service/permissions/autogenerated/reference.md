@@ -13,6 +13,9 @@ Default permissions for the prayer service plugin
 - `allow-check-battery-optimization`
 - `allow-request-battery-optimization-exemption`
 - `allow-open-app-settings`
+- `allow-set-mock-time-offset`
+- `allow-get-mock-time-offset`
+- `allow-clear-mock-time-offset`
 
 ## Permission Table
 
@@ -71,6 +74,58 @@ Enables the check_notification_permission command without any pre-configured sco
 <td>
 
 Denies the check_notification_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-clear-mock-time-offset`
+
+</td>
+<td>
+
+Enables the clear_mock_time_offset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-clear-mock-time-offset`
+
+</td>
+<td>
+
+Denies the clear_mock_time_offset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-get-mock-time-offset`
+
+</td>
+<td>
+
+Enables the get_mock_time_offset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-get-mock-time-offset`
+
+</td>
+<td>
+
+Denies the get_mock_time_offset command without any pre-configured scope.
 
 </td>
 </tr>
@@ -175,6 +230,32 @@ Enables the request_notification_permission command without any pre-configured s
 <td>
 
 Denies the request_notification_permission command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-set-mock-time-offset`
+
+</td>
+<td>
+
+Enables the set_mock_time_offset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-set-mock-time-offset`
+
+</td>
+<td>
+
+Denies the set_mock_time_offset command without any pre-configured scope.
 
 </td>
 </tr>

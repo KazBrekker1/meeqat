@@ -4,53 +4,54 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:orientation="horizontal"
-    android:padding="12dp">
+    android:orientation="vertical"
+    android:padding="8dp">
 
-    <!-- Left side: Next prayer + Previous -->
+    <!-- Row 1: Dates (narrow) -->
     <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="4dp">
 
-        <!-- Header with dates -->
-        <LinearLayout
-            android:layout_width="match_parent"
+        <TextView
+            android:id="@+id/hijri_date"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:layout_weight="1"
+            android:text="15 Rajab 1446"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/hijri_date"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="15 Rajab 1446"
-                android:textColor="#E6FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+        <TextView
+            android:id="@+id/gregorian_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Wed, Jan 22"
+            android:textColor="#80FFFFFF"
+            android:textSize="10sp" />
+    </LinearLayout>
 
-            <TextView
-                android:id="@+id/gregorian_date"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Wed, Jan 22"
-                android:textColor="#80FFFFFF"
-                android:textSize="10sp" />
-        </LinearLayout>
+    <!-- Row 2: Main content (Next Prayer | Prayer Grid) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
 
-        <!-- Next prayer highlight box -->
+        <!-- Left Column: Next Prayer -->
         <LinearLayout
             android:id="@+id/next_prayer_container"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="@drawable/widget_highlight_bg"
             android:orientation="vertical"
             android:gravity="center"
             android:padding="8dp"
-            android:layout_marginTop="8dp">
+            android:layout_marginEnd="4dp">
 
             <TextView
                 android:id="@+id/next_prayer_label"
@@ -58,13 +59,13 @@
                 android:layout_height="wrap_content"
                 android:text="Next Prayer"
                 android:textColor="#A5B4FC"
-                android:textSize="10sp" />
+                android:textSize="9sp" />
 
             <TextView
                 android:id="@+id/next_prayer_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Dhuhr"
+                android:text="Fajr"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -73,9 +74,9 @@
                 android:id="@+id/countdown"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="2h 34m 12s"
+                android:text="2h 34m"
                 android:textColor="#818CF8"
-                android:textSize="20sp"
+                android:textSize="16sp"
                 android:textStyle="bold"
                 android:layout_marginTop="2dp" />
 
@@ -83,273 +84,262 @@
                 android:id="@+id/next_prayer_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="12:30 PM"
+                android:text="4:58 AM"
                 android:textColor="#80FFFFFF"
-                android:textSize="11sp" />
-        </LinearLayout>
-
-        <!-- Previous prayer elapsed -->
-        <LinearLayout
-            android:id="@+id/prev_prayer_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingTop="6dp">
-
-            <TextView
-                android:id="@+id/prev_prayer_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Since"
-                android:textColor="#80FFFFFF"
-                android:textSize="10sp" />
-
-            <TextView
-                android:id="@+id/prev_prayer_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Fajr"
-                android:textColor="#A5B4FC"
                 android:textSize="10sp"
-                android:textStyle="bold"
-                android:layout_marginStart="4dp" />
+                android:layout_marginTop="2dp" />
 
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/prev_prayer_elapsed"
+            <!-- Previous prayer (Since) -->
+            <LinearLayout
+                android:id="@+id/prev_prayer_container"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="3h 45m ago"
-                android:textColor="#80FFFFFF"
-                android:textSize="10sp" />
-        </LinearLayout>
-
-    </LinearLayout>
-
-    <!-- Vertical divider -->
-    <TextView
-        android:layout_width="1dp"
-        android:layout_height="match_parent"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:background="#33FFFFFF" />
-
-    <!-- Right side: All prayers in 2x3 grid -->
-    <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:orientation="vertical">
-
-        <!-- Row 1: Fajr & Sunrise -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:id="@+id/prayer_row_1"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
                 android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginEnd="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
+                android:gravity="center"
+                android:layout_marginTop="6dp">
 
                 <TextView
-                    android:id="@+id/prayer_name_1"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Fajr"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/prayer_time_1"
+                    android:id="@+id/prev_prayer_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="5:30"
+                    android:text="Since"
                     android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/prayer_row_2"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginStart="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
+                    android:textSize="9sp" />
 
                 <TextView
-                    android:id="@+id/prayer_name_2"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Sunrise"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/prayer_time_2"
+                    android:id="@+id/prev_prayer_name"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="6:45"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Row 2: Dhuhr & Asr -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="4dp"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:id="@+id/prayer_row_3"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginEnd="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
-
-                <TextView
-                    android:id="@+id/prayer_name_3"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Dhuhr"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/prayer_time_3"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="12:30"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/prayer_row_4"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginStart="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
-
-                <TextView
-                    android:id="@+id/prayer_name_4"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Asr"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/prayer_time_4"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="3:45"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <!-- Row 3: Maghrib & Isha -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="4dp"
-            android:orientation="horizontal">
-
-            <LinearLayout
-                android:id="@+id/prayer_row_5"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginEnd="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
-
-                <TextView
-                    android:id="@+id/prayer_name_5"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Maghrib"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
-
-                <TextView
-                    android:id="@+id/prayer_time_5"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="6:15"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/prayer_row_6"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:layout_marginStart="2dp"
-                android:background="@drawable/widget_prayer_row_bg">
-
-                <TextView
-                    android:id="@+id/prayer_name_6"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:text="Isha"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="11sp" />
+                    android:textColor="#FFFFFF"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:layout_marginStart="3dp" />
 
                 <TextView
-                    android:id="@+id/prayer_time_6"
+                    android:id="@+id/prev_prayer_elapsed"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="7:45"
+                    android:text="51m ago"
                     android:textColor="#80FFFFFF"
-                    android:textSize="10sp" />
+                    android:textSize="9sp"
+                    android:layout_marginStart="3dp" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Right Column: Prayer Grid (2 cols x 3 rows) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Prayer Row 1: Fajr & Sunrise -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_1"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginEnd="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_1"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Fajr"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_1"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="4:58"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_2"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginStart="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_2"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Sunrise"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_2"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="6:20"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Prayer Row 2: Dhuhr & Asr -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="2dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_3"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginEnd="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_3"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Dhuhr"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_3"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="11:46"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_4"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginStart="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_4"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Asr"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_4"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="2:40"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Prayer Row 3: Maghrib & Isha -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="2dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_5"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginEnd="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_5"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Maghrib"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_5"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="5:11"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/prayer_row_6"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="4dp"
+                    android:layout_marginStart="1dp"
+                    android:background="@drawable/widget_prayer_row_bg">
+
+                    <TextView
+                        android:id="@+id/prayer_name_6"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Isha"
+                        android:textColor="#FFFFFF"
+                        android:textSize="10sp" />
+
+                    <TextView
+                        android:id="@+id/prayer_time_6"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="6:41"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+
         </LinearLayout>
 
     </LinearLayout>

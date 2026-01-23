@@ -9,7 +9,12 @@ import {
   Schedule,
   pending,
   cancel,
+  createChannel,
+  Importance,
+  Visibility,
 } from "@tauri-apps/plugin-notification";
+
+const PRAYER_CHANNEL_ID = "prayer-notifications";
 
 // Notification timing options (in minutes)
 export const NOTIFICATION_TIMING_OPTIONS = [0, 5, 10, 15, 20, 30] as const;
@@ -28,6 +33,26 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   minutesAfter: 5,
   atPrayerTime: true,
 };
+
+/**
+ * Ensures the notification channel exists for Android 8.0+.
+ * Must be called before scheduling notifications.
+ */
+async function ensureNotificationChannel(): Promise<void> {
+  try {
+    await createChannel({
+      id: PRAYER_CHANNEL_ID,
+      name: "Prayer Notifications",
+      description: "Notifications for prayer times and reminders",
+      importance: Importance.High,
+      visibility: Visibility.Public,
+      vibration: true,
+      sound: "default",
+    });
+  } catch {
+    // Channel might already exist or platform doesn't support it (iOS, desktop)
+  }
+}
 
 type UseNotificationsOptions = {
   timingsList?: Ref<PrayerTimingItem[]>;
@@ -101,7 +126,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
       return;
     }
     try {
-      sendNotification({ title, body });
+      await ensureNotificationChannel();
+      sendNotification({ title, body, channelId: PRAYER_CHANNEL_ID });
     } catch {
       // ignore in non-tauri/web
     }
@@ -119,6 +145,9 @@ export function useNotifications(options?: UseNotificationsOptions) {
 
     const ok = await ensurePermission();
     if (!ok) return;
+
+    // Ensure notification channel exists (required for Android 8.0+)
+    await ensureNotificationChannel();
 
     const now = new Date();
     const dateKey = getDateKey(now);
@@ -160,7 +189,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
           try {
             sendNotification({
               id: notificationId++,
-              title: "Meeqat",
+              channelId: PRAYER_CHANNEL_ID,
+              title: "Meeqat - Prayer Reminder",
               body: `Athan for ${prayer.label} in ${minutesBefore} minutes`,
               schedule: Schedule.at(beforeTime),
             });
@@ -177,7 +207,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
           try {
             sendNotification({
               id: notificationId++,
-              title: "Meeqat",
+              channelId: PRAYER_CHANNEL_ID,
+              title: "Meeqat - Prayer Time",
               body: `It's time for ${prayer.label}`,
               schedule: Schedule.at(atTime),
             });
@@ -194,7 +225,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
           try {
             sendNotification({
               id: notificationId++,
-              title: "Meeqat",
+              channelId: PRAYER_CHANNEL_ID,
+              title: "Meeqat - Iqama Reminder",
               body: `Get ready for Iqama for ${prayer.label}`,
               schedule: Schedule.at(afterTime),
             });

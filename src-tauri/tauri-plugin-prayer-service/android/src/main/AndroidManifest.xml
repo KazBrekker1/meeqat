@@ -1,31 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permissions for foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Permissions for widget updates -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Permissions for exact alarms (widget updates even in Doze mode) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
-    <!-- Request to ignore battery optimizations -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Permission for countdown foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application>
-        <!-- Foreground Service for Prayer Times -->
-        <service
-            android:name=".PrayerForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="prayer_timer" />
-        </service>
-
-        <!-- Boot Receiver to restart service after device reboot -->
+        <!-- Boot Receiver to restart widget updates after device reboot -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true"
@@ -58,5 +46,15 @@
                 <action android:name="com.meeqat.plugin.prayerservice.UPDATE_WIDGET" />
             </intent-filter>
         </receiver>
+
+        <!-- Countdown Service for per-second updates in final minute -->
+        <service
+            android:name=".CountdownService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="prayer_countdown" />
+        </service>
     </application>
 </manifest>

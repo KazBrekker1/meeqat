@@ -1,6 +1,6 @@
 use tauri::{command, AppHandle, Runtime};
 
-use crate::models::{NotificationPermissionStatus, PermissionResult, ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, BatteryOptimizationStatus, BatteryOptimizationResult};
+use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult};
 use crate::error::Result;
 use crate::PrayerServiceExt;
 
@@ -39,12 +39,17 @@ pub fn is_service_running<R: Runtime>(app: AppHandle<R>) -> Result<ServiceStatus
 }
 
 #[command]
+pub fn open_app_settings<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.prayer_service().open_app_settings()
+}
+
+#[command]
 pub fn check_notification_permission<R: Runtime>(app: AppHandle<R>) -> Result<NotificationPermissionStatus> {
     app.prayer_service().check_notification_permission()
 }
 
 #[command]
-pub fn request_notification_permission<R: Runtime>(app: AppHandle<R>) -> Result<PermissionResult> {
+pub fn request_notification_permission<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.prayer_service().request_notification_permission()
 }
 
@@ -54,11 +59,22 @@ pub fn check_battery_optimization<R: Runtime>(app: AppHandle<R>) -> Result<Batte
 }
 
 #[command]
-pub fn request_battery_optimization_exemption<R: Runtime>(app: AppHandle<R>) -> Result<BatteryOptimizationResult> {
+pub fn request_battery_optimization_exemption<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.prayer_service().request_battery_optimization_exemption()
 }
 
 #[command]
-pub fn open_app_settings<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.prayer_service().open_app_settings()
+pub fn set_mock_time_offset<R: Runtime>(app: AppHandle<R>, offset_ms: i64) -> Result<()> {
+    let args = SetMockTimeOffsetArgs { offset_ms };
+    app.prayer_service().set_mock_time_offset(args)
+}
+
+#[command]
+pub fn get_mock_time_offset<R: Runtime>(app: AppHandle<R>) -> Result<MockTimeOffsetResult> {
+    app.prayer_service().get_mock_time_offset()
+}
+
+#[command]
+pub fn clear_mock_time_offset<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.prayer_service().clear_mock_time_offset()
 }

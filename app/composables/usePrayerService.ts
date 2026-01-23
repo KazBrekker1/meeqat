@@ -7,13 +7,6 @@ interface PrayerTimeData {
   label: string;
 }
 
-interface StartServiceOptions {
-  prayers: PrayerTimeData[];
-  nextPrayerIndex: number;
-  hijriDate?: string;
-  gregorianDate?: string;
-}
-
 interface UpdatePrayerTimesOptions {
   prayers: PrayerTimeData[];
   nextPrayerIndex: number;
@@ -21,62 +14,14 @@ interface UpdatePrayerTimesOptions {
   gregorianDate?: string;
 }
 
-interface ServiceStatus {
-  isRunning: boolean;
-}
-
-interface NotificationPermissionStatus {
-  granted: boolean;
-  canRequest: boolean;
-}
-
-interface PermissionResult {
-  granted: boolean;
-}
-
-interface BatteryOptimizationStatus {
-  isIgnoringBatteryOptimizations: boolean;
-  canRequest: boolean;
-}
-
-interface BatteryOptimizationResult {
-  requestSent?: boolean;
-  alreadyExempt?: boolean;
-  notRequired?: boolean;
-}
-
 // Dynamic imports to avoid issues on non-Android platforms
 async function getPluginApi() {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     return {
-      // Pass options directly - Kotlin plugin expects prayers/nextPrayerIndex at top level
-      startPrayerService: (options: StartServiceOptions): Promise<void> => {
-        return invoke("plugin:prayer-service|start_service", options);
-      },
-      stopPrayerService: (): Promise<void> => {
-        return invoke("plugin:prayer-service|stop_service");
-      },
+      // Update widget data (this is what startService does now - just saves data)
       updatePrayerTimes: (options: UpdatePrayerTimesOptions): Promise<void> => {
         return invoke("plugin:prayer-service|update_prayer_times", options);
-      },
-      isPrayerServiceRunning: (): Promise<ServiceStatus> => {
-        return invoke("plugin:prayer-service|is_service_running");
-      },
-      checkNotificationPermission: (): Promise<NotificationPermissionStatus> => {
-        return invoke("plugin:prayer-service|check_notification_permission");
-      },
-      requestNotificationPermission: (): Promise<PermissionResult> => {
-        return invoke("plugin:prayer-service|request_notification_permission");
-      },
-      checkBatteryOptimization: (): Promise<BatteryOptimizationStatus> => {
-        return invoke("plugin:prayer-service|check_battery_optimization");
-      },
-      requestBatteryOptimizationExemption: (): Promise<BatteryOptimizationResult> => {
-        return invoke("plugin:prayer-service|request_battery_optimization_exemption");
-      },
-      openAppSettings: (): Promise<void> => {
-        return invoke("plugin:prayer-service|open_app_settings");
       },
     };
   } catch {
@@ -124,6 +69,10 @@ function findNextPrayerIndex(timingsList: PrayerTimingItem[]): number {
   return index >= 0 ? index : 0;
 }
 
+/**
+ * Composable for updating Android home screen widgets with prayer times.
+ * This is a simplified version - no foreground service, just widget updates.
+ */
 export function usePrayerService(options: {
   timingsList: Ref<PrayerTimingItem[]>;
   hijriDate?: Ref<string | null>;
@@ -131,93 +80,28 @@ export function usePrayerService(options: {
 }) {
   const { timingsList, hijriDate, gregorianDate } = options;
 
-  const isServiceRunning = ref(false);
   const isAndroid = ref(false);
-  const serviceError = ref<string | null>(null);
 
-  // Check if we're on Android and start service if timings available
+  // Check if we're on Android
   onMounted(async () => {
     isAndroid.value = await isAndroidPlatform();
 
     if (isAndroid.value) {
-      console.log("[PrayerService] Android platform detected on mount");
+      console.log("[PrayerService] Android platform detected");
 
-      // Check if service is already running
-      const running = await checkStatus();
-      console.log("[PrayerService] Service running status:", running);
-
-      // If service not running and we have timings, start it
-      if (!running && timingsList.value.length > 0) {
-        console.log("[PrayerService] Starting service on mount with existing timings");
-        await start();
+      // If we have timings, update widgets immediately
+      if (timingsList.value.length > 0) {
+        console.log("[PrayerService] Updating widgets on mount with existing timings");
+        await update();
       }
     }
   });
 
-  async function start(): Promise<void> {
-    if (!isAndroid.value) {
-      console.log("[PrayerService] Not on Android, skipping service start");
-      return;
-    }
-
-    if (!timingsList.value.length) {
-      console.log("[PrayerService] No timings available, skipping service start");
-      return;
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) {
-        console.log("[PrayerService] Plugin API not available");
-        return;
-      }
-
-      const prayers = convertTimingsToServiceData(timingsList.value);
-      const nextPrayerIndex = findNextPrayerIndex(timingsList.value);
-
-      console.log("[PrayerService] Starting service with", prayers.length, "prayers, next index:", nextPrayerIndex);
-      console.log("[PrayerService] Prayer data:", JSON.stringify(prayers.slice(0, 2)));
-
-      await api.startPrayerService({
-        prayers,
-        nextPrayerIndex,
-        hijriDate: hijriDate?.value ?? undefined,
-        gregorianDate: gregorianDate?.value ?? undefined,
-      });
-
-      isServiceRunning.value = true;
-      serviceError.value = null;
-      console.log("[PrayerService] Service started successfully");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[PrayerService] Failed to start service:", message, err);
-      serviceError.value = message;
-      isServiceRunning.value = false;
-    }
-  }
-
-  async function stop(): Promise<void> {
-    if (!isAndroid.value) {
-      return;
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return;
-
-      await api.stopPrayerService();
-      isServiceRunning.value = false;
-      serviceError.value = null;
-      console.log("[PrayerService] Service stopped");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[PrayerService] Failed to stop service:", message);
-      serviceError.value = message;
-    }
-  }
-
+  /**
+   * Update widget data. Call this whenever prayer times change.
+   */
   async function update(): Promise<void> {
-    if (!isAndroid.value || !isServiceRunning.value) {
+    if (!isAndroid.value) {
       return;
     }
 
@@ -239,147 +123,39 @@ export function usePrayerService(options: {
         gregorianDate: gregorianDate?.value ?? undefined,
       });
 
-      console.log("[PrayerService] Service updated");
+      console.log("[PrayerService] Widget data updated");
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[PrayerService] Failed to update service:", message);
-      serviceError.value = message;
+      console.error("[PrayerService] Failed to update widget data:", message);
     }
   }
 
-  async function checkStatus(): Promise<boolean> {
-    if (!isAndroid.value) {
-      return false;
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return false;
-
-      const status = await api.isPrayerServiceRunning();
-      isServiceRunning.value = status.isRunning;
-      return status.isRunning;
-    } catch {
-      return false;
-    }
-  }
-
-  async function checkNotificationPermission(): Promise<NotificationPermissionStatus> {
-    if (!isAndroid.value) {
-      return { granted: true, canRequest: false };
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return { granted: true, canRequest: false };
-
-      return await api.checkNotificationPermission();
-    } catch {
-      return { granted: true, canRequest: false };
-    }
-  }
-
-  async function requestNotificationPermission(): Promise<boolean> {
-    if (!isAndroid.value) {
-      return true;
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return true;
-
-      const result = await api.requestNotificationPermission();
-      return result.granted;
-    } catch {
-      return false;
-    }
-  }
-
-  async function checkBatteryOptimization(): Promise<BatteryOptimizationStatus> {
-    if (!isAndroid.value) {
-      return { isIgnoringBatteryOptimizations: true, canRequest: false };
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return { isIgnoringBatteryOptimizations: true, canRequest: false };
-
-      return await api.checkBatteryOptimization();
-    } catch {
-      return { isIgnoringBatteryOptimizations: true, canRequest: false };
-    }
-  }
-
-  async function requestBatteryOptimizationExemption(): Promise<BatteryOptimizationResult> {
-    if (!isAndroid.value) {
-      return { notRequired: true };
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return { notRequired: true };
-
-      return await api.requestBatteryOptimizationExemption();
-    } catch {
-      return {};
-    }
-  }
-
-  async function openAppSettings(): Promise<void> {
-    if (!isAndroid.value) {
-      return;
-    }
-
-    try {
-      const api = await getPluginApi();
-      if (!api) return;
-
-      await api.openAppSettings();
-    } catch (err) {
-      console.error("[PrayerService] Failed to open app settings:", err);
-    }
-  }
-
-  // Watch for timings changes and update the service
+  // Watch for timings changes and update widgets
   watch(
     timingsList,
     async (newTimings) => {
       if (!isAndroid.value) return;
 
-      if (newTimings.length && !isServiceRunning.value) {
-        // Start service if not running and we have timings
-        await start();
-      } else if (isServiceRunning.value) {
-        // Update service with new timings
+      if (newTimings.length) {
         await update();
       }
     },
     { deep: true }
   );
 
-  // Also watch for when isAndroid becomes true - start service if timings are available
+  // Also watch for when isAndroid becomes true
   watch(
     isAndroid,
     async (isNowAndroid) => {
-      if (isNowAndroid && timingsList.value.length && !isServiceRunning.value) {
-        console.log("[PrayerService] Android detected, starting service with existing timings");
-        await start();
+      if (isNowAndroid && timingsList.value.length) {
+        console.log("[PrayerService] Android detected, updating widgets with existing timings");
+        await update();
       }
     }
   );
 
   return {
-    isServiceRunning,
     isAndroid,
-    serviceError,
-    start,
-    stop,
     update,
-    checkStatus,
-    checkNotificationPermission,
-    requestNotificationPermission,
-    checkBatteryOptimization,
-    requestBatteryOptimizationExemption,
-    openAppSettings,
   };
 }

@@ -40,29 +40,22 @@ pub struct ServiceStatus {
 #[serde(rename_all = "camelCase")]
 pub struct NotificationPermissionStatus {
     pub granted: bool,
-    pub can_request: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PermissionResult {
-    pub granted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatteryOptimizationStatus {
-    pub is_ignoring_battery_optimizations: bool,
-    pub can_request: bool,
+    pub is_ignoring: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BatteryOptimizationResult {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub request_sent: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub already_exempt: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub not_required: Option<bool>,
+pub struct SetMockTimeOffsetArgs {
+    pub offset_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MockTimeOffsetResult {
+    pub offset_ms: i64,
 }

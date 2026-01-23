@@ -41,12 +41,13 @@ export function usePrayerTimes() {
 
   const is24Hour = computed(() => timeFormat.value === "24h");
 
-  // --- Time tracking ---
-  const now = ref<Date>(new Date());
+  // --- Time tracking (with mock time support) ---
+  const { getNow } = useMockTime();
+  const now = ref<Date>(getNow());
   let intervalId: ReturnType<typeof setInterval> | null = null;
   onMounted(() => {
     intervalId = setInterval(() => {
-      now.value = new Date();
+      now.value = getNow();
     }, 1000);
 
     // Track online/offline status

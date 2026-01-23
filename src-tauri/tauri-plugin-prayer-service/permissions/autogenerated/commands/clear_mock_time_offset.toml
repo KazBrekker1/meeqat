@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-clear-mock-time-offset"
+description = "Enables the clear_mock_time_offset command without any pre-configured scope."
+commands.allow = ["clear_mock_time_offset"]
+
+[[permission]]
+identifier = "deny-clear-mock-time-offset"
+description = "Denies the clear_mock_time_offset command without any pre-configured scope."
+commands.deny = ["clear_mock_time_offset"]

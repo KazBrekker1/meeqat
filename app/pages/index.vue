@@ -103,6 +103,9 @@
             </div>
 
             <UCalendar v-model="calendarDate">
+              <template #heading>
+                <span class="text-sm font-semibold">{{ formatCalendarHeading() }}</span>
+              </template>
               <template #day="{ day }">
                 <UTooltip :text="formatTooltip(day)" :delay-duration="0">
                   <span>{{ day.day }}</span>
@@ -142,12 +145,6 @@
       :timezone-select-options="timezoneSelectOptions"
       v-model:selected-method-id="selectedMethodId"
       v-model:selected-extra-timezone="selectedExtraTimezone"
-      :is-android="isAndroid"
-      :check-notification-permission="checkNotificationPermission"
-      :request-notification-permission="requestNotificationPermission"
-      :check-battery-optimization="checkBatteryOptimization"
-      :request-battery-optimization-exemption="requestBatteryOptimizationExemption"
-      :open-app-settings="openAppSettings"
       @clear-cache="onClearCache"
       @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
       @toggle-calendar="showCalendar = !showCalendar"
@@ -203,17 +200,61 @@ const calendarDate = computed<CalendarDate>({
 });
 
 const gregorianFormatter = new DateFormatter("en-US", { dateStyle: "long" });
-const islamicFormatter = new DateFormatter("en-US-u-ca-islamic-umalqura", {
-  dateStyle: "long",
-});
+
+// Islamic month names - hardcoded to avoid Intl.DateTimeFormat issues on Android WebViews
+const ISLAMIC_MONTHS = [
+  "Muharram",
+  "Safar",
+  "Rabi' al-Awwal",
+  "Rabi' al-Thani",
+  "Jumada al-Awwal",
+  "Jumada al-Thani",
+  "Rajab",
+  "Sha'ban",
+  "Ramadan",
+  "Shawwal",
+  "Dhu al-Qi'dah",
+  "Dhu al-Hijjah",
+];
+
+/**
+ * Format Islamic date using hardcoded month names.
+ * This avoids Intl.DateTimeFormat issues on Android WebViews which
+ * don't properly support Islamic calendar locales.
+ */
+function formatIslamicDate(date: DateValue): string {
+  const islamic = date.calendar instanceof IslamicUmalquraCalendar
+    ? date
+    : toCalendar(date, new IslamicUmalquraCalendar());
+  const monthName = ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
+  return `${islamic.day} ${monthName} ${islamic.year} AH`;
+}
+
+/**
+ * Format the calendar heading (month and year).
+ * Uses hardcoded Islamic month names for Android WebView compatibility.
+ * Uses calendarDate directly since headingValue from slot may not be a DateValue.
+ */
+function formatCalendarHeading(): string {
+  const date = calendarDate.value;
+  if (calendarSystem.value === "islamic") {
+    const monthName = ISLAMIC_MONTHS[date.month - 1] || `Month ${date.month}`;
+    return `${monthName} ${date.year}`;
+  } else {
+    // Gregorian formatting works fine on all platforms
+    const formatter = new DateFormatter("en-US", { month: "long", year: "numeric" });
+    return formatter.format(date.toDate(timeZone));
+  }
+}
 
 function formatTooltip(date: DateValue) {
   if (calendarSystem.value == "islamic") {
+    // When viewing Islamic calendar, tooltip shows Gregorian date
     const greg = toCalendar(date, new GregorianCalendar());
     return gregorianFormatter.format(greg.toDate(timeZone));
   } else {
-    const islamic = toCalendar(date, new IslamicUmalquraCalendar());
-    return islamicFormatter.format(islamic.toDate(timeZone));
+    // When viewing Gregorian calendar, tooltip shows Islamic date with hardcoded months
+    return formatIslamicDate(date);
   }
 }
 
@@ -296,17 +337,8 @@ const { startPrayerNotifications, stopPrayerNotifications, send, settings: notif
     timingsList,
   });
 
-// Start Android foreground service for persistent notification
-const {
-  start: startPrayerService,
-  stop: stopPrayerService,
-  isAndroid,
-  checkNotificationPermission,
-  requestNotificationPermission,
-  checkBatteryOptimization,
-  requestBatteryOptimizationExemption,
-  openAppSettings,
-} = usePrayerService({
+// Update Android home screen widgets
+const { isAndroid } = usePrayerService({
   timingsList,
   hijriDate: hijriDateVerbose,
   gregorianDate: gregorianDateVerbose,

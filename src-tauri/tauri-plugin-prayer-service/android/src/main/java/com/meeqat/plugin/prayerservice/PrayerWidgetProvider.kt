@@ -18,7 +18,7 @@ import java.util.Calendar
 
 /**
  * AppWidgetProvider that displays prayer times on the home screen.
- * Reads prayer data from SharedPreferences (same store as PrayerForegroundService).
+ * Reads prayer data from SharedPreferences (shared with the plugin).
  */
 class PrayerWidgetProvider : AppWidgetProvider() {
 
@@ -26,8 +26,15 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         private const val TAG = "PrayerWidgetProvider"
         const val ACTION_WIDGET_UPDATE = "com.meeqat.plugin.prayerservice.WIDGET_UPDATE"
 
+        // SharedPreferences keys (shared with PrayerServicePlugin)
+        const val PREFS_NAME = "prayer_service_prefs"
+        const val KEY_PRAYERS_JSON = "prayers_json"
+        const val KEY_NEXT_PRAYER_INDEX = "next_prayer_index"
+        const val KEY_HIJRI_DATE = "hijri_date"
+        const val KEY_GREGORIAN_DATE = "gregorian_date"
+
         /**
-         * Static method to trigger widget updates from the foreground service
+         * Static method to trigger widget updates from anywhere
          */
         fun updateAllWidgets(context: Context) {
             val intent = Intent(context, PrayerWidgetProvider::class.java).apply {
@@ -51,6 +58,22 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateWidget(context, appWidgetManager, appWidgetId)
         }
+        // Ensure periodic updates are scheduled
+        WidgetUpdateReceiver.scheduleNextUpdate(context)
+    }
+
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        Log.d(TAG, "onEnabled - first widget added, starting update scheduling")
+        // Start periodic widget updates when first widget is added
+        WidgetUpdateReceiver.scheduleNextUpdate(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        Log.d(TAG, "onDisabled - last widget removed, cancelling updates")
+        // Cancel periodic updates when last widget is removed
+        WidgetUpdateReceiver.cancelScheduledUpdates(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -86,12 +109,13 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
 
         // Select layout based on width and height
-        // Wide layout when widget is horizontally stretched
-        val isWide = minWidth >= 300 && minHeight < 250 && minWidth > minHeight * 1.5
+        // Wide layout only for very wide widgets (5+ columns, 2 rows) with high aspect ratio
+        val isWide = minWidth >= 380 && minHeight < 160 && minWidth > minHeight * 2.0
         val layoutId = when {
-            isWide -> R.layout.widget_prayer_wide               // Wide horizontal layout
+            isWide -> R.layout.widget_prayer_wide               // Wide horizontal layout (5x2 or 6x2)
             minHeight >= 250 -> R.layout.widget_prayer_4x4      // Full (all 6 prayers vertical)
-            minHeight >= 160 -> R.layout.widget_prayer_compact  // Compact 2-column with prev prayer
+            minHeight >= 160 -> R.layout.widget_prayer_4x3      // 4x3 with next prayer + 2-col grid
+            minHeight >= 110 -> R.layout.widget_prayer_compact  // Compact with prev prayer
             else -> R.layout.widget_prayer_4x2                  // Minimal (countdown only)
         }
 
@@ -101,11 +125,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         // Load prayer data from SharedPreferences
         val prefs = context.getSharedPreferences(
-            PrayerForegroundService.PREFS_NAME,
+            PREFS_NAME,
             Context.MODE_PRIVATE
         )
-        val prayersJson = prefs.getString(PrayerForegroundService.KEY_PRAYERS_JSON, null)
-        val nextPrayerIndex = prefs.getInt(PrayerForegroundService.KEY_NEXT_PRAYER_INDEX, 0)
+        val prayersJson = prefs.getString(KEY_PRAYERS_JSON, null)
+        val nextPrayerIndex = prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0)
 
         // Set up click intent to open app
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -124,12 +148,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             if (prayers.isNotEmpty()) {
                 // Recalculate the actual next prayer index based on current time
                 // This handles the case where the app is in background and prayer time passes
-                val actualNextIndex = findActualNextPrayerIndex(prayers, nextPrayerIndex)
+                val actualNextIndex = findActualNextPrayerIndex(context, prayers, nextPrayerIndex)
 
                 // Update SharedPreferences if index changed
                 if (actualNextIndex != nextPrayerIndex) {
                     Log.d(TAG, "Prayer index advanced from $nextPrayerIndex to $actualNextIndex")
-                    prefs.edit().putInt(PrayerForegroundService.KEY_NEXT_PRAYER_INDEX, actualNextIndex).apply()
+                    prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, actualNextIndex).apply()
                 }
 
                 populateWidget(context, views, prayers, actualNextIndex, layoutId)
@@ -147,7 +171,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     }
 
     private fun populateWidget(
-        @Suppress("UNUSED_PARAMETER") context: Context,
+        context: Context,
         views: RemoteViews,
         prayers: List<PrayerTimeData>,
         nextPrayerIndex: Int,
@@ -158,13 +182,13 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             val nextPrayer = prayers[nextPrayerIndex]
             views.setTextViewText(R.id.next_prayer_name, nextPrayer.label)
             views.setTextViewText(R.id.next_prayer_time, formatTime(nextPrayer.prayerTime))
-            views.setTextViewText(R.id.countdown, formatCountdown(nextPrayer.prayerTime))
+            views.setTextViewText(R.id.countdown, formatCountdown(context, nextPrayer.prayerTime))
         }
 
         // Set previous prayer info (for layouts that support it)
-        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide) {
+        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x3) {
             // Find the most recent prayer that has actually passed
-            val now = System.currentTimeMillis()
+            val now = DebugTimeProvider.currentTimeMillis(context)
             val prevPrayer = prayers
                 .filter { it.prayerTime < now }
                 .maxByOrNull { it.prayerTime }
@@ -172,23 +196,37 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             if (prevPrayer != null) {
                 try {
                     views.setTextViewText(R.id.prev_prayer_name, prevPrayer.label)
-                    views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(prevPrayer.prayerTime))
+                    views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, prevPrayer.prayerTime))
                     views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
                 } catch (e: Exception) {
                     // Layout might not have these views
                 }
             } else {
-                // No prayer has passed yet today, hide the container
-                try {
-                    views.setViewVisibility(R.id.prev_prayer_container, View.GONE)
-                } catch (e: Exception) {
-                    // Layout might not have this view
+                // No prayer has passed yet today (before Fajr)
+                // Show "Since Isha" from yesterday if we have Isha in the list
+                val isha = prayers.find { it.prayerName.equals("Isha", ignoreCase = true) }
+                if (isha != null) {
+                    try {
+                        // Isha from yesterday = today's Isha time - 24 hours
+                        val yesterdayIshaTime = isha.prayerTime - (24 * 60 * 60 * 1000)
+                        views.setTextViewText(R.id.prev_prayer_name, "Isha")
+                        views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, yesterdayIshaTime))
+                        views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
+                    } catch (e: Exception) {
+                        // Layout might not have these views
+                    }
+                } else {
+                    try {
+                        views.setViewVisibility(R.id.prev_prayer_container, View.GONE)
+                    } catch (e: Exception) {
+                        // Layout might not have this view
+                    }
                 }
             }
         }
 
         // Populate prayer list for layouts with prayer rows
-        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide) {
+        if (layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_4x4 || layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x3) {
             val maxRows = 6
             val prayersToShow = prayers.take(maxRows)
 
@@ -206,8 +244,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 R.id.prayer_row_4, R.id.prayer_row_5, R.id.prayer_row_6
             )
 
-            // Use shorter time format for compact/wide layouts
-            val useShortTime = layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_wide
+            // Use shorter time format for compact/wide/4x3 layouts
+            val useShortTime = layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x3
 
             for (i in 0 until maxRows) {
                 if (i < prayersToShow.size && i < rowNameIds.size) {
@@ -239,8 +277,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
     private fun setCalendarDates(views: RemoteViews, prefs: android.content.SharedPreferences) {
         // Read dates from SharedPreferences (passed from frontend which calculates correctly)
-        val hijriDate = prefs.getString(PrayerForegroundService.KEY_HIJRI_DATE, null)
-        val gregorianDate = prefs.getString(PrayerForegroundService.KEY_GREGORIAN_DATE, null)
+        val hijriDate = prefs.getString(KEY_HIJRI_DATE, null)
+        val gregorianDate = prefs.getString(KEY_GREGORIAN_DATE, null)
 
         // Set Gregorian date - use saved value or fall back to local formatting
         if (gregorianDate != null) {
@@ -264,8 +302,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
      * If the stored next prayer has passed, find the first prayer that hasn't passed yet.
      * If all prayers have passed, return the last prayer index (end of day state).
      */
-    private fun findActualNextPrayerIndex(prayers: List<PrayerTimeData>, storedIndex: Int): Int {
-        val now = System.currentTimeMillis()
+    private fun findActualNextPrayerIndex(context: Context, prayers: List<PrayerTimeData>, storedIndex: Int): Int {
+        val now = DebugTimeProvider.currentTimeMillis(context)
 
         // If stored index is valid and that prayer hasn't passed, use it
         if (storedIndex in prayers.indices && prayers[storedIndex].prayerTime > now) {
@@ -294,8 +332,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         return sdf.format(Date(timestamp))
     }
 
-    private fun formatElapsed(prayerTime: Long): String {
-        val now = System.currentTimeMillis()
+    private fun formatElapsed(context: Context, prayerTime: Long): String {
+        val now = DebugTimeProvider.currentTimeMillis(context)
         val diff = now - prayerTime
 
         if (diff <= 0) {
@@ -311,8 +349,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun formatCountdown(targetTime: Long): String {
-        val now = System.currentTimeMillis()
+    private fun formatCountdown(context: Context, targetTime: Long): String {
+        val now = DebugTimeProvider.currentTimeMillis(context)
         val diff = targetTime - now
 
         if (diff <= 0) {
@@ -321,11 +359,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         val hours = diff / (1000 * 60 * 60)
         val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
+        val seconds = (diff % (1000 * 60)) / 1000
 
         return when {
             hours > 0 -> "${hours}h ${minutes}m"
-            minutes > 0 -> "${minutes}m"
-            else -> "<1m"
+            minutes >= 1 -> "${minutes}m"
+            else -> "${seconds}s"
         }
     }
 
@@ -352,6 +391,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     private fun getLayoutName(layoutId: Int): String {
         return when (layoutId) {
             R.layout.widget_prayer_4x4 -> "4x4"
+            R.layout.widget_prayer_4x3 -> "4x3"
             R.layout.widget_prayer_compact -> "compact"
             R.layout.widget_prayer_wide -> "wide"
             R.layout.widget_prayer_4x2 -> "4x2"

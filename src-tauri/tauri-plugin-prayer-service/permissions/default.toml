@@ -12,4 +12,7 @@ permissions = [
     "allow-check-battery-optimization",
     "allow-request-battery-optimization-exemption",
     "allow-open-app-settings",
+    "allow-set-mock-time-offset",
+    "allow-get-mock-time-offset",
+    "allow-clear-mock-time-offset",
 ]

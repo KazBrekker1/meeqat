@@ -192,90 +192,71 @@
                 <h3 class="font-semibold">Permissions</h3>
               </div>
               <UButton
-                size="xs"
                 variant="ghost"
-                color="neutral"
-                :loading="isCheckingPermissions"
-                @click="checkAllPermissions"
+                size="xs"
                 icon="i-lucide-refresh-cw"
+                :loading="isCheckingPermissions"
+                @click="checkPermissions"
               />
             </div>
 
             <div class="space-y-3 pl-7">
-              <!-- Notification Permission -->
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
+              <!-- Notifications Permission -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
                   <UIcon
                     :name="notificationPermissionGranted ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
                     :class="notificationPermissionGranted ? 'text-green-500' : 'text-red-500'"
-                    class="shrink-0"
+                    class="w-4 h-4"
                   />
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium truncate">Notifications</p>
-                    <p class="text-xs text-muted truncate">Show prayer alerts</p>
+                  <div>
+                    <p class="text-sm font-medium">Notifications</p>
+                    <p class="text-xs text-muted">Show prayer alerts</p>
                   </div>
                 </div>
                 <UButton
-                  v-if="notificationPermissionGranted === false"
+                  v-if="!notificationPermissionGranted"
                   size="xs"
                   variant="soft"
-                  @click="handleRequestNotificationPermission"
-                >
-                  Enable
-                </UButton>
-                <UBadge
-                  v-else-if="notificationPermissionGranted === true"
-                  color="success"
-                  variant="subtle"
-                  size="xs"
+                  @click="requestNotificationPermission"
                 >
                   OK
-                </UBadge>
+                </UButton>
+                <UBadge v-else color="success" variant="subtle" size="xs">OK</UBadge>
               </div>
 
-              <!-- Battery Optimization -->
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-2 min-w-0">
+              <!-- Battery Optimization Permission -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
                   <UIcon
-                    :name="batteryOptimizationIgnored ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
-                    :class="batteryOptimizationIgnored ? 'text-green-500' : 'text-amber-500'"
-                    class="shrink-0"
+                    :name="batteryOptimizationDisabled ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+                    :class="batteryOptimizationDisabled ? 'text-green-500' : 'text-red-500'"
+                    class="w-4 h-4"
                   />
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium truncate">Battery</p>
-                    <p class="text-xs text-muted truncate">Keep running in background</p>
+                  <div>
+                    <p class="text-sm font-medium">Battery</p>
+                    <p class="text-xs text-muted">Keep running in background</p>
                   </div>
                 </div>
                 <UButton
-                  v-if="batteryOptimizationIgnored === false"
+                  v-if="!batteryOptimizationDisabled"
                   size="xs"
                   variant="soft"
-                  color="warning"
-                  @click="handleRequestBatteryOptimization"
-                >
-                  Fix
-                </UButton>
-                <UBadge
-                  v-else-if="batteryOptimizationIgnored === true"
-                  color="success"
-                  variant="subtle"
-                  size="xs"
+                  @click="requestBatteryExemption"
                 >
                   OK
-                </UBadge>
+                </UButton>
+                <UBadge v-else color="success" variant="subtle" size="xs">OK</UBadge>
               </div>
 
-              <!-- Open App Settings -->
-              <UButton
-                size="xs"
-                variant="link"
-                color="neutral"
-                @click="handleOpenAppSettings"
-                icon="i-lucide-external-link"
-                class="pl-0"
+              <!-- Open System Settings -->
+              <button
+                class="flex items-center gap-1 text-sm text-primary hover:underline"
+                @click="openSettings"
               >
+                <UIcon name="i-lucide-external-link" class="w-4 h-4" />
                 Open system settings
-              </UButton>
+              </button>
             </div>
           </section>
         </template>
@@ -341,6 +322,58 @@
                 Test Notification
               </UButton>
             </div>
+
+            <!-- Time Mocking (Android only) -->
+            <template v-if="isAndroid">
+              <div class="space-y-2 pl-7 mt-4">
+                <p class="text-sm font-medium">Mock Time Offset</p>
+                <div class="flex flex-wrap gap-2">
+                  <UButton
+                    size="xs"
+                    variant="soft"
+                    color="warning"
+                    @click="jumpTime(-3600000)"
+                  >
+                    -1h
+                  </UButton>
+                  <UButton
+                    size="xs"
+                    variant="soft"
+                    color="warning"
+                    @click="jumpTime(-60000)"
+                  >
+                    -1m
+                  </UButton>
+                  <UButton
+                    size="xs"
+                    variant="soft"
+                    color="warning"
+                    @click="jumpTime(60000)"
+                  >
+                    +1m
+                  </UButton>
+                  <UButton
+                    size="xs"
+                    variant="soft"
+                    color="warning"
+                    @click="jumpTime(3600000)"
+                  >
+                    +1h
+                  </UButton>
+                  <UButton
+                    size="xs"
+                    variant="soft"
+                    color="error"
+                    @click="resetTime"
+                  >
+                    Reset
+                  </UButton>
+                </div>
+                <p class="text-xs text-muted">
+                  Current offset: {{ formatOffset(mockTimeOffsetMs) }}
+                </p>
+              </div>
+            </template>
           </section>
         </template>
       </div>
@@ -362,21 +395,93 @@
 
 <script lang="ts" setup>
 import { NOTIFICATION_TIMING_OPTIONS, type NotificationSettings } from '@/composables/useNotifications';
+import { useMockTime } from '@/composables/useMockTime';
 
-interface NotificationPermissionStatus {
-  granted: boolean;
-  canRequest: boolean;
+// Check if running on Android
+const isAndroid = ref(false);
+const notificationPermissionGranted = ref(false);
+const batteryOptimizationDisabled = ref(false);
+const isCheckingPermissions = ref(false);
+
+// Mock time (for developer tools)
+const { mockTimeOffsetMs, jumpTime, clearOffset, loadOffset, formatOffset } = useMockTime();
+
+// Helper to get invoke function
+async function getInvoke() {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke;
 }
 
-interface BatteryOptimizationStatus {
-  isIgnoringBatteryOptimizations: boolean;
-  canRequest: boolean;
+onMounted(async () => {
+  // Detect Android platform
+  if (import.meta.client) {
+    try {
+      const { platform } = await import('@tauri-apps/plugin-os');
+      isAndroid.value = (await platform()) === 'android';
+      if (isAndroid.value) {
+        await checkPermissions();
+        await loadOffset();
+      }
+    } catch {
+      // Not running in Tauri
+    }
+  }
+});
+
+async function resetTime() {
+  await clearOffset();
 }
 
-interface BatteryOptimizationResult {
-  requestSent?: boolean;
-  alreadyExempt?: boolean;
-  notRequired?: boolean;
+async function checkPermissions() {
+  if (!isAndroid.value) return;
+
+  isCheckingPermissions.value = true;
+  try {
+    const invoke = await getInvoke();
+
+    const [notifResult, batteryResult] = await Promise.all([
+      invoke<{ granted: boolean }>('plugin:prayer-service|check_notification_permission'),
+      invoke<{ isIgnoring: boolean }>('plugin:prayer-service|check_battery_optimization'),
+    ]);
+
+    notificationPermissionGranted.value = notifResult.granted;
+    batteryOptimizationDisabled.value = batteryResult.isIgnoring;
+  } catch (e) {
+    console.error('Failed to check permissions:', e);
+  } finally {
+    isCheckingPermissions.value = false;
+  }
+}
+
+async function requestNotificationPermission() {
+  try {
+    const invoke = await getInvoke();
+    await invoke('plugin:prayer-service|request_notification_permission');
+    // Re-check after user returns from settings
+    setTimeout(() => checkPermissions(), 1000);
+  } catch (e) {
+    console.error('Failed to request notification permission:', e);
+  }
+}
+
+async function requestBatteryExemption() {
+  try {
+    const invoke = await getInvoke();
+    await invoke('plugin:prayer-service|request_battery_optimization_exemption');
+    // Re-check after user returns from settings
+    setTimeout(() => checkPermissions(), 1000);
+  } catch (e) {
+    console.error('Failed to request battery exemption:', e);
+  }
+}
+
+async function openSettings() {
+  try {
+    const invoke = await getInvoke();
+    await invoke('plugin:prayer-service|open_app_settings');
+  } catch (e) {
+    console.error('Failed to open settings:', e);
+  }
 }
 
 const props = defineProps<{
@@ -394,13 +499,6 @@ const props = defineProps<{
   timezoneSelectOptions: { label: string; value: string }[];
   selectedMethodId: number;
   selectedExtraTimezone: string;
-  // Android-specific props
-  isAndroid?: boolean;
-  checkNotificationPermission?: () => Promise<NotificationPermissionStatus>;
-  requestNotificationPermission?: () => Promise<boolean>;
-  checkBatteryOptimization?: () => Promise<BatteryOptimizationStatus>;
-  requestBatteryOptimizationExemption?: () => Promise<BatteryOptimizationResult>;
-  openAppSettings?: () => Promise<void>;
 }>();
 
 const emit = defineEmits<{
@@ -415,7 +513,8 @@ const emit = defineEmits<{
   (e: 'update:notificationSettings', value: NotificationSettings): void;
 }>();
 
-const isDev = process.env.NODE_ENV === 'development';
+// Show dev tools in development mode or on Android (for testing time mocking)
+const isDev = computed(() => process.env.NODE_ENV === 'development' || isAndroid.value);
 
 const isOpen = computed({
   get: () => props.modelValue,
@@ -479,64 +578,6 @@ function toggleAtPrayerTime() {
       ...props.notificationSettings,
       atPrayerTime: !props.notificationSettings.atPrayerTime,
     });
-  }
-}
-
-// Android permissions state
-const notificationPermissionGranted = ref<boolean | null>(null);
-const batteryOptimizationIgnored = ref<boolean | null>(null);
-const isCheckingPermissions = ref(false);
-
-// Check permissions when modal opens on Android
-watch(() => props.modelValue, async (isOpen) => {
-  if (isOpen && props.isAndroid) {
-    await checkAllPermissions();
-  }
-});
-
-async function checkAllPermissions() {
-  if (!props.isAndroid) return;
-
-  isCheckingPermissions.value = true;
-  try {
-    if (props.checkNotificationPermission) {
-      const status = await props.checkNotificationPermission();
-      notificationPermissionGranted.value = status.granted;
-    }
-
-    if (props.checkBatteryOptimization) {
-      const status = await props.checkBatteryOptimization();
-      batteryOptimizationIgnored.value = status.isIgnoringBatteryOptimizations;
-    }
-  } catch (err) {
-    console.error('Error checking permissions:', err);
-  } finally {
-    isCheckingPermissions.value = false;
-  }
-}
-
-async function handleRequestNotificationPermission() {
-  if (props.requestNotificationPermission) {
-    const granted = await props.requestNotificationPermission();
-    notificationPermissionGranted.value = granted;
-  }
-}
-
-async function handleRequestBatteryOptimization() {
-  if (props.requestBatteryOptimizationExemption) {
-    await props.requestBatteryOptimizationExemption();
-    setTimeout(async () => {
-      if (props.checkBatteryOptimization) {
-        const status = await props.checkBatteryOptimization();
-        batteryOptimizationIgnored.value = status.isIgnoringBatteryOptimizations;
-      }
-    }, 1000);
-  }
-}
-
-async function handleOpenAppSettings() {
-  if (props.openAppSettings) {
-    await props.openAppSettings();
   }
 }
 </script>
