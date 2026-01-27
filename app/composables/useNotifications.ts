@@ -78,8 +78,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
       if (saved) {
         settings.value = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useNotifications] Failed to load settings:", e);
     }
   }
 
@@ -88,8 +88,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
       const store = await getStore();
       await store.set("notificationSettings", settings.value);
       if (store.save) await store.save();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useNotifications] Failed to save settings:", e);
     }
   }
 

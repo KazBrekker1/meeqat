@@ -2,7 +2,7 @@
 	"name": "meeqat-app",
 	"type": "module",
 	"private": true,
-	"version": "2.2.1",
+	"version": "2.2.2",
 	"scripts": {
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",

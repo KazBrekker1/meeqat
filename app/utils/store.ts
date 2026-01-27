@@ -17,14 +17,18 @@ export function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object")
         return parsed as Record<string, unknown>;
-    } catch {}
+    } catch (e) {
+      console.warn("[store] Failed to read localStorage:", e);
+    }
     return {};
   }
   async function writeAll(obj: Record<string, unknown>): Promise<void> {
     if (typeof window === "undefined") return;
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(obj));
-    } catch {}
+    } catch (e) {
+      console.warn("[store] Failed to write localStorage:", e);
+    }
   }
   return {
     async get<T>(key: string): Promise<T | undefined> {

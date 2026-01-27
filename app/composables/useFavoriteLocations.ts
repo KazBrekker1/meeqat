@@ -13,13 +13,15 @@ export interface FavoriteLocation {
 const MAX_FAVORITES = 10;
 const STORE_KEY = "favoriteLocations";
 
+// Module-level state so all callers share the same reactive data
+const favorites = ref<FavoriteLocation[]>([]);
+const isLoaded = ref(false);
+
 export function useFavoriteLocations() {
-  const favorites = ref<FavoriteLocation[]>([]);
-  const isLoaded = ref(false);
 
   // Generate unique ID
   function generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
   // Load favorites from store
@@ -31,7 +33,8 @@ export function useFavoriteLocations() {
         favorites.value = saved;
       }
       isLoaded.value = true;
-    } catch {
+    } catch (e) {
+      console.warn("[useFavoriteLocations] Failed to load favorites:", e);
       isLoaded.value = true;
     }
   }
@@ -42,8 +45,8 @@ export function useFavoriteLocations() {
       const store = await getStore();
       await store.set(STORE_KEY, favorites.value);
       if (store.save) await store.save();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useFavoriteLocations] Failed to save favorites:", e);
     }
   }
 
@@ -122,8 +125,10 @@ export function useFavoriteLocations() {
     await saveFavorites();
   }
 
-  // Load on init
-  void loadFavorites();
+  // Load once on first init
+  if (!isLoaded.value) {
+    void loadFavorites();
+  }
 
   return {
     favorites: computed(() => favorites.value),

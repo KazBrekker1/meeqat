@@ -1,9 +1,14 @@
 package com.meeqat.plugin.prayerservice
 
 import android.app.Activity
-import android.content.pm.PackageManager
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import app.tauri.annotation.Command
@@ -20,6 +25,9 @@ class SetMockTimeOffsetArgs {
     var offsetMs: Long = 0
 }
 
+// Note: StartServiceArgs and UpdatePrayerTimesArgs are intentionally identical.
+// Tauri's @InvokeArg annotation and parseArgs() deserialize by class type,
+// so we cannot unify them via typealias or inheritance.
 @InvokeArg
 class StartServiceArgs {
     lateinit var prayers: Array<PrayerArg>
@@ -46,6 +54,8 @@ class PrayerArg {
 @TauriPlugin
 class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
+    private val appContext: Context get() = activity.applicationContext
+
     companion object {
         private const val TAG = "PrayerServicePlugin"
     }
@@ -63,10 +73,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate)
 
             // Update all widgets immediately
-            PrayerWidgetProvider.updateAllWidgets(activity)
+            PrayerWidgetProvider.updateAllWidgets(appContext)
 
             // Schedule periodic widget updates
-            WidgetUpdateReceiver.scheduleNextUpdate(activity)
+            WidgetUpdateReceiver.scheduleNextUpdate(appContext)
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -97,10 +107,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate)
 
             // Update all widgets
-            PrayerWidgetProvider.updateAllWidgets(activity)
+            PrayerWidgetProvider.updateAllWidgets(appContext)
 
             // Ensure periodic updates are scheduled
-            WidgetUpdateReceiver.scheduleNextUpdate(activity)
+            WidgetUpdateReceiver.scheduleNextUpdate(appContext)
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -116,9 +126,9 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     fun isServiceRunning(invoke: Invoke) {
         try {
             // Check if there are any active widgets
-            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(activity)
+            val appWidgetManager = AppWidgetManager.getInstance(appContext)
             val widgetIds = appWidgetManager.getAppWidgetIds(
-                android.content.ComponentName(activity, PrayerWidgetProvider::class.java)
+                ComponentName(appContext, PrayerWidgetProvider::class.java)
             )
             val hasWidgets = widgetIds.isNotEmpty()
 
@@ -139,8 +149,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun openAppSettings(invoke: Invoke) {
         try {
-            val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.parse("package:${activity.packageName}")
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${activity.packageName}")
             }
             activity.startActivity(intent)
 
@@ -158,7 +168,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun checkNotificationPermission(invoke: Invoke) {
         try {
-            val isGranted = NotificationManagerCompat.from(activity).areNotificationsEnabled()
+            val isGranted = NotificationManagerCompat.from(appContext).areNotificationsEnabled()
             Log.d(TAG, "Notification permission: $isGranted")
 
             val result = JSObject()
@@ -178,8 +188,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // Android 13+ - open notification settings
-                val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                    putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, activity.packageName)
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
                 }
                 activity.startActivity(intent)
             } else {
@@ -204,8 +214,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun checkBatteryOptimization(invoke: Invoke) {
         try {
-            val powerManager = activity.getSystemService(Activity.POWER_SERVICE) as PowerManager
-            val isIgnoring = powerManager.isIgnoringBatteryOptimizations(activity.packageName)
+            val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnoring = powerManager.isIgnoringBatteryOptimizations(appContext.packageName)
             Log.d(TAG, "Battery optimization ignored: $isIgnoring")
 
             val result = JSObject()
@@ -223,8 +233,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun requestBatteryOptimizationExemption(invoke: Invoke) {
         try {
-            val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = android.net.Uri.parse("package:${activity.packageName}")
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${activity.packageName}")
             }
             activity.startActivity(intent)
 
@@ -245,9 +255,9 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         hijriDate: String?,
         gregorianDate: String?
     ) {
-        val prefs = activity.getSharedPreferences(
+        val prefs = appContext.getSharedPreferences(
             PrayerWidgetProvider.PREFS_NAME,
-            Activity.MODE_PRIVATE
+            Context.MODE_PRIVATE
         )
 
         val prayersJson = prayersToJson(prayers)
@@ -258,29 +268,29 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             putInt(PrayerWidgetProvider.KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
             hijriDate?.let { putString(PrayerWidgetProvider.KEY_HIJRI_DATE, it) }
             gregorianDate?.let { putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, it) }
-            apply()
+            commit() // synchronous to ensure data is written before widget reads it
         }
     }
 
     /**
      * Convert prayers array to JSON string.
      */
+    /**
+     * Convert prayers array to JSON string.
+     * Throws on failure so callers report the error to the frontend
+     * instead of silently wiping prayer data with "[]".
+     */
     private fun prayersToJson(prayers: Array<PrayerArg>): String {
-        return try {
-            val jsonArray = JSONArray()
-            for (prayer in prayers) {
-                val obj = JSONObject().apply {
-                    put("prayerName", prayer.prayerName)
-                    put("prayerTime", prayer.prayerTime)
-                    put("label", prayer.label)
-                }
-                jsonArray.put(obj)
+        val jsonArray = JSONArray()
+        for (prayer in prayers) {
+            val obj = JSONObject().apply {
+                put("prayerName", prayer.prayerName)
+                put("prayerTime", prayer.prayerTime)
+                put("label", prayer.label)
             }
-            jsonArray.toString()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error converting prayers to JSON: ${e.message}", e)
-            "[]"
+            jsonArray.put(obj)
         }
+        return jsonArray.toString()
     }
 
     /**
@@ -293,10 +303,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             val args = invoke.parseArgs(SetMockTimeOffsetArgs::class.java)
             Log.d(TAG, "setMockTimeOffset: ${args.offsetMs}ms")
 
-            DebugTimeProvider.setOffset(activity, args.offsetMs)
+            DebugTimeProvider.setOffset(appContext, args.offsetMs)
 
             // Trigger widget refresh to show new time
-            PrayerWidgetProvider.updateAllWidgets(activity)
+            PrayerWidgetProvider.updateAllWidgets(appContext)
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -311,7 +321,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun getMockTimeOffset(invoke: Invoke) {
         try {
-            val offsetMs = DebugTimeProvider.getOffset(activity)
+            val offsetMs = DebugTimeProvider.getOffset(appContext)
             Log.d(TAG, "getMockTimeOffset: ${offsetMs}ms")
 
             val result = JSObject()
@@ -331,10 +341,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         try {
             Log.d(TAG, "clearMockTimeOffset")
 
-            DebugTimeProvider.clearOffset(activity)
+            DebugTimeProvider.clearOffset(appContext)
 
             // Trigger widget refresh to show real time
-            PrayerWidgetProvider.updateAllWidgets(activity)
+            PrayerWidgetProvider.updateAllWidgets(appContext)
 
             invoke.resolve()
         } catch (e: Exception) {

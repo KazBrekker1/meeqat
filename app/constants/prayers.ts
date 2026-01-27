@@ -51,3 +51,19 @@ export const PRAYER_DESCRIPTIONS: Record<string, string> = {
 // Ramadan-specific times
 export const RAMADAN_TIMES = ["Imsak", "Fajr", "Maghrib"] as const;
 export const RAMADAN_TIMES_SET = new Set<string>(RAMADAN_TIMES);
+
+// Islamic month names
+export const ISLAMIC_MONTHS = [
+  "Muharram",
+  "Safar",
+  "Rabi' al-Awwal",
+  "Rabi' al-Thani",
+  "Jumada al-Awwal",
+  "Jumada al-Thani",
+  "Rajab",
+  "Sha'ban",
+  "Ramadan",
+  "Shawwal",
+  "Dhu al-Qi'dah",
+  "Dhu al-Hijjah",
+] as const;

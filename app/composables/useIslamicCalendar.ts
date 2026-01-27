@@ -5,6 +5,7 @@ import {
 } from "@internationalized/date";
 import type { PrayerTimingItem } from "@/utils/types";
 import { getStore } from "@/utils/store";
+import { ISLAMIC_MONTHS } from "@/constants/prayers";
 
 // Ramadan is month 9 in the Islamic calendar
 function isRamadan(month: number): boolean {
@@ -47,21 +48,6 @@ export interface IslamicCalendarState {
   ramadanModeEnabled: boolean;
 }
 
-const ISLAMIC_MONTHS = [
-  "Muharram",
-  "Safar",
-  "Rabi' al-Awwal",
-  "Rabi' al-Thani",
-  "Jumada al-Awwal",
-  "Jumada al-Thani",
-  "Rajab",
-  "Sha'ban",
-  "Ramadan",
-  "Shawwal",
-  "Dhu al-Qi'dah",
-  "Dhu al-Hijjah",
-];
-
 export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
   const now = ref(new Date());
   const ramadanModeEnabled = ref(true); // Auto-enable during Ramadan
@@ -86,8 +72,8 @@ export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
       if (typeof saved === "boolean") {
         ramadanModeEnabled.value = saved;
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useIslamicCalendar] Failed to load settings:", e);
     }
   }
 
@@ -97,8 +83,8 @@ export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
       const store = await getStore();
       await store.set("ramadanModeEnabled", enabled);
       if (store.save) await store.save();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useIslamicCalendar] Failed to save settings:", e);
     }
   }
 

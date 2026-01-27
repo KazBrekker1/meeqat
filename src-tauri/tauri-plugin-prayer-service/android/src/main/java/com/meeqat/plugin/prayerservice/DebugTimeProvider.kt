@@ -13,6 +13,7 @@ object DebugTimeProvider {
     private const val PREFS_NAME = "debug_prefs"
     private const val KEY_OFFSET_MS = "mock_time_offset_ms"
 
+    @Volatile
     private var cachedOffset: Long? = null
 
     /**
@@ -28,11 +29,16 @@ object DebugTimeProvider {
      * Returns 0 if no offset is set.
      */
     fun getOffset(context: Context): Long {
-        if (cachedOffset == null) {
+        val cached = cachedOffset
+        if (cached != null) return cached
+        synchronized(this) {
+            // Double-check after acquiring lock
+            cachedOffset?.let { return it }
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            cachedOffset = prefs.getLong(KEY_OFFSET_MS, 0L)
+            val offset = prefs.getLong(KEY_OFFSET_MS, 0L)
+            cachedOffset = offset
+            return offset
         }
-        return cachedOffset ?: 0L
     }
 
     /**
@@ -42,9 +48,11 @@ object DebugTimeProvider {
      * @param offsetMs The offset to apply to all time calculations
      */
     fun setOffset(context: Context, offsetMs: Long) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putLong(KEY_OFFSET_MS, offsetMs).apply()
-        cachedOffset = offsetMs
+        synchronized(this) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putLong(KEY_OFFSET_MS, offsetMs).commit()
+            cachedOffset = offsetMs
+        }
     }
 
     /**

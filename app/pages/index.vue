@@ -159,7 +159,7 @@
 import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { computePreviousPrayerInfo, pad2 } from "@/utils/time";
-import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { MAIN_PRAYER_KEYS_SET, ISLAMIC_MONTHS } from "@/constants/prayers";
 import type { DateValue, CalendarDate } from "@internationalized/date";
 import {
   DateFormatter,
@@ -200,22 +200,6 @@ const calendarDate = computed<CalendarDate>({
 });
 
 const gregorianFormatter = new DateFormatter("en-US", { dateStyle: "long" });
-
-// Islamic month names - hardcoded to avoid Intl.DateTimeFormat issues on Android WebViews
-const ISLAMIC_MONTHS = [
-  "Muharram",
-  "Safar",
-  "Rabi' al-Awwal",
-  "Rabi' al-Thani",
-  "Jumada al-Awwal",
-  "Jumada al-Thani",
-  "Rajab",
-  "Sha'ban",
-  "Ramadan",
-  "Shawwal",
-  "Dhu al-Qi'dah",
-  "Dhu al-Hijjah",
-];
 
 /**
  * Format Islamic date using hardcoded month names.
@@ -372,15 +356,6 @@ async function onLocationSelect(city: string, countryCode: string) {
   onFetchByCity();
 }
 
-// Favorite locations handlers
-async function onSelectFavorite(fav: FavoriteLocation) {
-  selectedCity.value = fav.city;
-  selectedCountry.value = fav.countryCode;
-  selectedMethodId.value = fav.methodId;
-  await nextTick();
-  onFetchByCity();
-}
-
 async function onAddCurrentToFavorites() {
   if (!selectedCity.value || !selectedCountry.value) return;
   await addFavorite({
@@ -481,6 +456,8 @@ onMounted(async () => {
 
 watch([selectedMethodId, selectedCity, selectedCountry], () => {
   clearTimings();
+  // Re-fetch immediately so the UI doesn't stay blank
+  onFetchByCity();
 });
 
 watch(calendarDate, (newDate) => {

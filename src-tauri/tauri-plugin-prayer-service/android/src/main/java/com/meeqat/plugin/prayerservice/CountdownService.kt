@@ -56,28 +56,7 @@ class CountdownService : Service() {
         }
 
         private fun getTimeToNextPrayer(context: Context): Long? {
-            try {
-                val prefs = context.getSharedPreferences(
-                    PrayerWidgetProvider.PREFS_NAME,
-                    Context.MODE_PRIVATE
-                )
-                val prayersJson = prefs.getString(PrayerWidgetProvider.KEY_PRAYERS_JSON, null)
-                    ?: return null
-
-                val now = DebugTimeProvider.currentTimeMillis(context)
-                val jsonArray = org.json.JSONArray(prayersJson)
-
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val prayerTime = obj.getLong("prayerTime")
-                    if (prayerTime > now) {
-                        return prayerTime - now
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting time to next prayer: ${e.message}", e)
-            }
-            return null
+            return PrayerTimeUtils.getTimeToNextPrayer(context)
         }
     }
 
@@ -91,15 +70,19 @@ class CountdownService : Service() {
             val timeToNextPrayer = getTimeToNextPrayer(this@CountdownService)
 
             if (timeToNextPrayer == null || timeToNextPrayer <= 0) {
-                // Prayer time has passed, stop service
-                Log.d(TAG, "Prayer time passed, stopping service")
+                // Prayer time has passed - refresh widget to show new state, reschedule alarms, then stop
+                Log.d(TAG, "Prayer time passed, refreshing widget and stopping service")
+                PrayerWidgetProvider.updateAllWidgets(this@CountdownService)
+                WidgetUpdateReceiver.scheduleNextUpdate(this@CountdownService)
                 stopSelf()
                 return
             }
 
             if (timeToNextPrayer > COUNTDOWN_THRESHOLD_MS) {
-                // We're outside the countdown window, stop service
-                Log.d(TAG, "Outside countdown window, stopping service")
+                // We're outside the countdown window - refresh widget and stop
+                Log.d(TAG, "Outside countdown window, refreshing widget and stopping service")
+                PrayerWidgetProvider.updateAllWidgets(this@CountdownService)
+                WidgetUpdateReceiver.scheduleNextUpdate(this@CountdownService)
                 stopSelf()
                 return
             }
@@ -124,8 +107,9 @@ class CountdownService : Service() {
         // Start as foreground with minimal notification
         startForeground(NOTIFICATION_ID, createNotification())
 
-        // Start the update loop
+        // Start the update loop (remove any prior callbacks to prevent duplicate chains)
         isRunning = true
+        handler.removeCallbacks(updateRunnable)
         handler.post(updateRunnable)
 
         return START_NOT_STICKY

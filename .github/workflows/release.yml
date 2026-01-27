@@ -18,8 +18,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Create (or ensure) the GitHub release exists first, so desktop + android can run in parallel
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      draft: ${{ steps.meta.outputs.draft }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub release exists
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DRAFT: ${{ github.event.inputs.draft == 'true' }}
+        shell: bash
+        run: |
+          TAG="meeqat-v${VERSION}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+
+          cat > /tmp/release_notes.md <<'EOF'
+          ## What's New
+
+          See the [full changelog](https://github.com/KazBrekker1/meeqat/commits/main) for details.
+
+          ## Installation
+
+          ### macOS
+          After installing, you may need to run: `xattr -c /Applications/Meeqat.app`
+
+          ### Windows
+          Download the `.msi` installer for Windows.
+
+          ### Linux
+          Download the `.deb` package or `.AppImage`.
+          EOF
+
+          if [ "$DRAFT" = "true" ]; then
+            gh release create "$TAG" --title "Meeqat v${VERSION}" --notes-file /tmp/release_notes.md --draft
+          else
+            gh release create "$TAG" --title "Meeqat v${VERSION}" --notes-file /tmp/release_notes.md
+          fi
+
   # First job: Build and release desktop apps
   publish-desktop:
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -44,19 +104,9 @@ jobs:
             arch: x64
 
     runs-on: ${{ matrix.platform }}
-    outputs:
-      release_id: ${{ steps.tauri.outputs.releaseId }}
-      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Get version from package.json
-        id: version
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -102,8 +152,8 @@ jobs:
           # Skip Apple code signing (no certificates configured)
           APPLE_SIGNING_IDENTITY: "-"
         with:
-          tagName: meeqat-v__VERSION__
-          releaseName: Meeqat v__VERSION__
+          tagName: ${{ needs.create-release.outputs.tag }}
+          releaseName: Meeqat v${{ needs.create-release.outputs.version }}
           releaseBody: |
             ## What's New
 
@@ -119,13 +169,13 @@ jobs:
 
             ### Linux
             Download the `.deb` package or `.AppImage`.
-          releaseDraft: ${{ github.event.inputs.draft == 'true' }}
+          releaseDraft: ${{ needs.create-release.outputs.draft == 'true' }}
           prerelease: false
           args: ${{ matrix.args }}
 
-  # Android job - waits for desktop to create the release first
+  # Android job - runs in parallel with desktop (release is created up front)
   publish-android:
-    needs: publish-desktop
+    needs: create-release
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -133,12 +183,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Get version from package.json
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -237,7 +281,7 @@ jobs:
 
           AAB=$(find src-tauri/gen/android -path "*outputs*" -name "*.aab" | head -1)
 
-          TAG="meeqat-v${{ steps.version.outputs.version }}"
+          TAG="${{ needs.create-release.outputs.tag }}"
 
           echo "Uploading to release $TAG"
           echo "APK: $APK"

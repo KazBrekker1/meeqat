@@ -37,25 +37,7 @@ export function createAthanController(isAthanActive: Ref<boolean>) {
   }
 
   function startAthan(): void {
-    console.log("Athan notification is currently disabled");
-    // try {
-    //   if (isAthanActive.value) return;
-    //   const ctx = ensureAudioContext();
-    //   masterGain = ctx.createGain();
-    //   masterGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    //   masterGain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.2);
-    //   masterGain.connect(ctx.destination);
-    //   const loopSeconds = playAthanPattern(ctx, masterGain);
-    //   athanIntervalId = setInterval(() => {
-    //     if (!masterGain) return;
-    //     playAthanPattern(ctx, masterGain);
-    //   }, Math.max(250, Math.floor(loopSeconds * 1000)));
-    //   isAthanActive.value = true;
-    //   // Auto-dismiss after 1 minute
-    //   autoDismissTimeoutId = setTimeout(() => {
-    //     dismissAthan();
-    //   }, 60_000);
-    // } catch {}
+    // Athan notification currently disabled
   }
 
   function dismissAthan(): void {

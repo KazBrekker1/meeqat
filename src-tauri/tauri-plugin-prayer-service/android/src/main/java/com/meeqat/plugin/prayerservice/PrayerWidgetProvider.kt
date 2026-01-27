@@ -10,11 +10,9 @@ import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
-import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.Calendar
 
 /**
  * AppWidgetProvider that displays prayer times on the home screen.
@@ -32,6 +30,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         const val KEY_NEXT_PRAYER_INDEX = "next_prayer_index"
         const val KEY_HIJRI_DATE = "hijri_date"
         const val KEY_GREGORIAN_DATE = "gregorian_date"
+
+        // Cached date formatters (SimpleDateFormat is not thread-safe, but widget updates run on main thread)
+        private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+        private val timeFormatShort = SimpleDateFormat("h:mm", Locale.getDefault())
+        private val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
+        private val reusableDate = Date()
 
         /**
          * Static method to trigger widget updates from anywhere
@@ -123,12 +127,9 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         val views = RemoteViews(context.packageName, layoutId)
 
-        // Load prayer data from SharedPreferences
-        val prefs = context.getSharedPreferences(
-            PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
-        val prayersJson = prefs.getString(KEY_PRAYERS_JSON, null)
+        // Load prayer data (PrayerTimeUtils handles SharedPreferences caching)
+        val prayers = PrayerTimeUtils.loadPrayerTimes(context)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val nextPrayerIndex = prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0)
 
         // Set up click intent to open app
@@ -143,23 +144,18 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
         }
 
-        if (prayersJson != null) {
-            val prayers = parsePrayersJson(prayersJson)
-            if (prayers.isNotEmpty()) {
-                // Recalculate the actual next prayer index based on current time
-                // This handles the case where the app is in background and prayer time passes
-                val actualNextIndex = findActualNextPrayerIndex(context, prayers, nextPrayerIndex)
+        if (prayers.isNotEmpty()) {
+            // Recalculate the actual next prayer index based on current time
+            // This handles the case where the app is in background and prayer time passes
+            val actualNextIndex = PrayerTimeUtils.findNextPrayerIndex(context, prayers, nextPrayerIndex)
 
-                // Update SharedPreferences if index changed
-                if (actualNextIndex != nextPrayerIndex) {
-                    Log.d(TAG, "Prayer index advanced from $nextPrayerIndex to $actualNextIndex")
-                    prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, actualNextIndex).apply()
-                }
-
-                populateWidget(context, views, prayers, actualNextIndex, layoutId)
-            } else {
-                showLoadingState(views)
+            // Update SharedPreferences if index changed
+            if (actualNextIndex != nextPrayerIndex) {
+                Log.d(TAG, "Prayer index advanced from $nextPrayerIndex to $actualNextIndex")
+                prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, actualNextIndex).commit()
             }
+
+            populateWidget(context, views, prayers, actualNextIndex, layoutId)
         } else {
             showLoadingState(views)
         }
@@ -199,7 +195,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, prevPrayer.prayerTime))
                     views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
                 } catch (e: Exception) {
-                    // Layout might not have these views
+                    Log.d(TAG, "prev_prayer views not in layout")
                 }
             } else {
                 // No prayer has passed yet today (before Fajr)
@@ -213,13 +209,13 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                         views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, yesterdayIshaTime))
                         views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
                     } catch (e: Exception) {
-                        // Layout might not have these views
+                        Log.d(TAG, "prev_prayer views not in layout")
                     }
                 } else {
                     try {
                         views.setViewVisibility(R.id.prev_prayer_container, View.GONE)
                     } catch (e: Exception) {
-                        // Layout might not have this view
+                        Log.d(TAG, "prev_prayer views not in layout")
                     }
                 }
             }
@@ -284,8 +280,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         if (gregorianDate != null) {
             views.setTextViewText(R.id.gregorian_date, gregorianDate)
         } else {
-            val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-            views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(Date()))
+            reusableDate.time = System.currentTimeMillis()
+            views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(reusableDate))
         }
 
         // Set Hijri date - use saved value from frontend (calculated using proper Islamic calendar)
@@ -297,39 +293,14 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    /**
-     * Find the actual next prayer index based on current time.
-     * If the stored next prayer has passed, find the first prayer that hasn't passed yet.
-     * If all prayers have passed, return the last prayer index (end of day state).
-     */
-    private fun findActualNextPrayerIndex(context: Context, prayers: List<PrayerTimeData>, storedIndex: Int): Int {
-        val now = DebugTimeProvider.currentTimeMillis(context)
-
-        // If stored index is valid and that prayer hasn't passed, use it
-        if (storedIndex in prayers.indices && prayers[storedIndex].prayerTime > now) {
-            return storedIndex
-        }
-
-        // Find the first prayer that hasn't passed yet
-        for (i in prayers.indices) {
-            if (prayers[i].prayerTime > now) {
-                return i
-            }
-        }
-
-        // All prayers have passed - return the last one (shows "Now" state for last prayer)
-        // This handles end-of-day scenario where we're past Isha
-        return prayers.lastIndex.coerceAtLeast(0)
-    }
-
     private fun formatTime(timestamp: Long): String {
-        val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())
-        return sdf.format(Date(timestamp))
+        reusableDate.time = timestamp
+        return timeFormat.format(reusableDate)
     }
 
     private fun formatTimeShort(timestamp: Long): String {
-        val sdf = SimpleDateFormat("h:mm", Locale.getDefault())
-        return sdf.format(Date(timestamp))
+        reusableDate.time = timestamp
+        return timeFormatShort.format(reusableDate)
     }
 
     private fun formatElapsed(context: Context, prayerTime: Long): String {
@@ -365,26 +336,6 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             hours > 0 -> "${hours}h ${minutes}m"
             minutes >= 1 -> "${minutes}m"
             else -> "${seconds}s"
-        }
-    }
-
-    private fun parsePrayersJson(json: String): List<PrayerTimeData> {
-        return try {
-            val result = mutableListOf<PrayerTimeData>()
-            val jsonArray = JSONArray(json)
-
-            for (i in 0 until jsonArray.length()) {
-                val obj = jsonArray.getJSONObject(i)
-                val prayerName = obj.getString("prayerName")
-                val prayerTime = obj.getLong("prayerTime")
-                val label = obj.getString("label")
-                result.add(PrayerTimeData(prayerName, prayerTime, label))
-            }
-
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing prayers JSON: ${e.message}", e)
-            emptyList()
         }
     }
 

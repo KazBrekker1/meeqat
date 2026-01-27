@@ -7,7 +7,7 @@ import {
   resetToMidnight,
   getUserTimezone,
 } from "@/utils/time";
-import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS } from "@/constants/prayers";
+import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS, ISLAMIC_MONTHS } from "@/constants/prayers";
 import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
 import {
   toCalendar,
@@ -88,35 +88,21 @@ export function usePrayerTimes() {
   const { startAthan, dismissAthan, testPlayAthan } =
     createAthanController(isAthanActive);
 
+  // Extract date portion only (changes once per day, not every second)
+  const todayDate = computed(() => {
+    const d = now.value;
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+  });
+
   const hijriDateVerbose = computed<string | null>(() => {
     try {
       // Use @internationalized/date for reliable Hijri date formatting
       // Intl.DateTimeFormat with islamic-umalqura is not supported on all Android WebViews
-      const d = now.value;
-      const gregorianDate = new CalendarDate(
-        d.getFullYear(),
-        d.getMonth() + 1,
-        d.getDate()
-      );
+      const { year, month, day } = todayDate.value;
+      const gregorianDate = new CalendarDate(year, month, day);
       const islamicDate = toCalendar(gregorianDate, new IslamicUmalquraCalendar());
 
-      // Islamic month names
-      const islamicMonths = [
-        "Muharram",
-        "Safar",
-        "Rabi' al-Awwal",
-        "Rabi' al-Thani",
-        "Jumada al-Awwal",
-        "Jumada al-Thani",
-        "Rajab",
-        "Sha'ban",
-        "Ramadan",
-        "Shawwal",
-        "Dhu al-Qi'dah",
-        "Dhu al-Hijjah",
-      ];
-
-      const monthName = islamicMonths[islamicDate.month - 1] || `Month ${islamicDate.month}`;
+      const monthName = ISLAMIC_MONTHS[islamicDate.month - 1] || `Month ${islamicDate.month}`;
       return `${islamicDate.day} ${monthName} ${islamicDate.year} AH`;
     } catch (e) {
       console.error("[usePrayerTimes] Failed to format Hijri date:", e);
@@ -126,12 +112,13 @@ export function usePrayerTimes() {
 
   const gregorianDateVerbose = computed<string | null>(() => {
     try {
+      const { year, month, day } = todayDate.value;
       return new Intl.DateTimeFormat("en-US", {
         calendar: "gregory",
         year: "numeric",
         month: "long",
         day: "numeric",
-      }).format(now.value);
+      }).format(new Date(year, month - 1, day));
     } catch {
       return null;
     }
@@ -455,8 +442,8 @@ export function usePrayerTimes() {
       if (typeof additionalTimes === "boolean") {
         showAdditionalTimes.value = additionalTimes;
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[usePrayerTimes] Failed to load preferences:", e);
     }
   }
 
@@ -470,8 +457,8 @@ export function usePrayerTimes() {
       await store.set("timeFormat", timeFormat.value);
       await store.set("showAdditionalTimes", showAdditionalTimes.value);
       if (store.save) await store.save();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[usePrayerTimes] Failed to save preferences:", e);
     }
   }
 
@@ -559,7 +546,8 @@ export function usePrayerTimes() {
     ["Lastthird", "Last Third"],
   ];
 
-  const timingsList = computed<PrayerTimingItem[]>(() => {
+  // Base timings list - only recomputes when timings or settings change
+  const baseTimingsList = computed<Omit<PrayerTimingItem, 'isPast' | 'isNext'>[]>(() => {
     if (!timings.value) return [];
 
     // Choose which prayer order to use based on settings
@@ -587,7 +575,7 @@ export function usePrayerTimes() {
           ),
           description,
           isAdditional,
-        } as PrayerTimingItem;
+        };
       })
       // Sort by minutes to ensure correct order
       .sort((a, b) => {
@@ -595,6 +583,14 @@ export function usePrayerTimes() {
         if (typeof b.minutes !== "number") return -1;
         return a.minutes - b.minutes;
       });
+
+    return list;
+  });
+
+  // Timings list with isPast/isNext - only recomputes flags every second
+  const timingsList = computed<PrayerTimingItem[]>(() => {
+    const list = baseTimingsList.value;
+    if (list.length === 0) return [];
 
     const nowS = nowSecondsOfDay.value;
     let nextIndex = list.findIndex((t) =>

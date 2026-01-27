@@ -4,18 +4,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to start prayer service: {0}")]
-    ServiceStartFailed(String),
-
-    #[error("Failed to stop prayer service: {0}")]
-    ServiceStopFailed(String),
-
-    #[error("Failed to update prayer times: {0}")]
-    UpdateFailed(String),
-
-    #[error("Plugin not initialized")]
-    NotInitialized,
-
     #[error("Platform not supported")]
     PlatformNotSupported,
 
@@ -35,7 +23,7 @@ impl Serialize for Error {
     }
 }
 
-#[cfg(mobile)]
+#[cfg(target_os = "android")]
 impl From<tauri::plugin::mobile::PluginInvokeError> for Error {
     fn from(err: tauri::plugin::mobile::PluginInvokeError) -> Self {
         Error::PluginInvoke(err.to_string())

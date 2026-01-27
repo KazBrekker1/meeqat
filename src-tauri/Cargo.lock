@@ -1956,10 +1956,8 @@ checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
 
 [[package]]
 name = "meeqat-app"
-version = "2.2.1"
+version = "2.2.2"
 dependencies = [
- "serde",
- "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-notification",
@@ -3857,10 +3855,7 @@ dependencies = [
 name = "tauri-plugin-prayer-service"
 version = "0.1.0"
 dependencies = [
- "jni",
- "log",
  "serde",
- "serde_json",
  "tauri",
  "tauri-plugin",
  "thiserror 1.0.69",

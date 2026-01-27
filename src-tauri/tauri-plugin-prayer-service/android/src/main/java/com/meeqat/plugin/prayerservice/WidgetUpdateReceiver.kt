@@ -8,7 +8,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
-import org.json.JSONArray
 
 /**
  * BroadcastReceiver that handles scheduled widget updates.
@@ -110,6 +109,7 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
                             pendingIntent
                         )
                     } else {
+                        Log.w(TAG, "Exact alarm permission not granted, falling back to inexact alarm")
                         alarmManager.setAndAllowWhileIdle(
                             AlarmManager.RTC_WAKEUP,
                             triggerTime,
@@ -148,33 +148,11 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
         }
 
         /**
-         * Get time remaining until the next prayer in milliseconds.
+         * Get the absolute time (epoch ms) of the next prayer.
          * Returns null if no prayer data is available or all prayers have passed.
          */
         private fun getNextPrayerTime(context: Context): Long? {
-            try {
-                val prefs = context.getSharedPreferences(
-                    PrayerWidgetProvider.PREFS_NAME,
-                    Context.MODE_PRIVATE
-                )
-                val prayersJson = prefs.getString(PrayerWidgetProvider.KEY_PRAYERS_JSON, null)
-                    ?: return null
-
-                val now = DebugTimeProvider.currentTimeMillis(context)
-                val jsonArray = JSONArray(prayersJson)
-
-                // Find the first prayer that hasn't passed yet
-                for (i in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(i)
-                    val prayerTime = obj.getLong("prayerTime")
-                    if (prayerTime > now) {
-                        return prayerTime
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error getting next prayer time: ${e.message}", e)
-            }
-            return null
+            return PrayerTimeUtils.getNextPrayerTimeMs(context)
         }
 
         /**

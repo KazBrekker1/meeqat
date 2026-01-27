@@ -13,6 +13,54 @@ use crate::error::{Error, Result};
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "com.meeqat.plugin.prayerservice";
 
+/// Macro to define platform-dispatched methods.
+/// On Android, calls the Kotlin plugin method.
+/// On other platforms, returns PlatformNotSupported or a default value.
+macro_rules! platform_method {
+    // With args, no return value (returns Result<()>)
+    ($method:ident, $kotlin_name:expr, $args_type:ty) => {
+        #[cfg(target_os = "android")]
+        pub fn $method(&self, args: $args_type) -> Result<()> {
+            self.0
+                .run_mobile_plugin($kotlin_name, args)
+                .map_err(|e| Error::PluginInvoke(e.to_string()))
+        }
+
+        #[cfg(not(target_os = "android"))]
+        pub fn $method(&self, _args: $args_type) -> Result<()> {
+            Err(Error::PlatformNotSupported)
+        }
+    };
+    // No args, no return value
+    ($method:ident, $kotlin_name:expr) => {
+        #[cfg(target_os = "android")]
+        pub fn $method(&self) -> Result<()> {
+            self.0
+                .run_mobile_plugin::<()>($kotlin_name, ())
+                .map_err(|e| Error::PluginInvoke(e.to_string()))
+        }
+
+        #[cfg(not(target_os = "android"))]
+        pub fn $method(&self) -> Result<()> {
+            Err(Error::PlatformNotSupported)
+        }
+    };
+    // No args, with typed return value and non-android default
+    ($method:ident, $kotlin_name:expr => $ret:ty, $default:expr) => {
+        #[cfg(target_os = "android")]
+        pub fn $method(&self) -> Result<$ret> {
+            self.0
+                .run_mobile_plugin($kotlin_name, ())
+                .map_err(|e| Error::PluginInvoke(e.to_string()))
+        }
+
+        #[cfg(not(target_os = "android"))]
+        pub fn $method(&self) -> Result<$ret> {
+            Ok($default)
+        }
+    };
+}
+
 /// Access to the prayer service APIs.
 #[cfg(target_os = "android")]
 pub struct PrayerService<R: Runtime>(PluginHandle<R>);
@@ -20,156 +68,19 @@ pub struct PrayerService<R: Runtime>(PluginHandle<R>);
 #[cfg(not(target_os = "android"))]
 pub struct PrayerService<R: Runtime>(std::marker::PhantomData<fn() -> R>);
 
-// Ensure Send + Sync for non-Android
-#[cfg(not(target_os = "android"))]
-unsafe impl<R: Runtime> Send for PrayerService<R> {}
-#[cfg(not(target_os = "android"))]
-unsafe impl<R: Runtime> Sync for PrayerService<R> {}
-
 impl<R: Runtime> PrayerService<R> {
-    #[cfg(target_os = "android")]
-    pub fn start_service(&self, args: StartServiceArgs) -> Result<()> {
-        self.0
-            .run_mobile_plugin("startService", args)
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn start_service(&self, _args: StartServiceArgs) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn stop_service(&self) -> Result<()> {
-        self.0
-            .run_mobile_plugin::<()>("stopService", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn stop_service(&self) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn update_prayer_times(&self, args: UpdatePrayerTimesArgs) -> Result<()> {
-        self.0
-            .run_mobile_plugin("updatePrayerTimes", args)
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn update_prayer_times(&self, _args: UpdatePrayerTimesArgs) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn is_service_running(&self) -> Result<ServiceStatus> {
-        self.0
-            .run_mobile_plugin("isServiceRunning", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn is_service_running(&self) -> Result<ServiceStatus> {
-        Ok(ServiceStatus { is_running: false })
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn open_app_settings(&self) -> Result<()> {
-        self.0
-            .run_mobile_plugin::<()>("openAppSettings", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn open_app_settings(&self) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
-        self.0
-            .run_mobile_plugin("checkNotificationPermission", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn check_notification_permission(&self) -> Result<NotificationPermissionStatus> {
-        Ok(NotificationPermissionStatus { granted: true })
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn request_notification_permission(&self) -> Result<()> {
-        self.0
-            .run_mobile_plugin::<()>("requestNotificationPermission", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn request_notification_permission(&self) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn check_battery_optimization(&self) -> Result<BatteryOptimizationStatus> {
-        self.0
-            .run_mobile_plugin("checkBatteryOptimization", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn check_battery_optimization(&self) -> Result<BatteryOptimizationStatus> {
-        Ok(BatteryOptimizationStatus { is_ignoring: true })
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn request_battery_optimization_exemption(&self) -> Result<()> {
-        self.0
-            .run_mobile_plugin::<()>("requestBatteryOptimizationExemption", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn request_battery_optimization_exemption(&self) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn set_mock_time_offset(&self, args: SetMockTimeOffsetArgs) -> Result<()> {
-        self.0
-            .run_mobile_plugin("setMockTimeOffset", args)
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn set_mock_time_offset(&self, _args: SetMockTimeOffsetArgs) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn get_mock_time_offset(&self) -> Result<MockTimeOffsetResult> {
-        self.0
-            .run_mobile_plugin("getMockTimeOffset", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn get_mock_time_offset(&self) -> Result<MockTimeOffsetResult> {
-        Ok(MockTimeOffsetResult { offset_ms: 0 })
-    }
-
-    #[cfg(target_os = "android")]
-    pub fn clear_mock_time_offset(&self) -> Result<()> {
-        self.0
-            .run_mobile_plugin::<()>("clearMockTimeOffset", ())
-            .map_err(|e| Error::PluginInvoke(e.to_string()))
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pub fn clear_mock_time_offset(&self) -> Result<()> {
-        Err(Error::PlatformNotSupported)
-    }
+    platform_method!(start_service, "startService", StartServiceArgs);
+    platform_method!(stop_service, "stopService");
+    platform_method!(update_prayer_times, "updatePrayerTimes", UpdatePrayerTimesArgs);
+    platform_method!(is_service_running, "isServiceRunning" => ServiceStatus, ServiceStatus { is_running: false });
+    platform_method!(open_app_settings, "openAppSettings");
+    platform_method!(check_notification_permission, "checkNotificationPermission" => NotificationPermissionStatus, NotificationPermissionStatus { granted: true });
+    platform_method!(request_notification_permission, "requestNotificationPermission");
+    platform_method!(check_battery_optimization, "checkBatteryOptimization" => BatteryOptimizationStatus, BatteryOptimizationStatus { is_ignoring: true });
+    platform_method!(request_battery_optimization_exemption, "requestBatteryOptimizationExemption");
+    platform_method!(set_mock_time_offset, "setMockTimeOffset", SetMockTimeOffsetArgs);
+    platform_method!(get_mock_time_offset, "getMockTimeOffset" => MockTimeOffsetResult, MockTimeOffsetResult { offset_ms: 0 });
+    platform_method!(clear_mock_time_offset, "clearMockTimeOffset");
 }
 
 #[cfg(target_os = "android")]

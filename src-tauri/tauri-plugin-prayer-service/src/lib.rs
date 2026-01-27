@@ -9,7 +9,16 @@ pub mod mobile;
 pub mod models;
 
 pub use error::{Error, Result};
-pub use models::*;
+pub use models::{
+    PrayerTimeData,
+    StartServiceArgs,
+    UpdatePrayerTimesArgs,
+    ServiceStatus,
+    NotificationPermissionStatus,
+    BatteryOptimizationStatus,
+    SetMockTimeOffsetArgs,
+    MockTimeOffsetResult
+};
 
 use mobile::PrayerService;
 
