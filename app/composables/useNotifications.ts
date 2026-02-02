@@ -64,6 +64,9 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const permissionGranted = ref(false);
   const isRunning = ref(false);
   let lastScheduledDateKey = "";
+  let lastTimingsHash = ""; // Track timings to detect actual changes
+  let isInitialLoad = true; // Track if we're in initial load phase
+  let isScheduling = false; // Prevent concurrent scheduling
 
   const timingsList = options?.timingsList ?? usePrayerTimes().timingsList;
 
@@ -76,10 +79,13 @@ export function useNotifications(options?: UseNotificationsOptions) {
       const store = await getStore();
       const saved = await store.get<NotificationSettings>("notificationSettings");
       if (saved) {
-        settings.value = { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved };
+        // Use Object.assign to avoid triggering the watcher during initial load
+        Object.assign(settings.value, { ...DEFAULT_NOTIFICATION_SETTINGS, ...saved });
       }
     } catch (e) {
       console.warn("[useNotifications] Failed to load settings:", e);
+    } finally {
+      isInitialLoad = false;
     }
   }
 
@@ -93,8 +99,9 @@ export function useNotifications(options?: UseNotificationsOptions) {
     }
   }
 
-  // Watch settings changes and reschedule
+  // Watch settings changes and reschedule (skip during initial load)
   watch(settings, () => {
+    if (isInitialLoad) return; // Don't reschedule during initial settings load
     void saveNotificationSettings();
     if (isRunning.value) {
       lastScheduledDateKey = ""; // Force reschedule
@@ -138,6 +145,12 @@ export function useNotifications(options?: UseNotificationsOptions) {
    * Uses the native Schedule API so notifications work even when app is backgrounded.
    */
   async function schedulePrayerNotifications(): Promise<void> {
+    // Prevent concurrent scheduling calls
+    if (isScheduling) {
+      console.log("[useNotifications] Scheduling already in progress, skipping");
+      return;
+    }
+
     if (!settings.value.enabled) {
       isRunning.value = false;
       return;
@@ -146,102 +159,124 @@ export function useNotifications(options?: UseNotificationsOptions) {
     const ok = await ensurePermission();
     if (!ok) return;
 
-    // Ensure notification channel exists (required for Android 8.0+)
-    await ensureNotificationChannel();
-
     const now = new Date();
     const dateKey = getDateKey(now);
 
     // Don't reschedule if we already scheduled for today
-    if (dateKey === lastScheduledDateKey) return;
+    if (dateKey === lastScheduledDateKey) {
+      console.log("[useNotifications] Already scheduled for today, skipping");
+      return;
+    }
 
-    // Cancel any previously scheduled notifications
+    isScheduling = true;
+    try {
+      // Ensure notification channel exists (required for Android 8.0+)
+      await ensureNotificationChannel();
+
+      // Cancel any previously scheduled notifications
+      try {
+        const pendingNotifications = await pending();
+        if (pendingNotifications.length > 0) {
+          console.log(`[useNotifications] Canceling ${pendingNotifications.length} pending notifications`);
+          await cancel(pendingNotifications.map((n) => n.id));
+        }
+      } catch {
+        // ignore errors on platforms that don't support pending()
+      }
+
+      if (!timingsList.value || timingsList.value.length === 0) return;
+
+      const list = timingsList.value
+        .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
+        .sort((a, b) => a.minutes! - b.minutes!);
+
+      if (!list.length) return;
+
+      let notificationId = 1;
+      const { minutesBefore, minutesAfter, atPrayerTime } = settings.value;
+
+      for (const prayer of list) {
+        const prayerMinutes = prayer.minutes as number;
+
+        // Create date objects for notification times
+        const todayBase = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // Schedule "before" notification
+        if (minutesBefore > 0) {
+          const beforeTime = new Date(todayBase.getTime() + (prayerMinutes - minutesBefore) * 60 * 1000);
+          if (beforeTime > now) {
+            try {
+              sendNotification({
+                id: notificationId++,
+                channelId: PRAYER_CHANNEL_ID,
+                title: "Meeqat - Prayer Reminder",
+                body: `Athan for ${prayer.label} in ${minutesBefore} minutes`,
+                schedule: Schedule.at(beforeTime),
+              });
+            } catch {
+              // ignore scheduling errors
+            }
+          }
+        }
+
+        // Schedule "at prayer time" notification
+        if (atPrayerTime) {
+          const atTime = new Date(todayBase.getTime() + prayerMinutes * 60 * 1000);
+          if (atTime > now) {
+            try {
+              sendNotification({
+                id: notificationId++,
+                channelId: PRAYER_CHANNEL_ID,
+                title: "Meeqat - Prayer Time",
+                body: `It's time for ${prayer.label}`,
+                schedule: Schedule.at(atTime),
+              });
+            } catch {
+              // ignore scheduling errors
+            }
+          }
+        }
+
+        // Schedule "after" notification (iqama reminder)
+        if (minutesAfter > 0) {
+          const afterTime = new Date(todayBase.getTime() + (prayerMinutes + minutesAfter) * 60 * 1000);
+          if (afterTime > now) {
+            try {
+              sendNotification({
+                id: notificationId++,
+                channelId: PRAYER_CHANNEL_ID,
+                title: "Meeqat - Iqama Reminder",
+                body: `Get ready for Iqama for ${prayer.label}`,
+                schedule: Schedule.at(afterTime),
+              });
+            } catch {
+              // ignore scheduling errors
+            }
+          }
+        }
+      }
+
+      console.log(`[useNotifications] Scheduled ${notificationId - 1} notifications for ${dateKey}`);
+      lastScheduledDateKey = dateKey;
+      // Update timings hash to prevent immediate re-triggering from watcher
+      lastTimingsHash = list.map((t) => `${t.key}:${t.minutes}`).join("|");
+      isRunning.value = true;
+    } finally {
+      isScheduling = false;
+    }
+  }
+
+  async function startPrayerNotifications(): Promise<void> {
+    // First, cancel any stale notifications from previous sessions
     try {
       const pendingNotifications = await pending();
       if (pendingNotifications.length > 0) {
+        console.log(`[useNotifications] Clearing ${pendingNotifications.length} stale notifications on startup`);
         await cancel(pendingNotifications.map((n) => n.id));
       }
     } catch {
       // ignore errors on platforms that don't support pending()
     }
-
-    if (!timingsList.value || timingsList.value.length === 0) return;
-
-    const list = timingsList.value
-      .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
-      .sort((a, b) => a.minutes! - b.minutes!);
-
-    if (!list.length) return;
-
-    let notificationId = 1;
-    const { minutesBefore, minutesAfter, atPrayerTime } = settings.value;
-
-    for (const prayer of list) {
-      const prayerMinutes = prayer.minutes as number;
-
-      // Create date objects for notification times
-      const todayBase = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-      // Schedule "before" notification
-      if (minutesBefore > 0) {
-        const beforeTime = new Date(todayBase.getTime() + (prayerMinutes - minutesBefore) * 60 * 1000);
-        if (beforeTime > now) {
-          try {
-            sendNotification({
-              id: notificationId++,
-              channelId: PRAYER_CHANNEL_ID,
-              title: "Meeqat - Prayer Reminder",
-              body: `Athan for ${prayer.label} in ${minutesBefore} minutes`,
-              schedule: Schedule.at(beforeTime),
-            });
-          } catch {
-            // ignore scheduling errors
-          }
-        }
-      }
-
-      // Schedule "at prayer time" notification
-      if (atPrayerTime) {
-        const atTime = new Date(todayBase.getTime() + prayerMinutes * 60 * 1000);
-        if (atTime > now) {
-          try {
-            sendNotification({
-              id: notificationId++,
-              channelId: PRAYER_CHANNEL_ID,
-              title: "Meeqat - Prayer Time",
-              body: `It's time for ${prayer.label}`,
-              schedule: Schedule.at(atTime),
-            });
-          } catch {
-            // ignore scheduling errors
-          }
-        }
-      }
-
-      // Schedule "after" notification (iqama reminder)
-      if (minutesAfter > 0) {
-        const afterTime = new Date(todayBase.getTime() + (prayerMinutes + minutesAfter) * 60 * 1000);
-        if (afterTime > now) {
-          try {
-            sendNotification({
-              id: notificationId++,
-              channelId: PRAYER_CHANNEL_ID,
-              title: "Meeqat - Iqama Reminder",
-              body: `Get ready for Iqama for ${prayer.label}`,
-              schedule: Schedule.at(afterTime),
-            });
-          } catch {
-            // ignore scheduling errors
-          }
-        }
-      }
-    }
-
-    lastScheduledDateKey = dateKey;
-    isRunning.value = true;
-  }
-
-  function startPrayerNotifications(): void {
     void schedulePrayerNotifications();
   }
 
@@ -258,11 +293,21 @@ export function useNotifications(options?: UseNotificationsOptions) {
     isRunning.value = false;
   }
 
-  // Re-schedule when timings change
+  // Re-schedule when timings actually change (not just reactive updates)
   watch(
     timingsList,
-    () => {
-      if (isRunning.value) {
+    (newTimings) => {
+      if (!isRunning.value || isInitialLoad) return;
+
+      // Create a simple hash of the timings to detect actual changes
+      const hash = newTimings
+        ?.filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key))
+        .map((t) => `${t.key}:${t.minutes}`)
+        .join("|") ?? "";
+
+      if (hash && hash !== lastTimingsHash) {
+        console.log("[useNotifications] Timings changed, rescheduling");
+        lastTimingsHash = hash;
         lastScheduledDateKey = ""; // Force reschedule
         void schedulePrayerNotifications();
       }

@@ -1,6 +1,6 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
 import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveResource } from "@tauri-apps/api/path";
@@ -36,6 +36,14 @@ export default defineNuxtPlugin(async () => {
   // The Tray API is not available on mobile (Android/iOS). Bail out early.
   const currentPlatform = platform();
   if (currentPlatform === "android" || currentPlatform === "ios") {
+    return;
+  }
+
+  // Only initialize tray from the main window to prevent duplicate tray icons
+  // when both main and tray windows load the Nuxt app simultaneously
+  const currentWindow = getCurrentWebviewWindow();
+  if (currentWindow.label !== "main") {
+    console.log("[Tray] Skipping initialization - not main window");
     return;
   }
 
