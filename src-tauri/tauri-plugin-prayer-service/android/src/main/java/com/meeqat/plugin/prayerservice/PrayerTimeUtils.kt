@@ -47,13 +47,47 @@ object PrayerTimeUtils {
     }
 
     /**
+     * Check if all prayers in the list have passed.
+     */
+    fun allPrayersPassed(context: Context, prayers: List<PrayerTimeData>): Boolean {
+        if (prayers.isEmpty()) return false
+        val now = DebugTimeProvider.currentTimeMillis(context)
+        return prayers.all { it.prayerTime <= now }
+    }
+
+    /**
+     * Load next-day prayer data from SharedPreferences.
+     * Returns a PrayerTimeData if all 3 fields are present, null otherwise.
+     */
+    fun loadNextDayPrayer(context: Context): PrayerTimeData? {
+        val prefs = context.getSharedPreferences(
+            PrayerWidgetProvider.PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+        val name = prefs.getString(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_NAME, null) ?: return null
+        val time = prefs.getLong(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_TIME, 0L)
+        val label = prefs.getString(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_LABEL, null) ?: return null
+        if (time == 0L) return null
+        return PrayerTimeData(name, time, label)
+    }
+
+    /**
      * Find the absolute time (epoch ms) of the next prayer that hasn't passed.
-     * Returns null if no prayer data exists or all prayers have passed.
+     * Falls back to next-day prayer from SharedPreferences when all today's prayers have passed.
+     * Returns null if no prayer data exists.
      */
     fun getNextPrayerTimeMs(context: Context): Long? {
         val now = DebugTimeProvider.currentTimeMillis(context)
         val prayers = loadPrayerTimes(context)
-        return prayers.firstOrNull { it.prayerTime > now }?.prayerTime
+        val todayNext = prayers.firstOrNull { it.prayerTime > now }?.prayerTime
+        if (todayNext != null) return todayNext
+
+        // All today's prayers passed — try next-day prayer
+        val nextDay = loadNextDayPrayer(context)
+        if (nextDay != null && nextDay.prayerTime > now) {
+            return nextDay.prayerTime
+        }
+        return null
     }
 
     /**

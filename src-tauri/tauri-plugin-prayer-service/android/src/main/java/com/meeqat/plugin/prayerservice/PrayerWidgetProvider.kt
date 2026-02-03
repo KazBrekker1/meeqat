@@ -30,6 +30,9 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         const val KEY_NEXT_PRAYER_INDEX = "next_prayer_index"
         const val KEY_HIJRI_DATE = "hijri_date"
         const val KEY_GREGORIAN_DATE = "gregorian_date"
+        const val KEY_NEXT_DAY_PRAYER_NAME = "next_day_prayer_name"
+        const val KEY_NEXT_DAY_PRAYER_TIME = "next_day_prayer_time"
+        const val KEY_NEXT_DAY_PRAYER_LABEL = "next_day_prayer_label"
 
         // Cached date formatters (SimpleDateFormat is not thread-safe, but widget updates run on main thread)
         private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -155,7 +158,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, actualNextIndex).commit()
             }
 
-            populateWidget(context, views, prayers, actualNextIndex, layoutId)
+            // Check if all today's prayers have passed — use next-day prayer if available
+            val nextDayPrayer = if (PrayerTimeUtils.allPrayersPassed(context, prayers)) {
+                PrayerTimeUtils.loadNextDayPrayer(context)
+            } else null
+
+            populateWidget(context, views, prayers, actualNextIndex, layoutId, nextDayPrayer)
         } else {
             showLoadingState(views)
         }
@@ -171,10 +179,15 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         views: RemoteViews,
         prayers: List<PrayerTimeData>,
         nextPrayerIndex: Int,
-        layoutId: Int
+        layoutId: Int,
+        nextDayPrayer: PrayerTimeData? = null
     ) {
-        // Set next prayer info
-        if (nextPrayerIndex in prayers.indices) {
+        // Set next prayer info — use next-day prayer if all today's prayers passed
+        if (nextDayPrayer != null) {
+            views.setTextViewText(R.id.next_prayer_name, nextDayPrayer.label)
+            views.setTextViewText(R.id.next_prayer_time, formatTime(nextDayPrayer.prayerTime))
+            views.setTextViewText(R.id.countdown, formatCountdown(context, nextDayPrayer.prayerTime))
+        } else if (nextPrayerIndex in prayers.indices) {
             val nextPrayer = prayers[nextPrayerIndex]
             views.setTextViewText(R.id.next_prayer_name, nextPrayer.label)
             views.setTextViewText(R.id.next_prayer_time, formatTime(nextPrayer.prayerTime))
@@ -250,8 +263,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(rowTimeIds[i], if (useShortTime) formatTimeShort(prayer.prayerTime) else formatTime(prayer.prayerTime))
                     views.setViewVisibility(rowContainerIds[i], View.VISIBLE)
 
-                    // Highlight current prayer row
-                    if (i == nextPrayerIndex) {
+                    // Highlight current prayer row (skip highlight when showing next-day prayer)
+                    if (nextDayPrayer == null && i == nextPrayerIndex) {
                         views.setInt(rowContainerIds[i], "setBackgroundResource", R.drawable.widget_highlight_bg)
                         views.setTextColor(rowNameIds[i], 0xFFFFFFFF.toInt())
                     } else {

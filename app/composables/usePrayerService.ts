@@ -12,6 +12,9 @@ interface UpdatePrayerTimesOptions {
   nextPrayerIndex: number;
   hijriDate?: string;
   gregorianDate?: string;
+  nextDayPrayerName?: string;
+  nextDayPrayerTime?: number;
+  nextDayPrayerLabel?: string;
 }
 
 // Dynamic imports to avoid issues on non-Android platforms
@@ -51,11 +54,6 @@ function convertTimingsToServiceData(
       const prayerTime = new Date(today);
       prayerTime.setMinutes(timing.minutes!);
 
-      // If the prayer time has passed, set it to tomorrow
-      if (prayerTime.getTime() < Date.now()) {
-        prayerTime.setDate(prayerTime.getDate() + 1);
-      }
-
       return {
         prayerName: timing.key,
         prayerTime: prayerTime.getTime(),
@@ -67,6 +65,34 @@ function convertTimingsToServiceData(
 function findNextPrayerIndex(timingsList: PrayerTimingItem[]): number {
   const index = timingsList.findIndex((t) => t.isNext);
   return index >= 0 ? index : 0;
+}
+
+/**
+ * Compute tomorrow's first prayer when all of today's prayers have passed.
+ * Returns null if any prayer is still upcoming.
+ */
+function computeNextDayFirstPrayer(
+  prayers: PrayerTimeData[]
+): { prayerName: string; prayerTime: number; label: string } | null {
+  if (prayers.length === 0) return null;
+
+  const now = Date.now();
+  const allPassed = prayers.every((p) => p.prayerTime <= now);
+  if (!allPassed) return null;
+
+  // Find the earliest prayer by time-of-day (sorted by minutes from midnight)
+  // All prayers have today's timestamps, so the first one sorted by time is the first prayer
+  const sorted = [...prayers].sort((a, b) => a.prayerTime - b.prayerTime);
+  const first = sorted[0];
+
+  // Shift the timestamp forward by 24 hours to get tomorrow's time
+  const tomorrowTime = first.prayerTime + 24 * 60 * 60 * 1000;
+
+  return {
+    prayerName: first.prayerName,
+    prayerTime: tomorrowTime,
+    label: first.label,
+  };
 }
 
 /**
@@ -116,11 +142,19 @@ export function usePrayerService(options: {
       const prayers = convertTimingsToServiceData(timingsList.value);
       const nextPrayerIndex = findNextPrayerIndex(timingsList.value);
 
+      // Compute next-day first prayer if all today's prayers have passed
+      const nextDay = computeNextDayFirstPrayer(prayers);
+
       await api.updatePrayerTimes({
         prayers,
         nextPrayerIndex,
         hijriDate: hijriDate?.value ?? undefined,
         gregorianDate: gregorianDate?.value ?? undefined,
+        ...(nextDay && {
+          nextDayPrayerName: nextDay.prayerName,
+          nextDayPrayerTime: nextDay.prayerTime,
+          nextDayPrayerLabel: nextDay.label,
+        }),
       });
 
       console.log("[PrayerService] Widget data updated");

@@ -17,6 +17,12 @@ pub struct StartServiceArgs {
     pub hijri_date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gregorian_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +34,12 @@ pub struct UpdatePrayerTimesArgs {
     pub hijri_date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gregorian_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_day_prayer_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
