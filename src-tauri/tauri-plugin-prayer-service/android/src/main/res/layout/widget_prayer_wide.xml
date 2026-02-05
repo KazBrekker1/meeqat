@@ -7,31 +7,47 @@
     android:orientation="vertical"
     android:padding="8dp">
 
-    <!-- Row 1: Dates (narrow) -->
+    <!-- Row 1: Dates and location (narrow) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
+        android:orientation="vertical"
         android:paddingBottom="4dp">
 
-        <TextView
-            android:id="@+id/hijri_date"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="15 Rajab 1446"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/hijri_date"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="15 Rajab 1446"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/gregorian_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Wed, Jan 22"
+                android:textColor="#80FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <TextView
-            android:id="@+id/gregorian_date"
-            android:layout_width="wrap_content"
+            android:id="@+id/location_text"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Wed, Jan 22"
+            android:text="Riyadh, SA"
             android:textColor="#80FFFFFF"
-            android:textSize="10sp" />
+            android:textSize="9sp"
+            android:visibility="gone"
+            android:layout_marginTop="1dp" />
     </LinearLayout>
 
     <!-- Row 2: Main content (Next Prayer | Prayer Grid) -->
