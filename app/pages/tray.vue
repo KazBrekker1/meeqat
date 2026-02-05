@@ -16,6 +16,7 @@
       <div class="text-center pb-2 border-b border-white/10 cursor-move select-none" @mousedown="startDrag">
         <div v-if="hijriDate" class="text-xs text-white/90 font-medium">{{ hijriDate }}</div>
         <div v-if="gregorianDate" class="text-xs text-white/70">{{ gregorianDate }}</div>
+        <div v-if="city && countryCode" class="text-xs text-zinc-500 mt-0.5">{{ city }}, {{ countryCode }}</div>
       </div>
 
       <!-- Next prayer highlight -->
@@ -88,6 +89,8 @@ interface TrayUpdatePayload {
   countdown?: string;
   sincePrayerLabel?: string;
   sinceTime?: string;
+  city?: string;
+  countryCode?: string;
 }
 
 const hijriDate = ref<string>("");
@@ -96,6 +99,8 @@ const nextPrayerLabel = ref<string>("");
 const countdown = ref<string>("");
 const sincePrayerLabel = ref<string>("");
 const sinceTime = ref<string>("");
+const city = ref<string>("");
+const countryCode = ref<string>("");
 const prayers = ref<Array<{
   key: string;
   label: string;
@@ -138,6 +143,12 @@ onMounted(async () => {
     }
     if (payload.sinceTime) {
       sinceTime.value = payload.sinceTime;
+    }
+    if (payload.city) {
+      city.value = payload.city;
+    }
+    if (payload.countryCode) {
+      countryCode.value = payload.countryCode;
     }
     if (payload.timingsList) {
       prayers.value = payload.timingsList.filter(p => MAIN_PRAYER_KEYS_SET.has(p.key));
