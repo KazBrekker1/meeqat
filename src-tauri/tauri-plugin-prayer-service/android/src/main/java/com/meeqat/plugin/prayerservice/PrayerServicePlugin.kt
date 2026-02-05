@@ -37,6 +37,8 @@ class StartServiceArgs {
     var nextDayPrayerName: String? = null
     var nextDayPrayerTime: Long? = null
     var nextDayPrayerLabel: String? = null
+    var city: String? = null
+    var countryCode: String? = null
 }
 
 @InvokeArg
@@ -48,6 +50,8 @@ class UpdatePrayerTimesArgs {
     var nextDayPrayerName: String? = null
     var nextDayPrayerTime: Long? = null
     var nextDayPrayerLabel: String? = null
+    var city: String? = null
+    var countryCode: String? = null
 }
 
 @InvokeArg
@@ -76,7 +80,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.d(TAG, "startService called (widget-only mode)")
 
             val args = invoke.parseArgs(StartServiceArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel)
+            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
 
             // Update all widgets immediately
             PrayerWidgetProvider.updateAllWidgets(appContext)
@@ -110,7 +114,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.d(TAG, "updatePrayerTimes called")
 
             val args = invoke.parseArgs(UpdatePrayerTimesArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel)
+            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
 
             // Update all widgets
             PrayerWidgetProvider.updateAllWidgets(appContext)
@@ -262,7 +266,9 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         gregorianDate: String?,
         nextDayPrayerName: String? = null,
         nextDayPrayerTime: Long? = null,
-        nextDayPrayerLabel: String? = null
+        nextDayPrayerLabel: String? = null,
+        city: String? = null,
+        countryCode: String? = null
     ) {
         val prefs = appContext.getSharedPreferences(
             PrayerWidgetProvider.PREFS_NAME,
@@ -277,6 +283,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             putInt(PrayerWidgetProvider.KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
             hijriDate?.let { putString(PrayerWidgetProvider.KEY_HIJRI_DATE, it) }
             gregorianDate?.let { putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, it) }
+            city?.let { putString(PrayerWidgetProvider.KEY_CITY, it) }
+            countryCode?.let { putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, it) }
 
             // Save or clear next-day prayer fields
             if (nextDayPrayerName != null && nextDayPrayerTime != null && nextDayPrayerLabel != null) {
