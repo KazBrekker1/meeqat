@@ -33,6 +33,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         const val KEY_NEXT_DAY_PRAYER_NAME = "next_day_prayer_name"
         const val KEY_NEXT_DAY_PRAYER_TIME = "next_day_prayer_time"
         const val KEY_NEXT_DAY_PRAYER_LABEL = "next_day_prayer_label"
+        const val KEY_CITY = "city"
+        const val KEY_COUNTRY_CODE = "country_code"
 
         // Cached date formatters (SimpleDateFormat is not thread-safe, but widget updates run on main thread)
         private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -169,7 +171,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         }
 
         // Set calendar dates from SharedPreferences (passed from frontend)
-        setCalendarDates(views, prefs)
+        setHeaderData(views, prefs)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
@@ -284,10 +286,12 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.countdown, "--:--")
     }
 
-    private fun setCalendarDates(views: RemoteViews, prefs: android.content.SharedPreferences) {
+    private fun setHeaderData(views: RemoteViews, prefs: android.content.SharedPreferences) {
         // Read dates from SharedPreferences (passed from frontend which calculates correctly)
         val hijriDate = prefs.getString(KEY_HIJRI_DATE, null)
         val gregorianDate = prefs.getString(KEY_GREGORIAN_DATE, null)
+        val city = prefs.getString(KEY_CITY, null)
+        val countryCode = prefs.getString(KEY_COUNTRY_CODE, null)
 
         // Set Gregorian date - use saved value or fall back to local formatting
         if (gregorianDate != null) {
@@ -303,6 +307,22 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         } else {
             // Fallback: show empty or placeholder until data arrives from frontend
             views.setTextViewText(R.id.hijri_date, "")
+        }
+
+        // Set location if available
+        if (city != null && countryCode != null) {
+            try {
+                views.setTextViewText(R.id.location_text, "$city, $countryCode")
+                views.setViewVisibility(R.id.location_text, View.VISIBLE)
+            } catch (e: Exception) {
+                Log.d(TAG, "location_text view not in layout")
+            }
+        } else {
+            try {
+                views.setViewVisibility(R.id.location_text, View.GONE)
+            } catch (e: Exception) {
+                Log.d(TAG, "location_text view not in layout")
+            }
         }
     }
 
