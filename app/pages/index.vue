@@ -526,6 +526,8 @@ watch(
         sincePrayerLabel: prevInfo?.label ?? "",
         sinceTime: prevInfo?.timeSince ?? "",
         timingsList: list,
+        city: selectedCity.value,
+        countryCode: selectedCountry.value,
       });
     } catch {
       // ignore emit errors in non-tauri/web
