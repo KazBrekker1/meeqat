@@ -15,6 +15,8 @@ interface UpdatePrayerTimesOptions {
   nextDayPrayerName?: string;
   nextDayPrayerTime?: number;
   nextDayPrayerLabel?: string;
+  city?: string;
+  countryCode?: string;
 }
 
 // Dynamic imports to avoid issues on non-Android platforms
@@ -103,8 +105,10 @@ export function usePrayerService(options: {
   timingsList: Ref<PrayerTimingItem[]>;
   hijriDate?: Ref<string | null>;
   gregorianDate?: Ref<string | null>;
+  city?: Ref<string | null>;
+  countryCode?: Ref<string | null>;
 }) {
-  const { timingsList, hijriDate, gregorianDate } = options;
+  const { timingsList, hijriDate, gregorianDate, city, countryCode } = options;
 
   const isAndroid = ref(false);
 
@@ -150,6 +154,8 @@ export function usePrayerService(options: {
         nextPrayerIndex,
         hijriDate: hijriDate?.value ?? undefined,
         gregorianDate: gregorianDate?.value ?? undefined,
+        city: city?.value ?? undefined,
+        countryCode: countryCode?.value ?? undefined,
         ...(nextDay && {
           nextDayPrayerName: nextDay.prayerName,
           nextDayPrayerTime: nextDay.prayerTime,
