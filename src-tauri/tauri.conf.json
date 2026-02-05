@@ -35,7 +35,7 @@
 		"devUrl": "http://localhost:3001"
 	},
 	"productName": "Meeqat",
-	"version": "2.3.0",
+	"version": "2.3.1",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {
@@ -55,7 +55,7 @@
 				"title": "",
 				"url": "/tray",
 				"width": 280,
-				"height": 350,
+				"height": 370,
 				"decorations": false,
 				"transparent": false,
 				"alwaysOnTop": true,

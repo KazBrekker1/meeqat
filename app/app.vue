@@ -24,7 +24,7 @@ onMounted(async () => {
     await win.onCloseRequested(async (event) => {
       try {
         event.preventDefault();
-        await win.minimize();
+        await win.hide();
       } catch (error) {
         console.error(error);
         console.error("Failed to handle close request");
