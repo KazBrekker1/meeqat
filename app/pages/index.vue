@@ -326,6 +326,8 @@ const { isAndroid } = usePrayerService({
   timingsList,
   hijriDate: hijriDateVerbose,
   gregorianDate: gregorianDateVerbose,
+  city: selectedCity,
+  countryCode: selectedCountry,
 });
 
 // Islamic calendar and Ramadan mode
