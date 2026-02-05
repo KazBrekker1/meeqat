@@ -39,7 +39,16 @@ export async function showPopover(): Promise<void> {
         const cursor = await cursorPosition();
         const monitors = await availableMonitors();
 
+        console.log("[TrayPopover] Cursor position:", cursor);
+        console.log("[TrayPopover] Monitors:", monitors.map(m => ({
+          name: m.name,
+          position: m.position,
+          size: m.size,
+          scaleFactor: m.scaleFactor
+        })));
+
         // Find the monitor containing the cursor
+        // cursor position is in physical pixels, monitor positions/sizes are also physical
         const targetMonitor = monitors.find(m =>
           cursor.x >= m.position.x &&
           cursor.x < m.position.x + m.size.width &&
@@ -47,19 +56,41 @@ export async function showPopover(): Promise<void> {
           cursor.y < m.position.y + m.size.height
         );
 
+        console.log("[TrayPopover] Target monitor:", targetMonitor?.name);
+
         if (targetMonitor) {
-          // Center on target monitor (popover size is 280x350 from tauri.conf.json)
+          // Center on target monitor
+          // Convert physical to logical coordinates for setPosition
+          const scaleFactor = targetMonitor.scaleFactor;
           const popoverWidth = 280;
           const popoverHeight = 350;
-          const x = targetMonitor.position.x + (targetMonitor.size.width - popoverWidth) / 2;
-          const y = targetMonitor.position.y + (targetMonitor.size.height - popoverHeight) / 2;
 
-          console.log(`[TrayPopover] Centering on monitor at (${x}, ${y})`);
+          // Calculate center in physical coords, then convert to logical
+          const physicalX = targetMonitor.position.x + (targetMonitor.size.width - popoverWidth * scaleFactor) / 2;
+          const physicalY = targetMonitor.position.y + (targetMonitor.size.height - popoverHeight * scaleFactor) / 2;
+
+          // Convert to logical position
+          const x = physicalX / scaleFactor;
+          const y = physicalY / scaleFactor;
+
+          console.log(`[TrayPopover] Centering on monitor at logical (${x}, ${y}), scaleFactor: ${scaleFactor}`);
           await trayWindow.setPosition(new LogicalPosition(x, y));
         } else {
-          // Fallback: emit show event for default positioning
-          console.log("[TrayPopover] No target monitor found, using default positioning");
-          await emit("meeqat:tray:show");
+          // Fallback: use first monitor
+          console.log("[TrayPopover] No target monitor found, using first monitor");
+          if (monitors.length > 0) {
+            const m = monitors[0];
+            const scaleFactor = m.scaleFactor;
+            const popoverWidth = 280;
+            const popoverHeight = 350;
+            const physicalX = m.position.x + (m.size.width - popoverWidth * scaleFactor) / 2;
+            const physicalY = m.position.y + (m.size.height - popoverHeight * scaleFactor) / 2;
+            const x = physicalX / scaleFactor;
+            const y = physicalY / scaleFactor;
+            await trayWindow.setPosition(new LogicalPosition(x, y));
+          } else {
+            await emit("meeqat:tray:show");
+          }
         }
       } catch (e) {
         console.error("[TrayPopover] Multi-monitor positioning failed, using fallback:", e);
