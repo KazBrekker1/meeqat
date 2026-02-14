@@ -157,7 +157,7 @@ class CountdownService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Prayer time approaching")
             .setContentText("Countdown in progress...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)

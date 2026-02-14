@@ -23,24 +23,13 @@ pub struct StartServiceArgs {
     pub next_day_prayer_time: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_day_prayer_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_code: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdatePrayerTimesArgs {
-    pub prayers: Vec<PrayerTimeData>,
-    pub next_prayer_index: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hijri_date: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gregorian_date: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_day_prayer_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_day_prayer_time: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub next_day_prayer_label: Option<String>,
-}
+pub type UpdatePrayerTimesArgs = StartServiceArgs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -204,8 +204,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                 activity.startActivity(intent)
             } else {
                 // Older versions - open app settings
-                val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = android.net.Uri.parse("package:${activity.packageName}")
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${activity.packageName}")
                 }
                 activity.startActivity(intent)
             }
@@ -281,10 +281,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         prefs.edit().apply {
             putString(PrayerWidgetProvider.KEY_PRAYERS_JSON, prayersJson)
             putInt(PrayerWidgetProvider.KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
-            hijriDate?.let { putString(PrayerWidgetProvider.KEY_HIJRI_DATE, it) }
-            gregorianDate?.let { putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, it) }
-            city?.let { putString(PrayerWidgetProvider.KEY_CITY, it) }
-            countryCode?.let { putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, it) }
+            if (hijriDate != null) putString(PrayerWidgetProvider.KEY_HIJRI_DATE, hijriDate) else remove(PrayerWidgetProvider.KEY_HIJRI_DATE)
+            if (gregorianDate != null) putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, gregorianDate) else remove(PrayerWidgetProvider.KEY_GREGORIAN_DATE)
+            if (city != null) putString(PrayerWidgetProvider.KEY_CITY, city) else remove(PrayerWidgetProvider.KEY_CITY)
+            if (countryCode != null) putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, countryCode) else remove(PrayerWidgetProvider.KEY_COUNTRY_CODE)
 
             // Save or clear next-day prayer fields
             if (nextDayPrayerName != null && nextDayPrayerTime != null && nextDayPrayerLabel != null) {

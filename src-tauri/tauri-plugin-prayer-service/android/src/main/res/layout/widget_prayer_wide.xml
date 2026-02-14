@@ -28,7 +28,9 @@
                 android:text="15 Rajab 1446"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/gregorian_date"
@@ -47,7 +49,9 @@
             android:textColor="#80FFFFFF"
             android:textSize="9sp"
             android:visibility="gone"
-            android:layout_marginTop="1dp" />
+            android:layout_marginTop="1dp"
+            android:maxLines="1"
+            android:ellipsize="end" />
     </LinearLayout>
 
     <!-- Row 2: Main content (Next Prayer | Prayer Grid) -->
@@ -84,7 +88,9 @@
                 android:text="Fajr"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/countdown"

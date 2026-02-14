@@ -11,6 +11,11 @@ export interface UpdatePrayerTimesOptions {
   nextPrayerIndex: number;
   hijriDate?: string;
   gregorianDate?: string;
+  nextDayPrayerName?: string;
+  nextDayPrayerTime?: number;
+  nextDayPrayerLabel?: string;
+  city?: string;
+  countryCode?: string;
 }
 
 /**

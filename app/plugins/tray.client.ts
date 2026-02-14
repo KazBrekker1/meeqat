@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveResource } from "@tauri-apps/api/path";
 import { platform } from "@tauri-apps/plugin-os";
+import { handleIconState } from "@tauri-apps/plugin-positioner";
 import { togglePopover } from "@/composables/useTrayPopover";
 
 declare global {
@@ -120,6 +121,12 @@ export default defineNuxtPlugin(async () => {
     ...(iconPath ? { icon: iconPath } : {}),
     action: async (event) => {
       console.log("[Tray] Action event:", JSON.stringify(event));
+      // Track tray icon state for Position.TrayCenter fallback
+      try {
+        await handleIconState(event);
+      } catch (e) {
+        console.warn("[Tray] handleIconState failed:", e);
+      }
       // Handle left-click only to toggle popover (right-click shows context menu)
       if (event.type === "Click" && event.button === "Left" && event.buttonState === "Up") {
         console.log("[Tray] Left click detected - toggling popover");

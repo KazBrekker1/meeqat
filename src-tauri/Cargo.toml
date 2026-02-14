@@ -1,6 +1,6 @@
 [package]
 name = "meeqat-app"
-version = "2.3.1"
+version = "2.3.2"
 description = "Meeqat App"
 authors = [ "KazBrekker1" ]
 repository = "https://github.com/KazBrekker1/meeqat"
@@ -16,12 +16,12 @@ crate-type = [
 ]
 
 [build-dependencies.tauri-build]
-version = "2.3.1"
+version = "2.3.2"
 features = [ ]
 
 [dependencies]
-tauri-plugin-notification = "2.3.1"
-tauri-plugin-store = "2.3.1"
+tauri-plugin-notification = "2.3.2"
+tauri-plugin-store = "2.3.2"
 tauri-plugin-os = "2"
 tauri-plugin-prayer-service = { path = "./tauri-plugin-prayer-service" }
 

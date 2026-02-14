@@ -13,8 +13,8 @@ object PrayerTimeUtils {
     private const val TAG = "PrayerTimeUtils"
 
     // Cache to avoid re-parsing JSON from SharedPreferences every second during countdown
-    private var cachedJson: String? = null
-    private var cachedPrayers: List<PrayerTimeData> = emptyList()
+    @Volatile private var cachedJson: String? = null
+    @Volatile private var cachedPrayers: List<PrayerTimeData> = emptyList()
 
     /**
      * Parse prayer times from SharedPreferences JSON.

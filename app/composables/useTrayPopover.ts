@@ -6,6 +6,8 @@ import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { platform } from "@tauri-apps/plugin-os";
 
 let focusUnlisten: UnlistenFn | null = null;
+let focusGraceTimer: ReturnType<typeof setTimeout> | null = null;
+let focusGraceActive = false;
 
 export async function getTrayWindow(): Promise<WebviewWindow | null> {
   try {
@@ -63,7 +65,7 @@ export async function showPopover(): Promise<void> {
           // Convert physical to logical coordinates for setPosition
           const scaleFactor = targetMonitor.scaleFactor;
           const popoverWidth = 280;
-          const popoverHeight = 350;
+          const popoverHeight = 370;
 
           // Calculate center in physical coords, then convert to logical
           const physicalX = targetMonitor.position.x + (targetMonitor.size.width - popoverWidth * scaleFactor) / 2;
@@ -82,7 +84,7 @@ export async function showPopover(): Promise<void> {
             const m = monitors[0];
             const scaleFactor = m.scaleFactor;
             const popoverWidth = 280;
-            const popoverHeight = 350;
+            const popoverHeight = 370;
             const physicalX = m.position.x + (m.size.width - popoverWidth * scaleFactor) / 2;
             const physicalY = m.position.y + (m.size.height - popoverHeight * scaleFactor) / 2;
             const x = physicalX / scaleFactor;
@@ -96,8 +98,58 @@ export async function showPopover(): Promise<void> {
         console.error("[TrayPopover] Multi-monitor positioning failed, using fallback:", e);
         await emit("meeqat:tray:show");
       }
+    } else if (currentPlatform === "windows") {
+      // Windows: position popover above the cursor (near tray icon)
+      try {
+        const cursor = await cursorPosition();
+        const monitors = await availableMonitors();
+
+        console.log("[TrayPopover] Windows cursor position:", cursor);
+
+        const popoverWidth = 280;
+        const popoverHeight = 370;
+
+        // Find the monitor containing the cursor
+        const targetMonitor = monitors.find(m =>
+          cursor.x >= m.position.x &&
+          cursor.x < m.position.x + m.size.width &&
+          cursor.y >= m.position.y &&
+          cursor.y < m.position.y + m.size.height
+        ) || monitors[0];
+
+        if (targetMonitor) {
+          const scaleFactor = targetMonitor.scaleFactor;
+          const monLeft = targetMonitor.position.x / scaleFactor;
+          const monTop = targetMonitor.position.y / scaleFactor;
+          const monWidth = targetMonitor.size.width / scaleFactor;
+          const monHeight = targetMonitor.size.height / scaleFactor;
+
+          // Center horizontally on cursor, position above cursor
+          let x = (cursor.x / scaleFactor) - (popoverWidth / 2);
+          let y = (cursor.y / scaleFactor) - popoverHeight - 12; // 12px gap above cursor
+
+          // Clamp horizontal to monitor bounds
+          x = Math.max(monLeft, Math.min(x, monLeft + monWidth - popoverWidth));
+
+          // If no room above, position below cursor
+          if (y < monTop) {
+            y = (cursor.y / scaleFactor) + 12;
+          }
+          // Clamp vertical to monitor bounds
+          y = Math.min(y, monTop + monHeight - popoverHeight);
+
+          console.log(`[TrayPopover] Windows positioning at logical (${x}, ${y})`);
+          await trayWindow.setPosition(new LogicalPosition(x, y));
+        } else {
+          // No monitors found, fall back to event-based
+          await emit("meeqat:tray:show");
+        }
+      } catch (e) {
+        console.error("[TrayPopover] Windows direct positioning failed, using fallback:", e);
+        await emit("meeqat:tray:show");
+      }
     } else {
-      // Non-macOS: use default tray positioning
+      // Other platforms: use default tray positioning
       await emit("meeqat:tray:show");
     }
 
@@ -116,9 +168,18 @@ export async function showPopover(): Promise<void> {
       focusUnlisten = null;
     }
 
+    // Start a grace period so Windows doesn't immediately dismiss the popover
+    // due to spurious focus-lost events right after showing an undecorated alwaysOnTop window
+    focusGraceActive = true;
+    if (focusGraceTimer) clearTimeout(focusGraceTimer);
+    focusGraceTimer = setTimeout(() => {
+      focusGraceActive = false;
+      focusGraceTimer = null;
+    }, 300);
+
     focusUnlisten = await trayWindow.onFocusChanged(({ payload: focused }) => {
-      console.log("[TrayPopover] Focus changed:", focused);
-      if (!focused) {
+      console.log("[TrayPopover] Focus changed:", focused, "grace:", focusGraceActive);
+      if (!focused && !focusGraceActive) {
         hidePopover();
       }
     });
@@ -142,6 +203,12 @@ export async function hidePopover(): Promise<void> {
     focusUnlisten();
     focusUnlisten = null;
   }
+
+  if (focusGraceTimer) {
+    clearTimeout(focusGraceTimer);
+    focusGraceTimer = null;
+  }
+  focusGraceActive = false;
 }
 
 export async function togglePopover(): Promise<void> {

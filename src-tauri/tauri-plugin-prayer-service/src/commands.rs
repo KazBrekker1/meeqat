@@ -14,8 +14,10 @@ pub fn start_service<R: Runtime>(
     next_day_prayer_name: Option<String>,
     next_day_prayer_time: Option<i64>,
     next_day_prayer_label: Option<String>,
+    city: Option<String>,
+    country_code: Option<String>,
 ) -> Result<()> {
-    let args = StartServiceArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label };
+    let args = StartServiceArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label, city, country_code };
     app.prayer_service().start_service(args)
 }
 
@@ -34,8 +36,10 @@ pub fn update_prayer_times<R: Runtime>(
     next_day_prayer_name: Option<String>,
     next_day_prayer_time: Option<i64>,
     next_day_prayer_label: Option<String>,
+    city: Option<String>,
+    country_code: Option<String>,
 ) -> Result<()> {
-    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label };
+    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label, city, country_code };
     app.prayer_service().update_prayer_times(args)
 }
 

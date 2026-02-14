@@ -36,11 +36,9 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         const val KEY_CITY = "city"
         const val KEY_COUNTRY_CODE = "country_code"
 
-        // Cached date formatters (SimpleDateFormat is not thread-safe, but widget updates run on main thread)
-        private val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-        private val timeFormatShort = SimpleDateFormat("h:mm", Locale.getDefault())
-        private val gregorianFormat = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-        private val reusableDate = Date()
+        private val timeFormat = ThreadLocal.withInitial { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+        private val timeFormatShort = ThreadLocal.withInitial { SimpleDateFormat("h:mm", Locale.getDefault()) }
+        private val gregorianFormat = ThreadLocal.withInitial { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
 
         /**
          * Static method to trigger widget updates from anywhere
@@ -171,7 +169,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         }
 
         // Set calendar dates from SharedPreferences (passed from frontend)
-        setHeaderData(views, prefs)
+        setHeaderData(context, views, prefs)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
@@ -269,9 +267,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     if (nextDayPrayer == null && i == nextPrayerIndex) {
                         views.setInt(rowContainerIds[i], "setBackgroundResource", R.drawable.widget_highlight_bg)
                         views.setTextColor(rowNameIds[i], 0xFFFFFFFF.toInt())
+                        views.setTextColor(rowTimeIds[i], 0xFFFFFFFF.toInt())
                     } else {
                         views.setInt(rowContainerIds[i], "setBackgroundResource", R.drawable.widget_prayer_row_bg)
                         views.setTextColor(rowNameIds[i], 0xB3FFFFFF.toInt())
+                        views.setTextColor(rowTimeIds[i], 0x80FFFFFF.toInt())
                     }
                 } else if (i < rowContainerIds.size) {
                     views.setViewVisibility(rowContainerIds[i], View.GONE)
@@ -284,9 +284,19 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.next_prayer_name, "Loading...")
         views.setTextViewText(R.id.next_prayer_time, "--:--")
         views.setTextViewText(R.id.countdown, "--:--")
+
+        // Hide prayer rows and prev prayer to avoid showing stale data
+        try { views.setViewVisibility(R.id.prev_prayer_container, View.GONE) } catch (_: Exception) {}
+        val rowContainerIds = intArrayOf(
+            R.id.prayer_row_1, R.id.prayer_row_2, R.id.prayer_row_3,
+            R.id.prayer_row_4, R.id.prayer_row_5, R.id.prayer_row_6
+        )
+        for (id in rowContainerIds) {
+            try { views.setViewVisibility(id, View.GONE) } catch (_: Exception) {}
+        }
     }
 
-    private fun setHeaderData(views: RemoteViews, prefs: android.content.SharedPreferences) {
+    private fun setHeaderData(context: Context, views: RemoteViews, prefs: android.content.SharedPreferences) {
         // Read dates from SharedPreferences (passed from frontend which calculates correctly)
         val hijriDate = prefs.getString(KEY_HIJRI_DATE, null)
         val gregorianDate = prefs.getString(KEY_GREGORIAN_DATE, null)
@@ -297,8 +307,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         if (gregorianDate != null) {
             views.setTextViewText(R.id.gregorian_date, gregorianDate)
         } else {
-            reusableDate.time = System.currentTimeMillis()
-            views.setTextViewText(R.id.gregorian_date, gregorianFormat.format(reusableDate))
+            views.setTextViewText(R.id.gregorian_date, gregorianFormat.get()!!.format(Date(DebugTimeProvider.currentTimeMillis(context))))
         }
 
         // Set Hijri date - use saved value from frontend (calculated using proper Islamic calendar)
@@ -327,13 +336,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
     }
 
     private fun formatTime(timestamp: Long): String {
-        reusableDate.time = timestamp
-        return timeFormat.format(reusableDate)
+        return timeFormat.get()!!.format(Date(timestamp))
     }
 
     private fun formatTimeShort(timestamp: Long): String {
-        reusableDate.time = timestamp
-        return timeFormatShort.format(reusableDate)
+        return timeFormatShort.get()!!.format(Date(timestamp))
     }
 
     private fun formatElapsed(context: Context, prayerTime: Long): String {
