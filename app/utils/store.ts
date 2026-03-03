@@ -49,20 +49,39 @@ export function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
   } as TauriStore;
 }
 
-let storePromise: Promise<TauriStore> | null = null;
-export function getStore(): Promise<TauriStore> {
-  if (!storePromise) {
-    if (!isTauriAvailable()) {
-      storePromise = Promise.resolve(createWebFallbackStore("settings.bin"));
-    } else {
-      storePromise = useTauriStoreLoad("settings.bin", {
-        autoSave: true,
-        defaults: {},
-      });
+// --- Store loading helper with retry-on-failure ---
+
+function loadStore(filename: string): () => Promise<TauriStore> {
+  let promise: Promise<TauriStore> | null = null;
+  return () => {
+    if (!promise) {
+      if (!isTauriAvailable()) {
+        promise = Promise.resolve(createWebFallbackStore(filename));
+      } else {
+        promise = useTauriStoreLoad(filename, {
+          autoSave: true,
+          defaults: {},
+        }).catch((err) => {
+          // Nullify so next call retries Tauri, then falls back to web
+          promise = null;
+          console.warn(`[store] Failed to load Tauri store "${filename}", falling back to web:`, err);
+          return createWebFallbackStore(filename);
+        });
+      }
     }
-  }
-  return storePromise;
+    return promise;
+  };
 }
+
+// --- Two separate stores ---
+
+export const getSettingsStore = loadStore("settings.bin");
+export const getCacheStore = loadStore("cache.bin");
+
+/** @deprecated Use getSettingsStore() — kept for backward compatibility */
+export const getStore = getSettingsStore;
+
+// --- Cache helpers (now use getCacheStore) ---
 
 export function cacheStoreKey(optionsKey: string): string {
   return `prayerCache:${optionsKey}`;
@@ -71,7 +90,7 @@ export function cacheStoreKey(optionsKey: string): string {
 export async function getCacheForOptions(
   optionsKey: string
 ): Promise<CacheMap> {
-  const store = await getStore();
+  const store = await getCacheStore();
   const key = cacheStoreKey(optionsKey);
   const existing = (await store.get<CacheMap>(key)) ?? {};
   return existing;
@@ -81,7 +100,7 @@ export async function setCacheForOptions(
   optionsKey: string,
   cache: CacheMap
 ): Promise<void> {
-  const store = await getStore();
+  const store = await getCacheStore();
   const key = cacheStoreKey(optionsKey);
   await store.set(key, cache);
   if (store.save) await store.save();

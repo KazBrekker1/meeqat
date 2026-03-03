@@ -32,21 +32,6 @@ export default defineNuxtConfig({
   dir: {
     modules: "app/modules",
   },
-  imports: {
-    presets: [
-      {
-        from: "zod",
-        imports: [
-          "z",
-          {
-            name: "infer",
-            as: "zInfer",
-            type: true,
-          },
-        ],
-      },
-    ],
-  },
   vite: {
     clearScreen: false,
     envPrefix: ["VITE_", "TAURI_"],

@@ -31,15 +31,19 @@ object PrayerTimeUtils {
             val prayersJson = prefs.getString(PrayerWidgetProvider.KEY_PRAYERS_JSON, null)
                 ?: return emptyList()
 
-            // Return cached result if JSON hasn't changed
-            if (prayersJson == cachedJson) {
-                return cachedPrayers
-            }
+            // Synchronized to ensure cachedJson and cachedPrayers stay consistent
+            // during concurrent reads from CountdownService (1Hz) and writes from main thread
+            synchronized(this) {
+                // Return cached result if JSON hasn't changed
+                if (prayersJson == cachedJson) {
+                    return cachedPrayers
+                }
 
-            val parsed = parsePrayersJson(prayersJson)
-            cachedJson = prayersJson
-            cachedPrayers = parsed
-            return parsed
+                val parsed = parsePrayersJson(prayersJson)
+                cachedJson = prayersJson
+                cachedPrayers = parsed
+                return parsed
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading prayer times: ${e.message}", e)
             return emptyList()

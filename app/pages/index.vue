@@ -535,7 +535,6 @@ watch(
       // ignore emit errors in non-tauri/web
     }
   },
-  { immediate: true }
 );
 
 onBeforeUnmount(() => {

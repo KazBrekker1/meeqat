@@ -77,6 +77,17 @@ export function usePrayerTimes() {
     isOffline.value = true;
   }
 
+  // --- Midnight rollover: auto-refetch when date changes ---
+  const todayDateKey = computed(() => getDateKey(now.value));
+
+  watch(todayDateKey, () => {
+    if (selectedCity.value && selectedCountry.value) {
+      fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
+        methodId: selectedMethodId.value,
+      });
+    }
+  });
+
   const currentTimeString = computed(() =>
     formatTime(now.value, is24Hour, undefined, true)
   );
@@ -259,6 +270,8 @@ export function usePrayerTimes() {
     }
   }
 
+  const MAX_CONSECUTIVE_PREFETCH_FAILURES = 3;
+
   async function prefetchUpcomingDays(
     params: {
       city: string;
@@ -291,9 +304,17 @@ export function usePrayerTimes() {
     // Fetch in batches of 5 to avoid overwhelming the API
     const batchSize = 5;
     const newEntries: Record<string, CachedDay> = {};
+    let consecutiveFailures = 0;
 
     for (let i = 0; i < entriesToFetch.length; i += batchSize) {
+      // Circuit-breaker: stop if too many consecutive batch failures
+      if (consecutiveFailures >= MAX_CONSECUTIVE_PREFETCH_FAILURES) {
+        console.warn(`[usePrayerTimes] Prefetch stopped after ${consecutiveFailures} consecutive batch failures`);
+        break;
+      }
+
       const batch = entriesToFetch.slice(i, i + batchSize);
+      let batchSuccesses = 0;
       const promises = batch.map(async (date) => {
         try {
           const dateParam = formatDdMmYyyy(date);
@@ -308,6 +329,7 @@ export function usePrayerTimes() {
           );
           const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
           if (res && res.code === 200) {
+            batchSuccesses++;
             const dateKey = getDateKey(date);
             newEntries[dateKey] = {
               timings: res.data.timings,
@@ -322,6 +344,12 @@ export function usePrayerTimes() {
         }
       });
       await Promise.all(promises);
+
+      if (batchSuccesses > 0) {
+        consecutiveFailures = 0;
+      } else {
+        consecutiveFailures++;
+      }
     }
 
     // Save all new entries at once
@@ -463,7 +491,7 @@ export function usePrayerTimes() {
   }
 
   async function clearCache() {
-    const store = await getStore();
+    const store = await getCacheStore();
     await store.clear();
   }
 

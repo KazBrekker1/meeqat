@@ -170,27 +170,18 @@ export function usePrayerService(options: {
     }
   }
 
-  // Watch for timings changes and update widgets
-  watch(
-    timingsList,
-    async (newTimings) => {
-      if (!isAndroid.value) return;
-
-      if (newTimings.length) {
-        await update();
-      }
-    },
-    { deep: true }
+  // Stable key that only changes when actual prayer data changes (new city, new date, settings change)
+  // — NOT every second like the old deep watch on timingsList
+  const prayerDataKey = computed(() =>
+    timingsList.value.map((t) => `${t.key}:${t.minutes}`).join(",")
   );
 
-  // Also watch for when isAndroid becomes true
+  // Single watch: fires only when prayer data, dates, or location actually change
   watch(
-    isAndroid,
-    async (isNowAndroid) => {
-      if (isNowAndroid && timingsList.value.length) {
-        console.log("[PrayerService] Android detected, updating widgets with existing timings");
-        await update();
-      }
+    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, isAndroid],
+    async () => {
+      if (!isAndroid.value || !timingsList.value.length) return;
+      await update();
     }
   );
 
