@@ -102,9 +102,13 @@
               />
             </div>
 
-            <UCalendar v-model="calendarDate">
+            <UCalendar
+              v-model="calendarDate"
+              :placeholder="calendarPlaceholder"
+              @update:placeholder="calendarPlaceholder = $event as CalendarDate"
+            >
               <template #heading>
-                <span class="text-sm font-semibold">{{ formatCalendarHeading() }}</span>
+                <span class="text-sm font-semibold">{{ calendarHeading }}</span>
               </template>
               <template #day="{ day }">
                 <UTooltip :text="formatTooltip(day)" :delay-duration="0">
@@ -158,7 +162,7 @@
 <script lang="ts" setup>
 import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
-import { computePreviousPrayerInfo, pad2 } from "@/utils/time";
+import { pad2 } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET, ISLAMIC_MONTHS } from "@/constants/prayers";
 import type { DateValue, CalendarDate } from "@internationalized/date";
 import {
@@ -170,6 +174,7 @@ import {
   today,
 } from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
+import { watchThrottled } from "@vueuse/core";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
@@ -199,7 +204,10 @@ const calendarDate = computed<CalendarDate>({
   },
 });
 
+const calendarPlaceholder = shallowRef<CalendarDate>(calendarDate.value);
+
 const gregorianFormatter = new DateFormatter("en-US", { dateStyle: "long" });
+const monthYearFormatter = new DateFormatter("en-US", { month: "long", year: "numeric" });
 
 /**
  * Format Islamic date using hardcoded month names.
@@ -214,22 +222,20 @@ function formatIslamicDate(date: DateValue): string {
   return `${islamic.day} ${monthName} ${islamic.year} AH`;
 }
 
-/**
- * Format the calendar heading (month and year).
- * Uses hardcoded Islamic month names for Android WebView compatibility.
- * Uses calendarDate directly since headingValue from slot may not be a DateValue.
- */
-function formatCalendarHeading(): string {
-  const date = calendarDate.value;
+const calendarHeading = computed(() => {
+  const date = calendarPlaceholder.value;
   if (calendarSystem.value === "islamic") {
-    const monthName = ISLAMIC_MONTHS[date.month - 1] || `Month ${date.month}`;
-    return `${monthName} ${date.year}`;
-  } else {
-    // Gregorian formatting works fine on all platforms
-    const formatter = new DateFormatter("en-US", { month: "long", year: "numeric" });
-    return formatter.format(date.toDate(timeZone));
+    const islamic = date.calendar instanceof IslamicUmalquraCalendar
+      ? date
+      : toCalendar(date, new IslamicUmalquraCalendar());
+    const monthName = ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
+    return `${monthName} ${islamic.year}`;
   }
-}
+  const greg = date.calendar instanceof GregorianCalendar
+    ? date
+    : toCalendar(date, new GregorianCalendar());
+  return monthYearFormatter.format(greg.toDate(timeZone));
+});
 
 function formatTooltip(date: DateValue) {
   if (calendarSystem.value == "islamic") {
@@ -244,12 +250,16 @@ function formatTooltip(date: DateValue) {
 
 function selectToday() {
   if (calendarSystem.value === "islamic") {
-    islamicDate.value = toCalendar(
+    const todayIslamic = toCalendar(
       today(timeZone),
       new IslamicUmalquraCalendar()
     );
+    islamicDate.value = todayIslamic;
+    calendarPlaceholder.value = todayIslamic as CalendarDate;
   } else {
-    gregorianDate.value = toCalendar(today(timeZone), new GregorianCalendar());
+    const todayGreg = toCalendar(today(timeZone), new GregorianCalendar());
+    gregorianDate.value = todayGreg;
+    calendarPlaceholder.value = todayGreg as CalendarDate;
   }
 }
 
@@ -275,12 +285,20 @@ function toggleCalendarSystem() {
       new GregorianCalendar()
     );
     calendarSystem.value = "gregorian";
+    calendarPlaceholder.value = toCalendar(
+      calendarPlaceholder.value,
+      new GregorianCalendar()
+    ) as CalendarDate;
   } else {
     islamicDate.value = toCalendar(
       gregorianDate.value,
       new IslamicUmalquraCalendar()
     );
     calendarSystem.value = "islamic";
+    calendarPlaceholder.value = toCalendar(
+      calendarPlaceholder.value,
+      new IslamicUmalquraCalendar()
+    ) as CalendarDate;
   }
 }
 
@@ -436,7 +454,7 @@ async function onClearCache() {
       confirmColor: "error",
     })
   ) {
-    clearCache();
+    await clearCache();
     clearTimings();
     toast.add({
       title: "Cache Cleared",
@@ -456,15 +474,14 @@ onMounted(async () => {
   // Prayer service will auto-start when timingsList becomes available (via watcher in composable)
 });
 
-watch([selectedMethodId, selectedCity, selectedCountry], () => {
+watch(selectedMethodId, () => {
   clearTimings();
-  // Re-fetch immediately so the UI doesn't stay blank
   onFetchByCity();
 });
 
-watch(calendarDate, (newDate) => {
+watch(calendarPlaceholder, (newPlaceholder) => {
   if (!selectedCity.value || !selectedCountry.value) return;
-  const greg = toCalendar(newDate, new GregorianCalendar());
+  const greg = toCalendar(newPlaceholder, new GregorianCalendar());
   const dateParam = `${pad2(greg.day)}-${pad2(greg.month)}-${greg.year}`;
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
     methodId: selectedMethodId.value,
@@ -472,8 +489,8 @@ watch(calendarDate, (newDate) => {
   });
 });
 
-// Push updates to the tray via Tauri event bus
-watch(
+// Push updates to the tray via Tauri event bus (throttled to at most once per second)
+watchThrottled(
   [
     gregorianDateVerbose,
     hijriDateVerbose,
@@ -510,9 +527,8 @@ watch(
       }
 
       let sinceLine = "Last: --";
-      const prevInfo = computePreviousPrayerInfo(timingsList.value, new Date());
-      if (prevInfo) {
-        sinceLine = `${prevInfo.label} since \t ${prevInfo.timeSince}`;
+      if (previousPrayerLabel.value && timeSincePrevious.value) {
+        sinceLine = `${previousPrayerLabel.value} since \t ${timeSincePrevious.value}`;
       }
 
       await emit("meeqat:tray:update", {
@@ -525,8 +541,8 @@ watch(
         gregorianDate: gregorianDateVerbose.value,
         nextPrayerLabel: nextPrayerLabel.value,
         countdown: countdownToNext.value,
-        sincePrayerLabel: prevInfo?.label ?? "",
-        sinceTime: prevInfo?.timeSince ?? "",
+        sincePrayerLabel: previousPrayerLabel.value ?? "",
+        sinceTime: timeSincePrevious.value ?? "",
         timingsList: list,
         city: selectedCity.value,
         countryCode: selectedCountry.value,
@@ -535,6 +551,7 @@ watch(
       // ignore emit errors in non-tauri/web
     }
   },
+  { throttle: 1000 },
 );
 
 onBeforeUnmount(() => {

@@ -1,4 +1,4 @@
-import { getStore } from "@/utils/store";
+import { getSettingsStore } from "@/utils/store";
 
 export interface FavoriteLocation {
   id: string;
@@ -27,7 +27,7 @@ export function useFavoriteLocations() {
   // Load favorites from store
   async function loadFavorites(): Promise<void> {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       const saved = await store.get<FavoriteLocation[]>(STORE_KEY);
       if (Array.isArray(saved)) {
         favorites.value = saved;
@@ -42,7 +42,7 @@ export function useFavoriteLocations() {
   // Save favorites to store
   async function saveFavorites(): Promise<void> {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       await store.set(STORE_KEY, favorites.value);
       if (store.save) await store.save();
     } catch (e) {

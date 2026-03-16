@@ -4,7 +4,7 @@ import {
   IslamicUmalquraCalendar,
 } from "@internationalized/date";
 import type { PrayerTimingItem } from "@/utils/types";
-import { getStore } from "@/utils/store";
+import { getSettingsStore } from "@/utils/store";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
 
 // Ramadan is month 9 in the Islamic calendar
@@ -49,14 +49,15 @@ export interface IslamicCalendarState {
 }
 
 export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
-  const now = ref(new Date());
+  const { getNow } = useMockTime();
+  const now = ref(getNow());
   const ramadanModeEnabled = ref(true); // Auto-enable during Ramadan
 
   // Update time every second
   let intervalId: ReturnType<typeof setInterval> | null = null;
   onMounted(() => {
     intervalId = setInterval(() => {
-      now.value = new Date();
+      now.value = getNow();
     }, 1000);
     void loadSettings();
   });
@@ -67,7 +68,7 @@ export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
   // Load/save Ramadan mode setting
   async function loadSettings(): Promise<void> {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       const saved = await store.get<boolean>("ramadanModeEnabled");
       if (typeof saved === "boolean") {
         ramadanModeEnabled.value = saved;
@@ -80,7 +81,7 @@ export function useIslamicCalendar(timingsList?: Ref<PrayerTimingItem[]>) {
   async function setRamadanModeEnabled(enabled: boolean): Promise<void> {
     ramadanModeEnabled.value = enabled;
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       await store.set("ramadanModeEnabled", enabled);
       if (store.save) await store.save();
     } catch (e) {

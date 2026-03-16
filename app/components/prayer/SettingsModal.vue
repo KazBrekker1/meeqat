@@ -514,7 +514,7 @@ const emit = defineEmits<{
 }>();
 
 // Show dev tools in development mode or on Android (for testing time mocking)
-const isDev = computed(() => process.env.NODE_ENV === 'development' || isAndroid.value);
+const isDev = computed(() => import.meta.dev || isAndroid.value);
 
 const isOpen = computed({
   get: () => props.modelValue,

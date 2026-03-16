@@ -7,6 +7,7 @@ import { resolveResource } from "@tauri-apps/api/path";
 import { platform } from "@tauri-apps/plugin-os";
 import { handleIconState } from "@tauri-apps/plugin-positioner";
 import { togglePopover } from "@/composables/useTrayPopover";
+import { isTauriAvailable } from "@/utils/store";
 
 declare global {
   interface Window {
@@ -16,12 +17,6 @@ declare global {
       initialized: boolean;
     };
   }
-}
-
-function isTauriAvailable(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as any;
-  return Boolean(w.__TAURI__?.core?.invoke || w.__TAURI_INTERNALS__?.invoke);
 }
 
 async function openMainWindow() {

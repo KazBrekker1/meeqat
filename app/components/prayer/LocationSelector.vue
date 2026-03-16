@@ -120,7 +120,7 @@
 
 <script lang="ts" setup>
 import { COUNTRY_OPTIONS, getFlagByCode, REGION_LABELS, type CountryOption } from '@/constants/countries';
-import { COUNTRY_TO_CITIES_DATA, getCityTimezone } from '@/constants/cities';
+import { COUNTRY_TO_CITIES_DATA } from '@/constants/cities';
 import type { FavoriteLocation } from '@/composables/useFavoriteLocations';
 
 interface LocationItem {

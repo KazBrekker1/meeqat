@@ -19,7 +19,7 @@ export async function getTrayWindow(): Promise<WebviewWindow | null> {
 }
 
 export async function showPopover(): Promise<void> {
-  console.log("[TrayPopover] showPopover called");
+  if (import.meta.dev) console.log("[TrayPopover] showPopover called");
   const trayWindow = await getTrayWindow();
   if (!trayWindow) {
     console.warn("[TrayPopover] Tray window not found");
@@ -32,7 +32,7 @@ export async function showPopover(): Promise<void> {
     try {
       currentPlatform = await platform();
     } catch {
-      console.log("[TrayPopover] Could not detect platform");
+      if (import.meta.dev) console.log("[TrayPopover] Could not detect platform");
     }
 
     // On macOS, center on the monitor where the cursor is
@@ -41,8 +41,8 @@ export async function showPopover(): Promise<void> {
         const cursor = await cursorPosition();
         const monitors = await availableMonitors();
 
-        console.log("[TrayPopover] Cursor position:", cursor);
-        console.log("[TrayPopover] Monitors:", monitors.map(m => ({
+        if (import.meta.dev) console.log("[TrayPopover] Cursor position:", cursor);
+        if (import.meta.dev) console.log("[TrayPopover] Monitors:", monitors.map(m => ({
           name: m.name,
           position: m.position,
           size: m.size,
@@ -58,7 +58,7 @@ export async function showPopover(): Promise<void> {
           cursor.y < m.position.y + m.size.height
         );
 
-        console.log("[TrayPopover] Target monitor:", targetMonitor?.name);
+        if (import.meta.dev) console.log("[TrayPopover] Target monitor:", targetMonitor?.name);
 
         if (targetMonitor) {
           // Center on target monitor
@@ -75,11 +75,11 @@ export async function showPopover(): Promise<void> {
           const x = physicalX / scaleFactor;
           const y = physicalY / scaleFactor;
 
-          console.log(`[TrayPopover] Centering on monitor at logical (${x}, ${y}), scaleFactor: ${scaleFactor}`);
+          if (import.meta.dev) console.log(`[TrayPopover] Centering on monitor at logical (${x}, ${y}), scaleFactor: ${scaleFactor}`);
           await trayWindow.setPosition(new LogicalPosition(x, y));
         } else {
           // Fallback: use first monitor
-          console.log("[TrayPopover] No target monitor found, using first monitor");
+          if (import.meta.dev) console.log("[TrayPopover] No target monitor found, using first monitor");
           if (monitors.length > 0) {
             const m = monitors[0];
             const scaleFactor = m.scaleFactor;
@@ -104,7 +104,7 @@ export async function showPopover(): Promise<void> {
         const cursor = await cursorPosition();
         const monitors = await availableMonitors();
 
-        console.log("[TrayPopover] Windows cursor position:", cursor);
+        if (import.meta.dev) console.log("[TrayPopover] Windows cursor position:", cursor);
 
         const popoverWidth = 280;
         const popoverHeight = 370;
@@ -138,7 +138,7 @@ export async function showPopover(): Promise<void> {
           // Clamp vertical to monitor bounds
           y = Math.min(y, monTop + monHeight - popoverHeight);
 
-          console.log(`[TrayPopover] Windows positioning at logical (${x}, ${y})`);
+          if (import.meta.dev) console.log(`[TrayPopover] Windows positioning at logical (${x}, ${y})`);
           await trayWindow.setPosition(new LogicalPosition(x, y));
         } else {
           // No monitors found, fall back to event-based
@@ -154,12 +154,12 @@ export async function showPopover(): Promise<void> {
     }
 
     // Show the window
-    console.log("[TrayPopover] Showing window...");
+    if (import.meta.dev) console.log("[TrayPopover] Showing window...");
     await trayWindow.show();
-    console.log("[TrayPopover] Window shown");
+    if (import.meta.dev) console.log("[TrayPopover] Window shown");
 
     // Focus the window
-    console.log("[TrayPopover] Setting focus...");
+    if (import.meta.dev) console.log("[TrayPopover] Setting focus...");
     await trayWindow.setFocus();
 
     // Setup focus listener to auto-hide when clicking outside
@@ -178,12 +178,12 @@ export async function showPopover(): Promise<void> {
     }, 300);
 
     focusUnlisten = await trayWindow.onFocusChanged(({ payload: focused }) => {
-      console.log("[TrayPopover] Focus changed:", focused, "grace:", focusGraceActive);
+      if (import.meta.dev) console.log("[TrayPopover] Focus changed:", focused, "grace:", focusGraceActive);
       if (!focused && !focusGraceActive) {
         hidePopover();
       }
     });
-    console.log("[TrayPopover] showPopover completed");
+    if (import.meta.dev) console.log("[TrayPopover] showPopover completed");
   } catch (e) {
     console.error("[TrayPopover] Failed to show popover:", e);
   }
@@ -212,7 +212,7 @@ export async function hidePopover(): Promise<void> {
 }
 
 export async function togglePopover(): Promise<void> {
-  console.log("[TrayPopover] togglePopover called");
+  if (import.meta.dev) console.log("[TrayPopover] togglePopover called");
   const trayWindow = await getTrayWindow();
   if (!trayWindow) {
     console.warn("[TrayPopover] Tray window not found for toggle");
@@ -221,7 +221,7 @@ export async function togglePopover(): Promise<void> {
 
   try {
     const visible = await trayWindow.isVisible();
-    console.log("[TrayPopover] Window visible:", visible);
+    if (import.meta.dev) console.log("[TrayPopover] Window visible:", visible);
     if (visible) {
       await hidePopover();
     } else {

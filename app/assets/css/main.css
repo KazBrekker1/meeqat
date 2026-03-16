@@ -115,8 +115,8 @@
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* Smooth color transitions */
-* {
+/* Only apply theme transitions to major containers, not all elements */
+body, .dark, [data-theme] {
 	transition-property: background-color, border-color;
 	transition-duration: 150ms;
 	transition-timing-function: ease;

@@ -70,14 +70,6 @@ export const COUNTRY_TO_CITIES_DATA: Record<string, CityData[]> = {
   ],
 };
 
-// Legacy format for backward compatibility
-export const COUNTRY_TO_CITIES: Record<string, string[]> = Object.fromEntries(
-  Object.entries(COUNTRY_TO_CITIES_DATA).map(([code, cities]) => [
-    code,
-    cities.map(c => c.name),
-  ])
-);
-
 // Helper to get city timezone
 export function getCityTimezone(countryCode: string, cityName: string): string | undefined {
   const cities = COUNTRY_TO_CITIES_DATA[countryCode];

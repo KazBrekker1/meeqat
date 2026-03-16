@@ -1,7 +1,6 @@
 import {
   computePreviousPrayerInfo,
   getDateKey,
-  getMinutesOfDay,
   getTimeDiff,
   formatTimeDiff,
   resetToMidnight,
@@ -93,8 +92,6 @@ export function usePrayerTimes() {
   );
 
   // --- Athan audio ---
-  const playedKeysForDate = new Set<string>();
-  let lastPlayedDateKey = "";
   const isAthanActive = ref(false);
   const { startAthan, dismissAthan, testPlayAthan } =
     createAthanController(isAthanActive);
@@ -382,9 +379,9 @@ export function usePrayerTimes() {
       // Determine target date key (YYYY-MM-DD)
       let targetDateKey: string;
       if (options?.date) {
-        targetDateKey = ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(new Date());
+        targetDateKey = ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(getNow());
       } else {
-        targetDateKey = getDateKey(new Date());
+        targetDateKey = getDateKey(getNow());
       }
 
       const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod };
@@ -450,7 +447,7 @@ export function usePrayerTimes() {
   // --- Preferences ---
   async function loadPreferences() {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       const method = await store.get<number>("methodId");
       const city = await store.get<string>("city");
       const country = await store.get<string>("country");
@@ -477,7 +474,7 @@ export function usePrayerTimes() {
 
   async function savePreferences() {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       await store.set("methodId", selectedMethodId.value);
       await store.set("city", selectedCity.value);
       await store.set("country", selectedCountry.value ?? "");
@@ -555,7 +552,7 @@ export function usePrayerTimes() {
     if (targetTz === userTimezone.value) return undefined;
     const mins = parseTimeToMinutes(timeStr);
     if (mins == null) return undefined;
-    const base = resetToMidnight(new Date());
+    const base = resetToMidnight(now.value);
     base.setMinutes(mins);
     return formatDateInTimezone(base, is24Hour, targetTz);
   }
@@ -630,8 +627,10 @@ export function usePrayerTimes() {
       ...t,
       isPast:
         typeof t.minutes === "number"
-          ? (idx < nextIndex && nextIndex !== 0) ||
-            (nextIndex === 0 && (t.minutes as number) * 60 < nowS)
+          ? idx !== nextIndex && (
+              (idx < nextIndex && nextIndex !== 0) ||
+              (nextIndex === 0 && (t.minutes as number) * 60 < nowS)
+            )
           : false,
       isNext: idx === nextIndex,
     }));
@@ -669,24 +668,24 @@ export function usePrayerTimes() {
     return previousPrayerInfo.value?.timeSince ?? null;
   });
 
-  // --- Athan trigger ---
-  watch([now, timingsList], () => {
-    if (!timingsList.value.length) return;
-    const key = getDateKey(now.value);
-    if (key !== lastPlayedDateKey) {
-      playedKeysForDate.clear();
-      lastPlayedDateKey = key;
-    }
-    if (now.value.getSeconds() !== 0) return;
-    const currentMins = getMinutesOfDay(now.value);
-    const match = timingsList.value.find(
-      (t) => typeof t.minutes === "number" && t.minutes === currentMins
-    );
-    if (match && !playedKeysForDate.has(match.key)) {
-      playedKeysForDate.add(match.key);
-      startAthan();
-    }
-  });
+  // --- Athan trigger (currently disabled) ---
+  // watch([now, timingsList], () => {
+  //   if (!timingsList.value.length) return;
+  //   const key = getDateKey(now.value);
+  //   if (key !== lastPlayedDateKey) {
+  //     playedKeysForDate.clear();
+  //     lastPlayedDateKey = key;
+  //   }
+  //   if (now.value.getSeconds() !== 0) return;
+  //   const currentMins = getMinutesOfDay(now.value);
+  //   const match = timingsList.value.find(
+  //     (t) => typeof t.minutes === "number" && t.minutes === currentMins
+  //   );
+  //   if (match && !playedKeysForDate.has(match.key)) {
+  //     playedKeysForDate.add(match.key);
+  //     startAthan();
+  //   }
+  // });
 
   return {
     // state

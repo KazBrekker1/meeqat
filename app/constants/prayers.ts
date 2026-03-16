@@ -7,20 +7,6 @@ export const PRAYER_ORDER = [
   ["Isha", "Isha"],
 ] as const;
 
-// Extended prayer times (calculated from main times)
-export const EXTENDED_PRAYER_ORDER = [
-  ["Fajr", "Fajr"],
-  ["Sunrise", "Sunrise"],
-  ["Ishraq", "Ishraq"],      // ~15-20 min after sunrise
-  ["Duha", "Duha"],          // Mid-morning (between sunrise and dhuhr)
-  ["Dhuhr", "Dhuhr"],
-  ["Asr", "Asr"],
-  ["Maghrib", "Maghrib"],
-  ["Isha", "Isha"],
-  ["Tahajjud", "Tahajjud"],  // Last third of night
-  ["Imsak", "Imsak"],        // ~10 min before Fajr (for Ramadan)
-] as const;
-
 export const MAIN_PRAYER_KEYS = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] as const;
 export const MAIN_PRAYER_KEYS_SET = new Set<string>(MAIN_PRAYER_KEYS);
 

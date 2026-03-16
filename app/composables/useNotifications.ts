@@ -68,7 +68,10 @@ export function useNotifications(options?: UseNotificationsOptions) {
   let isInitialLoad = true; // Track if we're in initial load phase
   let isScheduling = false; // Prevent concurrent scheduling
 
-  const timingsList = options?.timingsList ?? usePrayerTimes().timingsList;
+  if (!options?.timingsList) {
+    throw new Error('[useNotifications] timingsList option is required');
+  }
+  const timingsList = options.timingsList;
 
   // Use provided settings or create local reactive settings
   const settings = options?.settings ?? ref<NotificationSettings>({ ...DEFAULT_NOTIFICATION_SETTINGS });
@@ -76,7 +79,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
   // Load/save settings from store
   async function loadNotificationSettings(): Promise<void> {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       const saved = await store.get<NotificationSettings>("notificationSettings");
       if (saved) {
         // Use Object.assign to avoid triggering the watcher during initial load
@@ -91,7 +94,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
 
   async function saveNotificationSettings(): Promise<void> {
     try {
-      const store = await getStore();
+      const store = await getSettingsStore();
       await store.set("notificationSettings", settings.value);
       if (store.save) await store.save();
     } catch (e) {
