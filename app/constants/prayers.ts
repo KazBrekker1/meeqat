@@ -34,10 +34,6 @@ export const PRAYER_DESCRIPTIONS: Record<string, string> = {
   Lastthird: "Start of last third of night",
 };
 
-// Ramadan-specific times
-export const RAMADAN_TIMES = ["Imsak", "Fajr", "Maghrib"] as const;
-export const RAMADAN_TIMES_SET = new Set<string>(RAMADAN_TIMES);
-
 // Islamic month names
 export const ISLAMIC_MONTHS = [
   "Muharram",

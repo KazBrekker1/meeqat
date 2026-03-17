@@ -2,8 +2,8 @@
   <div class="flex flex-col h-screen w-full">
     <!-- Sticky TopBar -->
     <PrayerTopBar
-      :current-city="selectedCity"
-      :current-country-name="selectedCountryName"
+      :current-city="locationMode === 'gps' ? (gpsCity ?? undefined) : selectedCity"
+      :current-country-name="locationMode === 'gps' ? (gpsCity ? '' : 'GPS Location') : selectedCountryName"
       :current-time-string="currentTimeString"
       :is-athan-active="isAthanActive"
       :dismiss-athan="dismissAthan"
@@ -13,9 +13,18 @@
     <!-- Scrollable Content -->
     <main class="flex-1 overflow-y-auto p-3">
       <section class="max-w-2xl mx-auto space-y-2.5">
-        <!-- Unified Location Selector -->
+        <!-- Location -->
         <div class="animate-slide-up opacity-0">
+          <div v-if="locationMode === 'gps'" class="flex items-center gap-2 text-sm text-muted px-1 py-2">
+            <UIcon name="lucide:satellite" class="size-4 shrink-0" />
+            <span v-if="gpsCity">{{ gpsCity }}</span>
+            <span v-else-if="gpsLat != null && gpsLng != null" class="tabular-nums">
+              {{ gpsLat.toFixed(4) }}, {{ gpsLng.toFixed(4) }}
+            </span>
+            <span v-else class="text-dimmed">GPS mode — set location in Settings</span>
+          </div>
           <PrayerLocationSelector
+            v-else
             :favorites="favorites"
             :current-city="selectedCity"
             :current-country-code="selectedCountry"
@@ -115,6 +124,11 @@
       :timezone-select-options="timezoneSelectOptions"
       v-model:selected-method-id="selectedMethodId"
       v-model:selected-extra-timezone="selectedExtraTimezone"
+      :location-mode="locationMode"
+      :gps-lat="gpsLat"
+      :gps-lng="gpsLng"
+      @update:location-mode="onLocationModeChange"
+      @update:gps-location="onGpsLocationUpdate"
       @clear-cache="onClearCache"
       @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
       @toggle-additional-times="showAdditionalTimes = !showAdditionalTimes"
@@ -295,7 +309,14 @@ const {
   dismissAthan,
   isStale,
   isOffline,
+  locationMode,
+  gpsLat,
+  gpsLng,
+  gpsCity,
+  fetchByCoordinates,
 } = usePrayerTimes();
+
+const { reverseGeocode } = useGeolocation();
 
 // Progress percent for hero card
 const { getNow } = useMockTime();
@@ -375,6 +396,34 @@ async function onRemoveFavorite(id: string) {
   await removeFavorite(id);
 }
 
+// GPS location handlers
+function onLocationModeChange(mode: 'city' | 'gps') {
+  locationMode.value = mode;
+  if (mode === 'gps' && gpsLat.value != null && gpsLng.value != null) {
+    fetchByCoordinates(gpsLat.value, gpsLng.value);
+  } else if (mode === 'city' && selectedCity.value && selectedCountry.value) {
+    onFetchByCity();
+  }
+}
+
+function onGpsLocationUpdate(coords: { lat: number; lng: number } | null) {
+  if (coords) {
+    gpsLat.value = coords.lat;
+    gpsLng.value = coords.lng;
+    if (locationMode.value === 'gps') {
+      fetchByCoordinates(coords.lat, coords.lng);
+    }
+    // Resolve city name in background (non-blocking)
+    reverseGeocode(coords.lat, coords.lng).then((name) => {
+      gpsCity.value = name;
+    });
+  } else {
+    gpsLat.value = null;
+    gpsLng.value = null;
+    gpsCity.value = null;
+  }
+}
+
 // Notification settings handler
 function onUpdateNotificationSettings(newSettings: NotificationSettings) {
   notificationSettings.value = newSettings;
@@ -452,26 +501,34 @@ async function onClearCache() {
 
 onMounted(async () => {
   await loadPreferences();
-  if (selectedCity.value && selectedCountry.value) {
+  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
+    fetchByCoordinates(gpsLat.value, gpsLng.value);
+  } else if (selectedCity.value && selectedCountry.value) {
     onFetchByCity();
   }
   startPrayerNotifications();
-  // Prayer service will auto-start when timingsList becomes available (via watcher in composable)
 });
 
 watch(selectedMethodId, () => {
   clearTimings();
-  onFetchByCity();
+  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
+    fetchByCoordinates(gpsLat.value, gpsLng.value);
+  } else {
+    onFetchByCity();
+  }
 });
 
 watch(calendarPlaceholder, (newPlaceholder) => {
-  if (!selectedCity.value || !selectedCountry.value) return;
   const greg = toCalendar(newPlaceholder, new GregorianCalendar());
   const dateParam = `${pad2(greg.day)}-${pad2(greg.month)}-${greg.year}`;
-  fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
-    methodId: selectedMethodId.value,
-    date: dateParam,
-  });
+  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
+    fetchByCoordinates(gpsLat.value, gpsLng.value, { date: dateParam });
+  } else if (selectedCity.value && selectedCountry.value) {
+    fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
+      methodId: selectedMethodId.value,
+      date: dateParam,
+    });
+  }
 });
 
 // Push updates to the tray via Tauri event bus (throttled to at most once per second)
@@ -529,8 +586,8 @@ watchThrottled(
         sincePrayerLabel: previousPrayerLabel.value ?? "",
         sinceTime: timeSincePrevious.value ?? "",
         timingsList: list,
-        city: selectedCity.value,
-        countryCode: selectedCountry.value,
+        city: locationMode.value === 'gps' ? (gpsCity.value ?? 'GPS') : selectedCity.value,
+        countryCode: locationMode.value === 'gps' ? '' : selectedCountry.value,
       });
     } catch {
       // ignore emit errors in non-tauri/web

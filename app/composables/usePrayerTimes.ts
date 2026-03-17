@@ -35,7 +35,13 @@ export function usePrayerTimes() {
   const timeFormat = ref<"24h" | "12h">("24h");
   const showAdditionalTimes = ref(false); // Show Ishraq, Duha, Tahajjud, etc.
 
-  // --- New: Stale/Offline indicators ---
+  // --- GPS location mode ---
+  const locationMode = ref<'city' | 'gps'>('city');
+  const gpsLat = ref<number | null>(null);
+  const gpsLng = ref<number | null>(null);
+  const gpsCity = ref<string | null>(null);
+
+  // --- Stale/Offline indicators ---
   const isStale = ref(false);
   const isOffline = ref(false);
 
@@ -67,8 +73,7 @@ export function usePrayerTimes() {
 
   function handleOnline() {
     isOffline.value = false;
-    // Auto-refresh if data was stale
-    if (isStale.value && selectedCity.value && selectedCountry.value) {
+    if (isStale.value) {
       refreshInBackground();
     }
   }
@@ -81,7 +86,9 @@ export function usePrayerTimes() {
   const todayDateKey = computed(() => getDateKey(now.value));
 
   watch(todayDateKey, () => {
-    if (selectedCity.value && selectedCountry.value) {
+    if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
+      fetchByCoordinates(gpsLat.value, gpsLng.value);
+    } else if (selectedCity.value && selectedCountry.value) {
       fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
         methodId: selectedMethodId.value,
       });
@@ -179,6 +186,8 @@ export function usePrayerTimes() {
     tz: string;
     shafaq: string;
     calendarMethod: string;
+    lat?: number;
+    lng?: number;
   } | null = null;
 
   // --- Background refresh logic ---
@@ -351,37 +360,23 @@ export function usePrayerTimes() {
     }
   }
 
-  // --- Main fetch function (Stale-While-Revalidate) ---
-  async function fetchPrayerTimingsByCity(
-    city: string,
-    country: string,
-    options?: {
-      methodId?: number;
-      shafaq?: string;
-      calendarMethod?: string;
-      date?: string; // dd-mm-yyyy
-    }
+  // --- Shared SWR fetch logic ---
+  async function fetchWithSWR(
+    fetchParams: typeof currentFetchParams & {},
+    dateOption?: string
   ) {
     isFetchingTimings.value = true;
     fetchError.value = null;
     isStale.value = false;
 
     try {
-      const tz = getUserTimezone();
-      const methodId = options?.methodId ?? selectedMethodId.value;
-      const shafaq = options?.shafaq ?? "general";
-      const calendarMethod = options?.calendarMethod ?? "UAQ";
-
-      // Determine target date key (YYYY-MM-DD)
       let targetDateKey: string;
-      if (options?.date) {
-        targetDateKey = ddmmyyyyToYyyymmdd(options.date) ?? getDateKey(getNow());
+      if (dateOption) {
+        targetDateKey = ddmmyyyyToYyyymmdd(dateOption) ?? getDateKey(getNow());
       } else {
         targetDateKey = getDateKey(getNow());
       }
 
-      const coords = getCityCoordinates(country, city);
-      const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod, lat: coords?.lat, lng: coords?.lng };
       const optionsKey = buildOptionsKey(fetchParams);
 
       // Store context for background refresh
@@ -393,7 +388,6 @@ export function usePrayerTimes() {
       const cached = await getCachedDay(optionsKey, targetDateKey);
 
       if (cached) {
-        // Show cached data immediately (even if stale)
         timings.value = cached.timings;
         dateReadable.value = cached.dateReadable;
         timezone.value = cached.timezone;
@@ -403,22 +397,18 @@ export function usePrayerTimes() {
         isStale.value = stale;
 
         if (stale && !isOffline.value) {
-          // Refresh in background, don't block UI
           isFetchingTimings.value = false;
           void refreshInBackground();
           return;
         }
 
-        // Cache is fresh
+        // Cache is fresh — prefetch upcoming days in background
         isFetchingTimings.value = false;
-
-        // Still prefetch upcoming days in background
         const parsedTarget = parseYyyyMmDd(targetDateKey);
         const targetDate = parsedTarget
           ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
           : new Date();
         void prefetchUpcomingDays(fetchParams, optionsKey, targetDate);
-
         return;
       }
 
@@ -430,7 +420,6 @@ export function usePrayerTimes() {
         return;
       }
 
-      // Fetch fresh data (blocking)
       await doFreshFetch(fetchParams, optionsKey, targetDateKey, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -439,6 +428,38 @@ export function usePrayerTimes() {
     } finally {
       isFetchingTimings.value = false;
     }
+  }
+
+  // --- Main fetch function ---
+  async function fetchPrayerTimingsByCity(
+    city: string,
+    country: string,
+    options?: {
+      methodId?: number;
+      shafaq?: string;
+      calendarMethod?: string;
+      date?: string;
+    }
+  ) {
+    const tz = getUserTimezone();
+    const methodId = options?.methodId ?? selectedMethodId.value;
+    const shafaq = options?.shafaq ?? "general";
+    const calendarMethod = options?.calendarMethod ?? "UAQ";
+    const coords = getCityCoordinates(country, city);
+    const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod, lat: coords?.lat, lng: coords?.lng };
+    await fetchWithSWR(fetchParams, options?.date);
+  }
+
+  // --- GPS-mode fetch ---
+  async function fetchByCoordinates(
+    lat: number,
+    lng: number,
+    options?: { methodId?: number; date?: string }
+  ) {
+    const tz = getUserTimezone();
+    const methodId = options?.methodId ?? selectedMethodId.value;
+    const fetchParams = { city: "gps", country: "gps", methodId, tz, shafaq: "general", calendarMethod: "UAQ", lat, lng };
+    await fetchWithSWR(fetchParams, options?.date);
   }
 
   // --- Preferences ---
@@ -464,6 +485,14 @@ export function usePrayerTimes() {
       if (typeof additionalTimes === "boolean") {
         showAdditionalTimes.value = additionalTimes;
       }
+      const locMode = await store.get<string>("locationMode");
+      if (locMode === "city" || locMode === "gps") locationMode.value = locMode;
+      const lat = await store.get<number>("gpsLat");
+      const lng = await store.get<number>("gpsLng");
+      if (typeof lat === "number") gpsLat.value = lat;
+      if (typeof lng === "number") gpsLng.value = lng;
+      const savedGpsCity = await store.get<string>("gpsCity");
+      if (typeof savedGpsCity === "string") gpsCity.value = savedGpsCity;
     } catch (e) {
       console.warn("[usePrayerTimes] Failed to load preferences:", e);
     }
@@ -478,6 +507,10 @@ export function usePrayerTimes() {
       await store.set("extraTimezone", selectedExtraTimezone.value ?? "");
       await store.set("timeFormat", timeFormat.value);
       await store.set("showAdditionalTimes", showAdditionalTimes.value);
+      await store.set("locationMode", locationMode.value);
+      await store.set("gpsLat", gpsLat.value);
+      await store.set("gpsLng", gpsLng.value);
+      await store.set("gpsCity", gpsCity.value);
       if (store.save) await store.save();
     } catch (e) {
       console.warn("[usePrayerTimes] Failed to save preferences:", e);
@@ -497,6 +530,10 @@ export function usePrayerTimes() {
       selectedExtraTimezone,
       timeFormat,
       showAdditionalTimes,
+      locationMode,
+      gpsLat,
+      gpsLng,
+      gpsCity,
     ],
     () => {
       void savePreferences();
@@ -707,8 +744,15 @@ export function usePrayerTimes() {
     isStale,
     isOffline,
 
+    // GPS location
+    locationMode,
+    gpsLat,
+    gpsLng,
+    gpsCity,
+
     // actions
     fetchPrayerTimingsByCity,
+    fetchByCoordinates,
     loadPreferences,
     savePreferences,
     clearTimings,

@@ -27,6 +27,8 @@
 		<string>arm64</string>
 		<string>metal</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Meeqat uses your location to calculate precise prayer times for your exact position.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

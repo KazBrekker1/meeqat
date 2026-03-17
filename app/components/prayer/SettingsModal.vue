@@ -11,6 +11,45 @@
     <template #body>
       <div class="space-y-6">
 
+        <!-- Location Section -->
+        <section class="space-y-4">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-map-pin" class="w-5 h-5 text-primary" />
+            <h3 class="font-semibold">Location</h3>
+          </div>
+
+          <div class="space-y-3 pl-7">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium">Use GPS Location</p>
+                <p class="text-xs text-muted">Set precise coordinates instead of city</p>
+              </div>
+              <USwitch
+                :model-value="locationMode === 'gps'"
+                @update:model-value="$emit('update:locationMode', $event ? 'gps' : 'city')"
+              />
+            </div>
+
+            <Transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 -translate-y-2"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 -translate-y-2"
+            >
+              <PrayerLocationMapPicker
+                v-if="locationMode === 'gps'"
+                :lat="gpsLat"
+                :lng="gpsLng"
+                @update:location="$emit('update:gpsLocation', $event)"
+              />
+            </Transition>
+          </div>
+        </section>
+
+        <USeparator />
+
         <!-- Prayer Calculation Section -->
         <section class="space-y-4">
           <div class="flex items-center gap-2">
@@ -474,10 +513,16 @@ const props = defineProps<{
   timezoneSelectOptions: { label: string; value: string }[];
   selectedMethodId: number;
   selectedExtraTimezone: string;
+  // GPS location props
+  locationMode: 'city' | 'gps';
+  gpsLat?: number | null;
+  gpsLng?: number | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
+  (e: 'update:locationMode', value: 'city' | 'gps'): void;
+  (e: 'update:gpsLocation', value: { lat: number; lng: number } | null): void;
   (e: 'update:selectedMethodId', value: number): void;
   (e: 'update:selectedExtraTimezone', value: string): void;
   (e: 'clear-cache'): void;
