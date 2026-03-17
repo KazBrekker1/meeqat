@@ -101,6 +101,10 @@
 .delay-250 { animation-delay: 250ms; }
 .delay-300 { animation-delay: 300ms; }
 
+.prayer-row {
+	contain: layout style;
+}
+
 /* Micro-interaction: Press feedback */
 .press-feedback:active {
 	transform: scale(0.98);

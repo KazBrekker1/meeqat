@@ -1,19 +1,18 @@
 <template>
   <div class="flex flex-col h-screen w-full">
-    <!-- Sticky Header -->
-    <header class="sticky top-0 z-10 bg-[var(--ui-bg)]/80 backdrop-blur-md border-b border-[var(--ui-border)] pt-[max(env(safe-area-inset-top),8px)] pattern-islamic-subtle">
-      <div class="max-w-2xl mx-auto px-3 pb-2 pt-1">
-        <PrayerHeader
-          :current-time-string="currentTimeString"
-          :next-prayer-label="nextPrayerLabel || undefined"
-          :countdown-to-next="countdownToNext || undefined"
-        />
-      </div>
-    </header>
+    <!-- Sticky TopBar -->
+    <PrayerTopBar
+      :current-city="selectedCity"
+      :current-country-name="selectedCountryName"
+      :current-time-string="currentTimeString"
+      :is-athan-active="isAthanActive"
+      :dismiss-athan="dismissAthan"
+      @open-settings="showSettingsModal = true"
+    />
 
     <!-- Scrollable Content -->
     <main class="flex-1 overflow-y-auto p-3">
-      <section class="max-w-2xl mx-auto space-y-3">
+      <section class="max-w-2xl mx-auto space-y-2.5">
         <!-- Unified Location Selector -->
         <div class="animate-slide-up opacity-0">
           <PrayerLocationSelector
@@ -30,15 +29,7 @@
 
         <div v-if="fetchError" class="text-[var(--ui-color-error-500)] text-sm">{{ fetchError }}</div>
 
-        <!-- Ramadan Mode Banner -->
-        <div class="animate-slide-up opacity-0 delay-100">
-          <PrayerRamadanBanner
-            :show-ramadan-mode="showRamadanMode"
-            :ramadan-info="ramadanInfo"
-            :suhoor-iftar-times="suhoorIftarTimes"
-          />
-        </div>
-
+        <!-- Offline / Stale Alert -->
         <Transition
           enter-active-class="transition duration-200 ease-out"
           enter-from-class="opacity-0 -translate-y-1"
@@ -61,87 +52,62 @@
           />
         </Transition>
 
-        <div class="animate-slide-up opacity-0 delay-150">
-          <PrayerTimingsList :timings-list="timingsList" :loading="isLoading && !timingsList.length" />
+        <!-- Hero Card -->
+        <div class="animate-slide-up opacity-0 delay-100">
+          <PrayerHeroCard
+            :next-prayer-label="nextPrayerLabel || undefined"
+            :next-prayer-time="nextPrayerTime || undefined"
+            :countdown-to-next="countdownToNext || undefined"
+            :progress-percent="progressPercent"
+            :previous-prayer-label="previousPrayerLabel || undefined"
+            :time-since-previous="timeSincePrevious || undefined"
+            :hijri-date="hijriDateVerbose || undefined"
+            :gregorian-date="gregorianDateVerbose || undefined"
+          />
         </div>
 
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="opacity-0 -translate-y-2"
-          enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition duration-150 ease-in"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 -translate-y-2"
-        >
-          <div v-if="showCalendar" class="space-y-3">
-            <!-- Calendar controls bar -->
-            <div class="flex items-center gap-2">
-              <UFieldGroup size="xs">
-                <UButton
-                  :variant="calendarSystem === 'islamic' ? 'solid' : 'outline'"
-                  @click="toggleCalendarSystem"
-                  label="Hijri"
-                  icon="lucide:moon"
-                />
-                <UButton
-                  :variant="
-                    calendarSystem === 'gregorian' ? 'solid' : 'outline'
-                  "
-                  @click="toggleCalendarSystem"
-                  label="Gregorian"
-                  icon="lucide:sun"
-                />
-              </UFieldGroup>
-              <UButton
-                v-if="!isToday"
-                @click="selectToday"
-                label="Today"
-                size="xs"
-                variant="soft"
-                icon="lucide:calendar-check"
-              />
-            </div>
+        <!-- Prayer Row List -->
+        <div class="animate-slide-up opacity-0 delay-150">
+          <PrayerRowList :timings-list="timingsList" :loading="isLoading && !timingsList.length" />
+        </div>
 
-            <UCalendar
-              v-model="calendarDate"
-              :placeholder="calendarPlaceholder"
-              @update:placeholder="calendarPlaceholder = $event as CalendarDate"
-            >
-              <template #heading>
-                <span class="text-sm font-semibold">{{ calendarHeading }}</span>
-              </template>
-              <template #day="{ day }">
-                <UTooltip :text="formatTooltip(day)" :delay-duration="0">
-                  <span>{{ day.day }}</span>
-                </UTooltip>
-              </template>
-            </UCalendar>
-          </div>
-        </Transition>
+        <!-- Calendar Button -->
+        <div class="animate-slide-up opacity-0 delay-200">
+          <UButton
+            block
+            variant="outline"
+            icon="lucide:calendar"
+            label="Calendar"
+            @click="showCalendarDrawer = true"
+          />
+        </div>
       </section>
     </main>
 
-    <!-- Sticky Footer -->
-    <footer class="sticky bottom-0 z-10 bg-[var(--ui-bg)] border-t border-[var(--ui-border)] pb-[env(safe-area-inset-bottom)] pattern-islamic-subtle">
-      <div class="max-w-2xl mx-auto p-3">
-        <PrayerFooter
-          :previous-prayer-label="previousPrayerLabel || undefined"
-          :time-since-previous="timeSincePrevious || undefined"
-          :is-athan-active="isAthanActive"
-          :dismiss-athan="dismissAthan"
-          @open-settings="showSettingsModal = true"
-        />
-      </div>
-    </footer>
+    <!-- Calendar Drawer -->
+    <PrayerCalendarDrawer
+      :open="showCalendarDrawer"
+      @update:open="showCalendarDrawer = $event"
+      :calendar-date="calendarDate"
+      @update:calendar-date="calendarDate = $event"
+      :calendar-placeholder="calendarPlaceholder"
+      @update:calendar-placeholder="calendarPlaceholder = $event as CalendarDate"
+      :calendar-system="calendarSystem"
+      :calendar-heading="calendarHeading"
+      :is-today="isToday"
+      :hijri-date-verbose="hijriDateVerbose || undefined"
+      :gregorian-date-verbose="gregorianDateVerbose || undefined"
+      :format-tooltip="formatTooltip"
+      @toggle-calendar-system="toggleCalendarSystem"
+      @select-today="selectToday"
+    />
 
     <!-- Settings Modal -->
     <PrayerSettingsModal
       v-model="showSettingsModal"
       :time-format="timeFormat"
-      :is-calendar-shown="showCalendar"
       :is-loading="isLoading"
       :show-additional-times="showAdditionalTimes"
-      :ramadan-mode-enabled="ramadanModeEnabled"
       :notification-settings="notificationSettings"
       :test-play-athan="testPlayAthan"
       :on-test-notification-click="onTestNotificationClick"
@@ -151,9 +117,7 @@
       v-model:selected-extra-timezone="selectedExtraTimezone"
       @clear-cache="onClearCache"
       @toggle-time-format="timeFormat = timeFormat === '24h' ? '12h' : '24h'"
-      @toggle-calendar="showCalendar = !showCalendar"
       @toggle-additional-times="showAdditionalTimes = !showAdditionalTimes"
-      @toggle-ramadan-mode="setRamadanModeEnabled(!ramadanModeEnabled)"
       @update:notification-settings="onUpdateNotificationSettings"
     />
   </div>
@@ -162,7 +126,7 @@
 <script lang="ts" setup>
 import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
-import { pad2 } from "@/utils/time";
+import { pad2, getSecondsOfDay } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET, ISLAMIC_MONTHS } from "@/constants/prayers";
 import type { DateValue, CalendarDate } from "@internationalized/date";
 import {
@@ -263,7 +227,7 @@ function selectToday() {
   }
 }
 
-const showCalendar = shallowRef(true);
+const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
 
 const isToday = computed(() => {
@@ -333,6 +297,37 @@ const {
   isOffline,
 } = usePrayerTimes();
 
+// Progress percent for hero card
+const { getNow } = useMockTime();
+const progressPercent = computed(() => {
+  // countdownToNext updates every second, giving us a per-second reactive tick
+  void countdownToNext.value;
+  const list = timingsList.value;
+  if (!list.length) return 0;
+  const nextIdx = list.findIndex(t => t.isNext);
+  if (nextIdx === -1) return 0;
+  const nextItem = list[nextIdx]!;
+  if (typeof nextItem.minutes !== 'number') return 0;
+  const prevItem = nextIdx > 0 ? list[nextIdx - 1] : list[list.length - 1];
+  if (!prevItem || typeof prevItem.minutes !== 'number') return 0;
+  const currentMins = getSecondsOfDay(getNow()) / 60;
+  const prevMins = prevItem.minutes as number;
+  const nextMins = nextItem.minutes as number;
+  let total: number, elapsed: number;
+  if (nextMins <= prevMins) {
+    total = (1440 - prevMins) + nextMins;
+    elapsed = currentMins >= prevMins ? currentMins - prevMins : (1440 - prevMins) + currentMins;
+  } else {
+    total = nextMins - prevMins;
+    elapsed = currentMins - prevMins;
+  }
+  if (total <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+});
+
+// Next prayer time for hero card
+const nextPrayerTime = computed(() => timingsList.value.find(t => t.isNext)?.time ?? null);
+
 // Start notifications scheduler with custom settings
 const { startPrayerNotifications, stopPrayerNotifications, send, settings: notificationSettings } =
   useNotifications({
@@ -347,16 +342,6 @@ const { isAndroid } = usePrayerService({
   city: selectedCity,
   countryCode: selectedCountry,
 });
-
-// Islamic calendar and Ramadan mode
-const {
-  currentIslamicDate,
-  ramadanInfo,
-  suhoorIftarTimes,
-  showRamadanMode,
-  ramadanModeEnabled,
-  setRamadanModeEnabled,
-} = useIslamicCalendar(timingsList);
 
 // Favorite locations
 const {

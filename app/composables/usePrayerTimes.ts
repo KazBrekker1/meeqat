@@ -7,6 +7,7 @@ import {
   getUserTimezone,
 } from "@/utils/time";
 import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS, ISLAMIC_MONTHS } from "@/constants/prayers";
+import { getCityCoordinates } from "@/constants/cities";
 import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
 import {
   toCalendar,
@@ -144,6 +145,8 @@ export function usePrayerTimes() {
     tz: string;
     shafaq: string;
     calendarMethod: string;
+    lat?: number;
+    lng?: number;
   }): string {
     const city = normalizeKeyPart(params.city);
     const country = normalizeKeyPart(params.country);
@@ -151,7 +154,8 @@ export function usePrayerTimes() {
     const tz = params.tz;
     const sh = params.shafaq;
     const cal = params.calendarMethod;
-    return `v1|${country}|${city}|m=${method}|tz=${tz}|sh=${sh}|cal=${cal}`;
+    const coordPart = params.lat != null ? `|@${params.lat},${params.lng}` : '';
+    return `v1|${country}|${city}|m=${method}|tz=${tz}|sh=${sh}|cal=${cal}${coordPart}`;
   }
 
   function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
@@ -203,6 +207,8 @@ export function usePrayerTimes() {
       tz: string;
       shafaq: string;
       calendarMethod: string;
+      lat?: number;
+      lng?: number;
     },
     optionsKey: string,
     targetDateKey: string,
@@ -216,15 +222,9 @@ export function usePrayerTimes() {
         : new Date();
       const dateParam = formatDdMmYyyy(targetDate);
 
-      const url = buildTimingsByCityUrl(
-        dateParam,
-        params.city,
-        params.country,
-        params.methodId,
-        params.shafaq,
-        params.tz,
-        params.calendarMethod
-      );
+      const url = (params.lat != null && params.lng != null)
+        ? buildTimingsByCoordinatesUrl(dateParam, params.lat, params.lng, params.methodId, params.shafaq, params.tz, params.calendarMethod)
+        : buildTimingsByCityUrl(dateParam, params.city, params.country, params.methodId, params.shafaq, params.tz, params.calendarMethod);
 
       const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
 
@@ -277,6 +277,8 @@ export function usePrayerTimes() {
       tz: string;
       shafaq: string;
       calendarMethod: string;
+      lat?: number;
+      lng?: number;
     },
     optionsKey: string,
     startDate: Date
@@ -315,15 +317,9 @@ export function usePrayerTimes() {
       const promises = batch.map(async (date) => {
         try {
           const dateParam = formatDdMmYyyy(date);
-          const url = buildTimingsByCityUrl(
-            dateParam,
-            params.city,
-            params.country,
-            params.methodId,
-            params.shafaq,
-            params.tz,
-            params.calendarMethod
-          );
+          const url = (params.lat != null && params.lng != null)
+            ? buildTimingsByCoordinatesUrl(dateParam, params.lat, params.lng, params.methodId, params.shafaq, params.tz, params.calendarMethod)
+            : buildTimingsByCityUrl(dateParam, params.city, params.country, params.methodId, params.shafaq, params.tz, params.calendarMethod);
           const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
           if (res && res.code === 200) {
             batchSuccesses++;
@@ -384,7 +380,8 @@ export function usePrayerTimes() {
         targetDateKey = getDateKey(getNow());
       }
 
-      const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod };
+      const coords = getCityCoordinates(country, city);
+      const fetchParams = { city, country, methodId, tz, shafaq, calendarMethod, lat: coords?.lat, lng: coords?.lng };
       const optionsKey = buildOptionsKey(fetchParams);
 
       // Store context for background refresh

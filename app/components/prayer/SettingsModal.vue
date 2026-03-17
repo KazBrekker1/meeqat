@@ -97,29 +97,6 @@
               />
             </div>
 
-            <!-- Calendar -->
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">Calendar</p>
-                <p class="text-xs text-muted">Show date picker</p>
-              </div>
-              <USwitch
-                :model-value="isCalendarShown"
-                @update:model-value="$emit('toggle-calendar')"
-              />
-            </div>
-
-            <!-- Ramadan Mode -->
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">Ramadan Mode</p>
-                <p class="text-xs text-muted">Highlight Suhoor & Iftar</p>
-              </div>
-              <USwitch
-                :model-value="ramadanModeEnabled"
-                @update:model-value="$emit('toggle-ramadan-mode')"
-              />
-            </div>
           </div>
         </section>
 
@@ -487,10 +464,8 @@ async function openSettings() {
 const props = defineProps<{
   modelValue: boolean;
   timeFormat: '24h' | '12h';
-  isCalendarShown?: boolean;
   isLoading: boolean;
   showAdditionalTimes?: boolean;
-  ramadanModeEnabled?: boolean;
   notificationSettings?: NotificationSettings;
   testPlayAthan?: () => void;
   onTestNotificationClick?: () => void;
@@ -507,9 +482,7 @@ const emit = defineEmits<{
   (e: 'update:selectedExtraTimezone', value: string): void;
   (e: 'clear-cache'): void;
   (e: 'toggle-time-format'): void;
-  (e: 'toggle-calendar'): void;
   (e: 'toggle-additional-times'): void;
-  (e: 'toggle-ramadan-mode'): void;
   (e: 'update:notificationSettings', value: NotificationSettings): void;
 }>();
 
