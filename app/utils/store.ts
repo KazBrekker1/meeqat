@@ -1,5 +1,4 @@
-import type { CacheMap, TauriStore, CachedDay } from "@/utils/types";
-import { resetToMidnight } from "@/utils/time";
+import type { TauriStore } from "@/utils/types";
 
 interface TauriWindow extends Window {
   __TAURI__?: { core?: { invoke?: unknown } };
@@ -83,105 +82,8 @@ function loadStore(filename: string): () => Promise<TauriStore> {
 export const getSettingsStore = loadStore("settings.bin");
 export const getCacheStore = loadStore("cache.bin");
 
-// --- Cache helpers (now use getCacheStore) ---
+// --- Cache store key helper (used by prayer/usePrayerCache.ts) ---
 
 export function cacheStoreKey(optionsKey: string): string {
   return `prayerCache:${optionsKey}`;
-}
-
-export async function getCacheForOptions(
-  optionsKey: string
-): Promise<CacheMap> {
-  const store = await getCacheStore();
-  const key = cacheStoreKey(optionsKey);
-  const existing = (await store.get<CacheMap>(key)) ?? {};
-  return existing;
-}
-
-export async function setCacheForOptions(
-  optionsKey: string,
-  cache: CacheMap
-): Promise<void> {
-  const store = await getCacheStore();
-  const key = cacheStoreKey(optionsKey);
-  await store.set(key, cache);
-  if (store.save) await store.save();
-}
-
-/**
- * Remove cache entries for dates older than `daysToKeep` days in the past.
- * Returns the number of entries removed.
- */
-export async function cleanupOldCacheEntries(
-  optionsKey: string,
-  daysToKeep: number = 7
-): Promise<number> {
-  const cache = await getCacheForOptions(optionsKey);
-  const cutoffDate = resetToMidnight(new Date());
-  cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-
-  const keysToRemove: string[] = [];
-  for (const dateKey of Object.keys(cache)) {
-    // dateKey is YYYY-MM-DD
-    const match = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) continue;
-    const [_, year, month, day] = match;
-    const entryDate = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      0,
-      0,
-      0,
-      0
-    );
-    if (entryDate < cutoffDate) {
-      keysToRemove.push(dateKey);
-    }
-  }
-
-  if (keysToRemove.length > 0) {
-    for (const key of keysToRemove) {
-      delete cache[key];
-    }
-    await setCacheForOptions(optionsKey, cache);
-  }
-
-  return keysToRemove.length;
-}
-
-/**
- * Get a single cached day entry.
- */
-export async function getCachedDay(
-  optionsKey: string,
-  dateKey: string
-): Promise<CachedDay | null> {
-  const cache = await getCacheForOptions(optionsKey);
-  return cache[dateKey] ?? null;
-}
-
-/**
- * Set a single cached day entry.
- */
-export async function setCachedDay(
-  optionsKey: string,
-  dateKey: string,
-  data: CachedDay
-): Promise<void> {
-  const cache = await getCacheForOptions(optionsKey);
-  cache[dateKey] = data;
-  await setCacheForOptions(optionsKey, cache);
-}
-
-/**
- * Set multiple cached day entries at once (more efficient than calling setCachedDay multiple times).
- */
-export async function setCachedDays(
-  optionsKey: string,
-  entries: Record<string, CachedDay>
-): Promise<void> {
-  const cache = await getCacheForOptions(optionsKey);
-  Object.assign(cache, entries);
-  await setCacheForOptions(optionsKey, cache);
 }
