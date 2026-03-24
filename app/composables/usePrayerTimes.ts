@@ -10,6 +10,7 @@ import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS, ISLAMIC_
 import { getCityCoordinates } from "@/constants/cities";
 import type { CachedDay, PrayerTimingItem } from "@/utils/types";
 import type { PrayerTimingsResponse } from "@/utils/schemas";
+import type { CoordParams, CityParams } from "@/utils/api";
 import {
   toCalendar,
   CalendarDate,
@@ -233,8 +234,8 @@ export function usePrayerTimes() {
       const dateParam = formatDdMmYyyy(targetDate);
 
       const url = (params.lat != null && params.lng != null)
-        ? buildTimingsByCoordinatesUrl(dateParam, params.lat, params.lng, params.methodId, params.shafaq, params.tz, params.calendarMethod)
-        : buildTimingsByCityUrl(dateParam, params.city, params.country, params.methodId, params.shafaq, params.tz, params.calendarMethod);
+        ? buildTimingsByCoordinatesUrl(dateParam, params as CoordParams)
+        : buildTimingsByCityUrl(dateParam, params as CityParams);
 
       const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
 
@@ -328,8 +329,8 @@ export function usePrayerTimes() {
         try {
           const dateParam = formatDdMmYyyy(date);
           const url = (params.lat != null && params.lng != null)
-            ? buildTimingsByCoordinatesUrl(dateParam, params.lat, params.lng, params.methodId, params.shafaq, params.tz, params.calendarMethod)
-            : buildTimingsByCityUrl(dateParam, params.city, params.country, params.methodId, params.shafaq, params.tz, params.calendarMethod);
+            ? buildTimingsByCoordinatesUrl(dateParam, params as CoordParams)
+            : buildTimingsByCityUrl(dateParam, params as CityParams);
           const res = await $fetch<PrayerTimingsResponse>(url, { method: "GET" });
           if (res && res.code === 200) {
             batchSuccesses++;
