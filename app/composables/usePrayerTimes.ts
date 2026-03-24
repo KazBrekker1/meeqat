@@ -240,7 +240,7 @@ export function usePrayerTimes() {
 
       if (!res || res.code !== 200) {
         if (!silent) {
-          throw new Error(res?.status || "Failed to fetch prayer times");
+          throw new Error("Failed to fetch prayer times");
         }
         return;
       }
