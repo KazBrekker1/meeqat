@@ -5,8 +5,6 @@
       :current-city="locationMode === 'gps' ? (gpsCity ?? undefined) : selectedCity"
       :current-country-name="locationMode === 'gps' ? (gpsCity ? '' : 'GPS Location') : selectedCountryName"
       :current-time-string="currentTimeString"
-      :is-athan-active="isAthanActive"
-      :dismiss-athan="dismissAthan"
       @open-settings="showSettingsModal = true"
     />
 
@@ -118,7 +116,6 @@
       :is-loading="isLoading"
       :show-additional-times="showAdditionalTimes"
       :notification-settings="notificationSettings"
-      :test-play-athan="testPlayAthan"
       :on-test-notification-click="onTestNotificationClick"
       :method-select-options="methodSelectOptions"
       :timezone-select-options="timezoneSelectOptions"
@@ -304,9 +301,6 @@ const {
   clearCache,
   timeFormat,
   showAdditionalTimes,
-  testPlayAthan,
-  isAthanActive,
-  dismissAthan,
   isStale,
   isOffline,
   locationMode,

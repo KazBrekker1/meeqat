@@ -318,16 +318,6 @@
 
             <div class="flex flex-wrap gap-2 pl-7">
               <UButton
-                v-if="testPlayAthan"
-                size="sm"
-                variant="soft"
-                color="warning"
-                @click="testPlayAthan"
-                icon="i-lucide-volume-2"
-              >
-                Test Athan
-              </UButton>
-              <UButton
                 v-if="onTestNotificationClick"
                 size="sm"
                 variant="soft"
@@ -506,7 +496,6 @@ const props = defineProps<{
   isLoading: boolean;
   showAdditionalTimes?: boolean;
   notificationSettings?: NotificationSettings;
-  testPlayAthan?: () => void;
   onTestNotificationClick?: () => void;
   // Prayer calculation props
   methodSelectOptions: { label: string; value: number }[];

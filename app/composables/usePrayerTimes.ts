@@ -101,11 +101,6 @@ export function usePrayerTimes() {
     formatTime(now.value, is24Hour, undefined, true)
   );
 
-  // --- Athan audio ---
-  const isAthanActive = ref(false);
-  const { startAthan, dismissAthan, testPlayAthan } =
-    createAthanController(isAthanActive);
-
   // Extract date portion only (changes once per day, not every second)
   const todayDate = computed(() => {
     const d = now.value;
@@ -704,25 +699,6 @@ export function usePrayerTimes() {
     return previousPrayerInfo.value?.timeSince ?? null;
   });
 
-  // --- Athan trigger (currently disabled) ---
-  // watch([now, timingsList], () => {
-  //   if (!timingsList.value.length) return;
-  //   const key = getDateKey(now.value);
-  //   if (key !== lastPlayedDateKey) {
-  //     playedKeysForDate.clear();
-  //     lastPlayedDateKey = key;
-  //   }
-  //   if (now.value.getSeconds() !== 0) return;
-  //   const currentMins = getMinutesOfDay(now.value);
-  //   const match = timingsList.value.find(
-  //     (t) => typeof t.minutes === "number" && t.minutes === currentMins
-  //   );
-  //   if (match && !playedKeysForDate.has(match.key)) {
-  //     playedKeysForDate.add(match.key);
-  //     startAthan();
-  //   }
-  // });
-
   return {
     // state
     isLoading,
@@ -767,11 +743,5 @@ export function usePrayerTimes() {
     countdownToNext,
     previousPrayerLabel,
     timeSincePrevious,
-
-    // audio
-    testPlayAthan,
-    isAthanActive,
-    startAthan,
-    dismissAthan,
   };
 }

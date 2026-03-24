@@ -21,18 +21,6 @@
           {{ currentTimeString }}
         </span>
 
-        <!-- Athan Dismiss -->
-        <UButton
-          v-if="isAthanActive && dismissAthan"
-          size="xs"
-          variant="soft"
-          color="error"
-          @click="dismissAthan"
-          icon="heroicons:x-mark-20-solid"
-        >
-          Dismiss
-        </UButton>
-
         <!-- Settings -->
         <UButton
           size="xs"
@@ -52,8 +40,6 @@ defineProps<{
   currentCity?: string;
   currentCountryName?: string;
   currentTimeString: string;
-  isAthanActive?: boolean;
-  dismissAthan?: () => void;
 }>();
 
 defineEmits<{
