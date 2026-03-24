@@ -1,23 +1,3 @@
-export interface PrayerTimingsResponse {
-  code: number;
-  status: string;
-  data: {
-    timings: Record<string, string>;
-    date: {
-      readable: string;
-      timestamp: string;
-      gregorian: { date: string };
-      hijri: { date: string };
-    };
-    meta: {
-      timezone: string;
-      method: { id: number; name: string };
-      latitude: number;
-      longitude: number;
-    };
-  };
-}
-
 export interface PrayerTimingItem {
   key: string;
   label: string;

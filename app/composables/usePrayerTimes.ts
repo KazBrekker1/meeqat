@@ -8,7 +8,8 @@ import {
 } from "@/utils/time";
 import { PRAYER_ORDER, ADDITIONAL_PRAYER_KEYS_SET, PRAYER_DESCRIPTIONS, ISLAMIC_MONTHS } from "@/constants/prayers";
 import { getCityCoordinates } from "@/constants/cities";
-import type { CachedDay, PrayerTimingsResponse, PrayerTimingItem } from "@/utils/types";
+import type { CachedDay, PrayerTimingItem } from "@/utils/types";
+import type { PrayerTimingsResponse } from "@/utils/schemas";
 import {
   toCalendar,
   CalendarDate,
