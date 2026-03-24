@@ -11,14 +11,16 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
 /**
- * Lightweight foreground service that only runs during the final minute
- * before a prayer to provide reliable per-second widget updates.
+ * Persistent foreground service that provides per-second widget updates.
+ * Runs whenever widgets are active, stops when last widget is removed.
  *
- * This service automatically stops once the prayer time passes.
+ * Uses a Handler-based 1-second loop to update all widgets.
+ * Periodically self-restarts to prevent memory leaks from long-running Handler chains.
  */
 class CountdownService : Service() {
 
@@ -27,23 +29,23 @@ class CountdownService : Service() {
         private const val NOTIFICATION_ID = 2001
         private const val CHANNEL_ID = "countdown_channel"
 
-        // Threshold to start the service (60 seconds)
-        const val COUNTDOWN_THRESHOLD_MS = 60_000L
+        // Self-restart after 4 hours to prevent memory leaks from long Handler chains
+        private const val MAX_SERVICE_DURATION_MS = 4 * 60 * 60 * 1000L
 
         /**
-         * Start the countdown service if within threshold of next prayer.
+         * Start the countdown service.
          */
-        fun startIfNeeded(context: Context) {
-            val timeToNextPrayer = getTimeToNextPrayer(context)
-
-            if (timeToNextPrayer != null && timeToNextPrayer in 1..COUNTDOWN_THRESHOLD_MS) {
-                Log.d(TAG, "Starting countdown service: ${timeToNextPrayer}ms to prayer")
-                val intent = Intent(context, CountdownService::class.java)
+        fun start(context: Context) {
+            Log.d(TAG, "Starting countdown service")
+            val intent = Intent(context, CountdownService::class.java)
+            try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start CountdownService: ${e.message}", e)
             }
         }
 
@@ -54,41 +56,35 @@ class CountdownService : Service() {
             Log.d(TAG, "Stopping countdown service")
             context.stopService(Intent(context, CountdownService::class.java))
         }
-
-        private fun getTimeToNextPrayer(context: Context): Long? {
-            return PrayerTimeUtils.getTimeToNextPrayer(context)
-        }
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var isRunning = false
+    private var serviceStartTime = 0L
+    private var tickCount = 0L
+    private var cachedPendingIntent: PendingIntent? = null
 
     private val updateRunnable = object : Runnable {
         override fun run() {
             if (!isRunning) return
 
-            val timeToNextPrayer = getTimeToNextPrayer(this@CountdownService)
-
-            if (timeToNextPrayer == null || timeToNextPrayer <= 0) {
-                // Prayer time has passed - refresh widget to show new state, reschedule alarms, then stop
-                Log.d(TAG, "Prayer time passed, refreshing widget and stopping service")
-                PrayerWidgetProvider.updateAllWidgets(this@CountdownService)
-                WidgetUpdateReceiver.scheduleNextUpdate(this@CountdownService)
-                stopSelf()
+            // Periodic reset: re-deliver onStartCommand to reset the Handler chain and
+            // serviceStartTime. Since the service is already running, start() just triggers
+            // a new onStartCommand (which clears/re-posts callbacks) without destroying the service.
+            if (SystemClock.elapsedRealtime() - serviceStartTime > MAX_SERVICE_DURATION_MS) {
+                Log.d(TAG, "Resetting Handler chain after ${MAX_SERVICE_DURATION_MS / (1000 * 60 * 60)}h")
+                start(this@CountdownService)
                 return
             }
 
-            if (timeToNextPrayer > COUNTDOWN_THRESHOLD_MS) {
-                // We're outside the countdown window - refresh widget and stop
-                Log.d(TAG, "Outside countdown window, refreshing widget and stopping service")
-                PrayerWidgetProvider.updateAllWidgets(this@CountdownService)
-                WidgetUpdateReceiver.scheduleNextUpdate(this@CountdownService)
-                stopSelf()
-                return
-            }
-
-            // Update widgets
+            // Update all widgets every second
             PrayerWidgetProvider.updateAllWidgets(this@CountdownService)
+
+            // Update notification less frequently (every 30s) to save battery
+            if (tickCount % 30 == 0L) {
+                updateNotification()
+            }
+            tickCount++
 
             // Schedule next update in 1 second
             handler.postDelayed(this, 1000)
@@ -104,7 +100,10 @@ class CountdownService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "Service started")
 
-        // Start as foreground with minimal notification
+        serviceStartTime = SystemClock.elapsedRealtime()
+        tickCount = 0
+
+        // Start as foreground with notification
         startForeground(NOTIFICATION_ID, createNotification())
 
         // Start the update loop (remove any prior callbacks to prevent duplicate chains)
@@ -112,7 +111,8 @@ class CountdownService : Service() {
         handler.removeCallbacks(updateRunnable)
         handler.post(updateRunnable)
 
-        return START_NOT_STICKY
+        // START_STICKY: Android will restart the service if killed
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -128,10 +128,10 @@ class CountdownService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Prayer Countdown",
+                "Prayer Times",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows during final minute before prayer"
+                description = "Shows next prayer countdown"
                 setShowBadge(false)
                 enableLights(false)
                 enableVibration(false)
@@ -142,25 +142,54 @@ class CountdownService : Service() {
         }
     }
 
+    private fun updateNotification() {
+        try {
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.notify(NOTIFICATION_ID, createNotification())
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update notification: ${e.message}")
+        }
+    }
+
     private fun createNotification(): Notification {
-        // Create intent to open app when notification is tapped
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = if (launchIntent != null) {
-            PendingIntent.getActivity(
-                this,
-                0,
-                launchIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        } else null
+        // Cache the PendingIntent to avoid repeated packageManager queries
+        val pendingIntent = cachedPendingIntent ?: run {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            launchIntent?.let {
+                PendingIntent.getActivity(
+                    this, 0, it,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                ).also { pi -> cachedPendingIntent = pi }
+            }
+        }
+
+        // Build informative notification with prayer info (single lookup)
+        val prayerInfo = PrayerTimeUtils.getNextPrayerInfo(this)
+        val prayerName = prayerInfo?.first
+        val timeToNext = prayerInfo?.second
+
+        val title: String
+        val text: String
+
+        if (prayerName != null && timeToNext != null) {
+            title = "Next: $prayerName"
+            text = formatCountdownText(timeToNext)
+        } else {
+            title = "Meeqat"
+            text = "Prayer times active"
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Prayer time approaching")
-            .setContentText("Countdown in progress...")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .build()
+    }
+
+    private fun formatCountdownText(timeMs: Long): String {
+        return PrayerTimeUtils.formatDuration(timeMs)
     }
 }

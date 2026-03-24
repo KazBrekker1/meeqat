@@ -95,6 +95,14 @@ object PrayerTimeUtils {
     }
 
     /**
+     * Get the display label of the next upcoming prayer.
+     * Returns null if no upcoming prayer is found.
+     */
+    fun getNextPrayerName(context: Context): String? {
+        return getNextPrayerInfo(context)?.first
+    }
+
+    /**
      * Get milliseconds remaining until the next prayer.
      * Returns null if no upcoming prayer is found.
      */
@@ -103,6 +111,23 @@ object PrayerTimeUtils {
         val nextTime = getNextPrayerTimeMs(context) ?: return null
         val remaining = nextTime - now
         return if (remaining > 0) remaining else null
+    }
+
+    /**
+     * Get both the name and remaining time of the next prayer in a single lookup.
+     * Returns Pair(label, remainingMs) or null if no upcoming prayer.
+     */
+    fun getNextPrayerInfo(context: Context): Pair<String, Long>? {
+        val now = DebugTimeProvider.currentTimeMillis(context)
+        val prayers = loadPrayerTimes(context)
+        val todayNext = prayers.firstOrNull { it.prayerTime > now }
+        if (todayNext != null) return Pair(todayNext.label, todayNext.prayerTime - now)
+
+        val nextDay = loadNextDayPrayer(context)
+        if (nextDay != null && nextDay.prayerTime > now) {
+            return Pair(nextDay.label, nextDay.prayerTime - now)
+        }
+        return null
     }
 
     /**
@@ -127,6 +152,22 @@ object PrayerTimeUtils {
 
         // All prayers have passed
         return prayers.lastIndex.coerceAtLeast(0)
+    }
+
+    /**
+     * Format a duration in milliseconds as a human-readable countdown string.
+     * e.g., "2h 15m 30s", "15m 30s", "45s"
+     */
+    fun formatDuration(timeMs: Long): String {
+        if (timeMs <= 0) return "Now"
+        val hours = timeMs / (1000 * 60 * 60)
+        val minutes = (timeMs % (1000 * 60 * 60)) / (1000 * 60)
+        val seconds = (timeMs % (1000 * 60)) / 1000
+        return when {
+            hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+            minutes >= 1 -> "${minutes}m ${seconds}s"
+            else -> "${seconds}s"
+        }
     }
 
     private fun parsePrayersJson(json: String): List<PrayerTimeData> {

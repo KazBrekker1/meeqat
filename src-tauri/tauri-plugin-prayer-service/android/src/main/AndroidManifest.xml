@@ -41,7 +41,7 @@
                 android:resource="@xml/prayer_widget_info" />
         </receiver>
 
-        <!-- Widget Update Receiver for scheduled alarm-based updates -->
+        <!-- Widget Update Receiver - safety net to restart CountdownService if killed -->
         <receiver
             android:name=".WidgetUpdateReceiver"
             android:exported="false">
@@ -50,7 +50,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Countdown Service for per-second updates in final minute -->
+        <!-- Countdown Service - persistent per-second widget updates -->
         <service
             android:name=".CountdownService"
             android:exported="false"

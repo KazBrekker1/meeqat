@@ -48,21 +48,22 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     private fun refreshWidgetsIfActive(context: Context) {
-        val appWidgetManager = AppWidgetManager.getInstance(context)
-        val widgetIds = appWidgetManager.getAppWidgetIds(
-            ComponentName(context, PrayerWidgetProvider::class.java)
-        )
+        try {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val widgetIds = appWidgetManager.getAppWidgetIds(
+                ComponentName(context, PrayerWidgetProvider::class.java)
+            )
 
-        if (widgetIds.isNotEmpty()) {
-            Log.d(TAG, "Found ${widgetIds.size} active widgets, refreshing")
+            if (widgetIds.isNotEmpty()) {
+                Log.d(TAG, "Found ${widgetIds.size} active widgets, refreshing")
 
-            // Update all widgets immediately
-            PrayerWidgetProvider.updateAllWidgets(context)
-
-            // Reschedule alarms (critical after boot or time change)
-            WidgetUpdateReceiver.scheduleNextUpdate(context)
-        } else {
-            Log.d(TAG, "No active widgets found, skipping refresh")
+                // Resume per-second updates and all safety nets
+                WidgetUpdateReceiver.ensureUpdatesActive(context)
+            } else {
+                Log.d(TAG, "No active widgets found, skipping refresh")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in refreshWidgetsIfActive: ${e.message}", e)
         }
     }
 }

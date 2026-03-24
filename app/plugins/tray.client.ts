@@ -126,7 +126,7 @@ export default defineNuxtPlugin(async () => {
       if (event.type === "Click" && event.button === "Left" && event.buttonState === "Up") {
         console.log("[Tray] Left click detected - toggling popover");
         try {
-          await togglePopover();
+          await togglePopover(event.rect);
         } catch (e) {
           console.error("[Tray] Failed to toggle popover:", e);
           // Fallback: show main window if popover fails

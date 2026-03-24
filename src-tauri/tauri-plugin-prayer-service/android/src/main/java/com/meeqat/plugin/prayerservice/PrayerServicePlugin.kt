@@ -82,12 +82,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             val args = invoke.parseArgs(StartServiceArgs::class.java)
             savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
 
-            // Update all widgets immediately
-            PrayerWidgetProvider.updateAllWidgets(appContext)
-
-            // Schedule periodic widget updates
-            WidgetUpdateReceiver.scheduleNextUpdate(appContext)
-
+            refreshWidgets()
             invoke.resolve()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving prayer data: ${e.message}", e)
@@ -96,8 +91,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * No-op - service no longer exists.
-     * Widgets continue to run independently via AlarmManager.
+     * No-op - widgets continue to run independently via CountdownService.
      */
     @Command
     fun stopService(invoke: Invoke) {
@@ -116,11 +110,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             val args = invoke.parseArgs(UpdatePrayerTimesArgs::class.java)
             savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
 
-            // Update all widgets
-            PrayerWidgetProvider.updateAllWidgets(appContext)
-
-            // Ensure periodic updates are scheduled
-            WidgetUpdateReceiver.scheduleNextUpdate(appContext)
+            refreshWidgets()
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -257,6 +247,14 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
+     * Update all widgets and ensure per-second service + safety nets are active.
+     */
+    private fun refreshWidgets() {
+        PrayerWidgetProvider.updateAllWidgets(appContext)
+        WidgetUpdateReceiver.ensureUpdatesActive(appContext)
+    }
+
+    /**
      * Save prayer data to SharedPreferences for widget access.
      */
     private fun savePrayerData(
@@ -270,6 +268,17 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         city: String? = null,
         countryCode: String? = null
     ) {
+        if (prayers.isEmpty()) {
+            Log.w(TAG, "savePrayerData called with empty prayers array, skipping save")
+            return
+        }
+        for (prayer in prayers) {
+            if (prayer.prayerTime <= 0) {
+                Log.w(TAG, "Invalid prayer time for ${prayer.prayerName}: ${prayer.prayerTime}, skipping save")
+                return
+            }
+        }
+
         val prefs = appContext.getSharedPreferences(
             PrayerWidgetProvider.PREFS_NAME,
             Context.MODE_PRIVATE
@@ -286,6 +295,9 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             if (city != null) putString(PrayerWidgetProvider.KEY_CITY, city) else remove(PrayerWidgetProvider.KEY_CITY)
             if (countryCode != null) putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, countryCode) else remove(PrayerWidgetProvider.KEY_COUNTRY_CODE)
 
+            // Record when data was last saved (real time, not debug time)
+            putLong("data_timestamp", System.currentTimeMillis())
+
             // Save or clear next-day prayer fields
             if (nextDayPrayerName != null && nextDayPrayerTime != null && nextDayPrayerLabel != null) {
                 putString(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_NAME, nextDayPrayerName)
@@ -297,16 +309,15 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                 remove(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_LABEL)
             }
 
-            commit() // synchronous to ensure data is written before widget reads it
+            // synchronous commit() is intentional: Tauri plugin commands run on a background
+            // thread, and we need data written before the widget reads it. Do NOT use apply().
+            commit()
         }
     }
 
     /**
      * Convert prayers array to JSON string.
-     */
-    /**
-     * Convert prayers array to JSON string.
-     * Throws on failure so callers report the error to the frontend
+     * Lets exceptions propagate so callers report errors to the frontend
      * instead of silently wiping prayer data with "[]".
      */
     private fun prayersToJson(prayers: Array<PrayerArg>): String {

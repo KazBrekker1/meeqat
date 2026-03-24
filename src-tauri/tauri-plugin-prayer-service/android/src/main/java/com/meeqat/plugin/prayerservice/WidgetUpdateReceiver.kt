@@ -10,95 +10,63 @@ import android.os.PowerManager
 import android.util.Log
 
 /**
- * BroadcastReceiver that handles scheduled widget updates.
- * Uses AlarmManager.setExactAndAllowWhileIdle() to ensure updates
- * happen even when the device is in Doze mode.
+ * BroadcastReceiver that serves as a safety net for the CountdownService.
+ * Schedules periodic minute-boundary alarms to ensure the CountdownService
+ * is restarted if killed by the system.
  *
- * For per-second updates in the final minute, starts CountdownService.
+ * The CountdownService is the primary update mechanism (per-second updates).
+ * This receiver just ensures it stays alive.
  */
 class WidgetUpdateReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "WidgetUpdateReceiver"
         const val ACTION_UPDATE_WIDGET = "com.meeqat.plugin.prayerservice.UPDATE_WIDGET"
-        const val ACTION_START_COUNTDOWN = "com.meeqat.plugin.prayerservice.START_COUNTDOWN"
         private const val REQUEST_CODE_MINUTE = 1001
-        private const val REQUEST_CODE_COUNTDOWN = 1002
 
         /**
-         * Schedule the next widget update alarm.
-         * Uses setExactAndAllowWhileIdle to work during Doze mode.
-         *
-         * When <= 1 minute remains until next prayer, starts CountdownService
-         * for reliable per-second updates.
+         * Schedule the next safety-net alarm at the next minute boundary.
+         * This alarm ensures CountdownService is restarted if killed.
          */
         fun scheduleNextUpdate(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val now = DebugTimeProvider.currentTimeMillis(context)
-            val nextPrayerTime = getNextPrayerTime(context)
+            // Use real system time — AlarmManager operates on wall-clock time, not debug time
+            val now = System.currentTimeMillis()
 
-            // If within countdown threshold, start the countdown service
-            if (nextPrayerTime != null) {
-                val timeToNextPrayer = nextPrayerTime - now
-                if (timeToNextPrayer in 1..CountdownService.COUNTDOWN_THRESHOLD_MS) {
-                    cancelCountdownAlarm(context, alarmManager)
-                    Log.d(TAG, "Within countdown threshold: ${timeToNextPrayer}ms, starting CountdownService")
-                    try {
-                        CountdownService.startIfNeeded(context)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to start CountdownService: ${e.message}", e)
-                    }
-                } else if (timeToNextPrayer > CountdownService.COUNTDOWN_THRESHOLD_MS) {
-                    val countdownStartTime = nextPrayerTime - CountdownService.COUNTDOWN_THRESHOLD_MS
-                    if (countdownStartTime > now) {
-                        scheduleSingleAlarm(
-                            context,
-                            alarmManager,
-                            countdownStartTime,
-                            ACTION_START_COUNTDOWN,
-                            REQUEST_CODE_COUNTDOWN
-                        )
-                        Log.d(TAG, "Scheduled countdown start at: ${countdownStartTime}ms")
-                    } else {
-                        cancelCountdownAlarm(context, alarmManager)
-                    }
-                }
-            } else {
-                cancelCountdownAlarm(context, alarmManager)
-            }
-
-            // Always schedule next minute update as backup
             val triggerTime = ((now / 60_000) + 1) * 60_000
-            scheduleSingleAlarm(
-                context,
-                alarmManager,
-                triggerTime,
-                ACTION_UPDATE_WIDGET,
-                REQUEST_CODE_MINUTE
-            )
-            Log.d(TAG, "Scheduled next widget update at minute boundary: ${triggerTime}ms")
+            scheduleSingleAlarm(context, alarmManager, triggerTime)
+            Log.d(TAG, "Scheduled safety-net alarm at minute boundary: ${triggerTime}ms")
         }
 
         /**
-         * Schedule a single alarm at the given time.
+         * Ensure the per-second service and safety-net alarms are both active.
+         * Consolidates the pattern used across BootReceiver, PrayerServicePlugin,
+         * PrayerWidgetProvider, and WidgetKeepAliveWorker.
          */
-        private fun scheduleSingleAlarm(
-            context: Context,
-            alarmManager: AlarmManager,
-            triggerTime: Long,
-            action: String,
-            requestCode: Int
-        ) {
-            val intent = Intent(context, WidgetUpdateReceiver::class.java).apply {
-                this.action = action
-            }
+        fun ensureUpdatesActive(context: Context) {
+            CountdownService.start(context)
+            scheduleNextUpdate(context)
+            WidgetKeepAliveWorker.enqueue(context)
+        }
 
-            val pendingIntent = PendingIntent.getBroadcast(
+        private fun getAlarmPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, WidgetUpdateReceiver::class.java).apply {
+                action = ACTION_UPDATE_WIDGET
+            }
+            return PendingIntent.getBroadcast(
                 context,
-                requestCode,
+                REQUEST_CODE_MINUTE,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+        }
+
+        private fun scheduleSingleAlarm(
+            context: Context,
+            alarmManager: AlarmManager,
+            triggerTime: Long
+        ) {
+            val pendingIntent = getAlarmPendingIntent(context)
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -134,47 +102,13 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
             }
         }
 
-        private fun cancelCountdownAlarm(context: Context, alarmManager: AlarmManager) {
-            val countdownIntent = Intent(context, WidgetUpdateReceiver::class.java).apply {
-                action = ACTION_START_COUNTDOWN
-            }
-            val countdownPendingIntent = PendingIntent.getBroadcast(
-                context,
-                REQUEST_CODE_COUNTDOWN,
-                countdownIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.cancel(countdownPendingIntent)
-        }
-
         /**
-         * Get the absolute time (epoch ms) of the next prayer.
-         * Returns null if no prayer data is available or all prayers have passed.
-         */
-        private fun getNextPrayerTime(context: Context): Long? {
-            return PrayerTimeUtils.getNextPrayerTimeMs(context)
-        }
-
-        /**
-         * Cancel any pending widget update alarms.
+         * Cancel any pending widget update alarms and stop CountdownService.
          */
         fun cancelScheduledUpdates(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(getAlarmPendingIntent(context))
 
-            val minuteIntent = Intent(context, WidgetUpdateReceiver::class.java).apply {
-                action = ACTION_UPDATE_WIDGET
-            }
-            val minutePendingIntent = PendingIntent.getBroadcast(
-                context,
-                REQUEST_CODE_MINUTE,
-                minuteIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.cancel(minutePendingIntent)
-
-            cancelCountdownAlarm(context, alarmManager)
-
-            // Also stop countdown service if running
             CountdownService.stop(context)
 
             Log.d(TAG, "Cancelled all scheduled widget updates")
@@ -184,52 +118,28 @@ class WidgetUpdateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "onReceive: action=${intent.action}")
 
-        when (intent.action) {
-            ACTION_UPDATE_WIDGET -> {
-                // Acquire a partial wake lock to ensure the update completes
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-                val wakeLock = powerManager.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "meeqat:widget_update"
-                )
+        if (intent.action == ACTION_UPDATE_WIDGET) {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "meeqat:widget_update"
+            )
 
-                try {
-                    wakeLock.acquire(10_000) // 10 second timeout
+            try {
+                wakeLock.acquire(10_000) // 10 second timeout
 
-                    // Update all widgets
-                    PrayerWidgetProvider.updateAllWidgets(context)
+                // Ensure CountdownService is running (restarts if killed) and schedule next alarm
+                ensureUpdatesActive(context)
 
-                    // Schedule the next update (may start CountdownService if within threshold)
-                    scheduleNextUpdate(context)
+                // Update all widgets immediately as well
+                PrayerWidgetProvider.updateAllWidgets(context)
 
-                    Log.d(TAG, "Widget update completed")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error during widget update: ${e.message}", e)
-                } finally {
-                    if (wakeLock.isHeld) {
-                        wakeLock.release()
-                    }
-                }
-            }
-            ACTION_START_COUNTDOWN -> {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-                val wakeLock = powerManager.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "meeqat:countdown_start"
-                )
-
-                try {
-                    wakeLock.acquire(10_000)
-                    CountdownService.startIfNeeded(context)
-                    PrayerWidgetProvider.updateAllWidgets(context)
-                    scheduleNextUpdate(context)
-                    Log.d(TAG, "Countdown start handled")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error during countdown start: ${e.message}", e)
-                } finally {
-                    if (wakeLock.isHeld) {
-                        wakeLock.release()
-                    }
+                Log.d(TAG, "Safety-net update completed, service ensured running")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during widget update: ${e.message}", e)
+            } finally {
+                if (wakeLock.isHeld) {
+                    wakeLock.release()
                 }
             }
         }

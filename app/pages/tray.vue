@@ -1,58 +1,96 @@
 <template>
-  <div class="min-h-screen bg-[#1e1e1e]">
-    <div class="p-4 flex flex-col gap-2">
+  <div class="min-h-screen bg-default">
+    <div class="p-3 flex flex-col gap-2">
       <!-- Close button -->
-      <button
-        class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+      <UButton
+        icon="lucide:x"
+        variant="ghost"
+        color="neutral"
+        size="xs"
+        class="absolute top-2 right-2"
         @click="closeOverlay"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
+      />
 
       <!-- Header with dates (draggable) -->
-      <div class="text-center pb-2 border-b border-white/10 cursor-move select-none" @mousedown="startDrag">
-        <div v-if="hijriDate" class="text-xs text-white/90 font-medium">{{ hijriDate }}</div>
-        <div v-if="gregorianDate" class="text-xs text-white/70">{{ gregorianDate }}</div>
-        <div v-if="city && countryCode" class="text-xs text-zinc-500 mt-0.5">{{ city }}, {{ countryCode }}</div>
-      </div>
-
-      <!-- Next prayer highlight -->
-      <div v-if="nextPrayerLabel && countdown" class="relative flex flex-col px-4 py-3 bg-indigo-950 rounded-lg">
-        <div class="absolute inset-0 rounded-lg border-t-[3px] border-l-[3px] border-indigo-500 pointer-events-none" />
-        <div class="flex justify-between items-center">
-          <span class="text-sm font-semibold text-indigo-300">{{ nextPrayerLabel }}</span>
-          <span class="text-lg font-bold tabular-nums text-indigo-400">{{ countdown }}</span>
-        </div>
-        <div v-if="sincePrayerLabel && sinceTime" class="flex justify-between items-center mt-1 pt-1 border-t border-white/5">
-          <span class="text-xs text-white/50">{{ sincePrayerLabel }} since</span>
-          <span class="text-xs font-medium tabular-nums text-white/50">{{ sinceTime }}</span>
+      <div class="text-center pb-2 border-b border-default cursor-move select-none" @mousedown="startDrag">
+        <div v-if="hijriDate" class="text-xs font-medium text-default">{{ hijriDate }}</div>
+        <div v-if="gregorianDate" class="text-xs text-muted">{{ gregorianDate }}</div>
+        <div v-if="city" class="flex items-center justify-center gap-1 mt-0.5">
+          <UIcon name="lucide:map-pin" class="size-2.5 text-dimmed" />
+          <span class="text-[10px] text-dimmed">{{ city }}<span v-if="countryCode">, {{ countryCode }}</span></span>
         </div>
       </div>
 
-      <!-- Prayer list -->
-      <div class="flex flex-col gap-0.5">
+      <!-- Next prayer highlight (HeroCard style) -->
+      <div
+        v-if="nextPrayerLabel && countdown"
+        class="relative rounded-xl border border-[var(--ui-color-primary-500)]/20 bg-gradient-to-br from-[var(--ui-color-primary-500)]/10 via-[var(--ui-color-primary-500)]/5 to-transparent overflow-hidden"
+      >
+        <!-- Islamic pattern overlay -->
+        <div class="absolute inset-0 pattern-islamic opacity-30 pointer-events-none" />
+
+        <div class="relative px-3 py-2.5 space-y-1">
+          <p class="text-[10px] uppercase tracking-wider text-muted font-medium">Next Prayer</p>
+          <div class="flex items-baseline justify-between gap-2">
+            <h2 class="text-base font-bold text-[var(--ui-color-primary-400)]">{{ nextPrayerLabel }}</h2>
+            <span class="text-lg font-mono font-bold tabular-nums text-default">{{ countdown }}</span>
+          </div>
+
+          <!-- Since previous -->
+          <div v-if="sincePrayerLabel && sinceTime" class="flex items-center gap-1.5 text-[10px] text-dimmed pt-1 border-t border-default">
+            <UIcon name="lucide:clock" class="size-3 shrink-0" />
+            <span>Since {{ sincePrayerLabel }}: {{ sinceTime }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prayer list (RowList + Row style) -->
+      <div
+        v-if="prayers.length"
+        class="rounded-xl border border-default bg-elevated overflow-hidden divide-y divide-default"
+      >
         <div
           v-for="prayer in prayers"
           :key="prayer.key"
-          class="relative flex justify-between items-center px-3 py-1.5 rounded-md"
-          :class="{
-            'bg-indigo-950': prayer.isNext,
-            'opacity-50': prayer.isPast
-          }"
+          class="flex items-center gap-2 px-3 py-1.5"
+          :class="getRowClasses(prayer)"
         >
-          <div v-if="prayer.isNext" class="absolute inset-0 rounded-md border-t-2 border-l-2 border-indigo-500 pointer-events-none" />
-          <span class="text-xs font-medium" :class="prayer.isNext ? 'text-indigo-300' : 'text-white/90'">{{ prayer.label }}</span>
-          <span class="text-xs font-semibold tabular-nums" :class="prayer.isNext ? 'text-indigo-400' : 'text-white/70'">{{ prayer.time }}</span>
+          <!-- Left accent bar -->
+          <div class="w-1 self-stretch rounded-full shrink-0" :class="getAccentClasses(prayer)" />
+
+          <!-- Prayer name -->
+          <span class="text-xs font-medium flex-1 min-w-0 truncate" :class="getLabelClasses(prayer)">
+            {{ prayer.label }}
+          </span>
+
+          <!-- Time -->
+          <span class="text-xs font-semibold tabular-nums" :class="getTimeClasses(prayer)">
+            {{ prayer.time }}
+          </span>
+
+          <!-- Status icon -->
+          <UIcon
+            v-if="prayer.isNext"
+            name="lucide:chevron-right"
+            class="size-3.5 shrink-0 text-[var(--ui-color-primary-500)]"
+          />
+          <UIcon
+            v-else-if="prayer.isPast"
+            name="lucide:check"
+            class="size-3.5 shrink-0 text-muted"
+          />
+          <div v-else class="size-3.5 shrink-0" />
         </div>
       </div>
 
       <!-- Actions -->
-      <div class="flex gap-2 pt-2 mt-auto border-t border-white/10">
-        <button class="flex-1 py-2 px-3 rounded-md text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white" @click="openApp">Open Meeqat</button>
-        <button class="flex-1 py-2 px-3 rounded-md text-xs font-medium bg-white/10 text-white/80 border border-white/10 hover:bg-white/15" @click="quitApp">Quit</button>
+      <div class="flex gap-2 pt-2 mt-auto border-t border-default">
+        <UButton color="primary" size="xs" class="flex-1" @click="openApp">
+          Open Meeqat
+        </UButton>
+        <UButton variant="outline" color="neutral" size="xs" class="flex-1" @click="quitApp">
+          Quit
+        </UButton>
       </div>
     </div>
   </div>
@@ -63,12 +101,17 @@ definePageMeta({
   layout: false
 });
 
+useHead({
+  htmlAttrs: { class: 'dark' }
+});
+
 import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { moveWindow, Position } from "@tauri-apps/plugin-positioner";
+import { moveWindowConstrained, Position } from "@tauri-apps/plugin-positioner";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { hidePopover } from "@/composables/useTrayPopover";
+import type { PrayerTimingItem } from "@/utils/types";
 
 interface TrayUpdatePayload {
   dateLine?: string;
@@ -101,22 +144,40 @@ const sincePrayerLabel = ref<string>("");
 const sinceTime = ref<string>("");
 const city = ref<string>("");
 const countryCode = ref<string>("");
-const prayers = ref<Array<{
-  key: string;
-  label: string;
-  time: string;
-  isNext?: boolean;
-  isPast?: boolean;
-}>>([]);
+const prayers = ref<PrayerTimingItem[]>([]);
+
+function getRowClasses(prayer: PrayerTimingItem) {
+  if (prayer.isNext) return 'bg-[var(--ui-color-primary-950)]';
+  if (prayer.isPast) return 'opacity-50';
+  return '';
+}
+
+function getAccentClasses(prayer: PrayerTimingItem) {
+  if (prayer.isNext) return 'bg-[var(--ui-color-primary-500)]';
+  if (prayer.isPast) return 'bg-[var(--ui-text-dimmed)]';
+  return 'bg-transparent';
+}
+
+function getLabelClasses(prayer: PrayerTimingItem) {
+  if (prayer.isNext) return 'text-[var(--ui-color-primary-300)]';
+  if (prayer.isPast) return 'text-muted';
+  return '';
+}
+
+function getTimeClasses(prayer: PrayerTimingItem) {
+  if (prayer.isNext) return 'text-[var(--ui-color-primary-400)]';
+  if (prayer.isPast) return 'text-muted';
+  return '';
+}
 
 let unlistenUpdate: UnlistenFn | null = null;
 let unlistenShow: UnlistenFn | null = null;
 
 onMounted(async () => {
-  // Listen for show event to position window at tray
+  // Listen for show event to position window at tray (fallback)
   unlistenShow = await listen("meeqat:tray:show", async () => {
     try {
-      await moveWindow(Position.TrayCenter);
+      await moveWindowConstrained(Position.TrayCenter);
     } catch (e) {
       console.error("[TrayPage] Failed to position window:", e);
     }
@@ -156,9 +217,8 @@ onMounted(async () => {
 
     // Fallback: parse sinceLine if individual fields not provided
     if (payload.sinceLine && !payload.sincePrayerLabel) {
-      // Parse "Dhuhr since 2:30:00" or "Dhuhr 2h 30m ago"
       const sinceMatch = payload.sinceLine.match(/^(.+?)\s+(?:since\s+)?(\d.*)$/i);
-      if (sinceMatch) {
+      if (sinceMatch?.[1] && sinceMatch[2]) {
         sincePrayerLabel.value = sinceMatch[1].trim();
         sinceTime.value = sinceMatch[2].trim().replace(/\s*ago$/i, "");
       }
@@ -179,7 +239,7 @@ onMounted(async () => {
     // Fallback: parse nextLine for label and countdown
     if (payload.nextLine && !payload.nextPrayerLabel) {
       const match = payload.nextLine.match(/^(.+?)\s+in\s+(.+)$/);
-      if (match) {
+      if (match?.[1] && match[2]) {
         nextPrayerLabel.value = match[1].trim();
         countdown.value = match[2].trim();
       }
@@ -226,7 +286,7 @@ async function quitApp() {
 
 <style>
 html, body, #__nuxt {
-  background: #1e1e1e !important;
+  background: var(--ui-bg) !important;
   margin: 0 !important;
   padding: 0 !important;
 }
