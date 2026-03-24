@@ -1,9 +1,14 @@
 import type { CacheMap, TauriStore, CachedDay } from "@/utils/types";
 import { resetToMidnight } from "@/utils/time";
 
+interface TauriWindow extends Window {
+  __TAURI__?: { core?: { invoke?: unknown } };
+  __TAURI_INTERNALS__?: { invoke?: unknown };
+}
+
 export function isTauriAvailable(): boolean {
   if (typeof window === "undefined") return false;
-  const w = window as any;
+  const w = window as TauriWindow;
   return Boolean(w.__TAURI__?.core?.invoke || w.__TAURI_INTERNALS__?.invoke);
 }
 
@@ -77,9 +82,6 @@ function loadStore(filename: string): () => Promise<TauriStore> {
 
 export const getSettingsStore = loadStore("settings.bin");
 export const getCacheStore = loadStore("cache.bin");
-
-/** @deprecated Use getSettingsStore() — kept for backward compatibility */
-export const getStore = getSettingsStore;
 
 // --- Cache helpers (now use getCacheStore) ---
 

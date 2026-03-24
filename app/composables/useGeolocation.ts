@@ -79,7 +79,7 @@ export function useGeolocation() {
         address?: { city?: string; town?: string; village?: string; state?: string; country?: string };
       }>('https://nominatim.openstreetmap.org/reverse', {
         params: { format: 'json', lat, lon: lng, zoom: 10, 'accept-language': 'en' },
-        headers: { 'User-Agent': 'Meeqat/2.3.5 (prayer-times-app)' },
+        headers: { "User-Agent": "Meeqat (prayer-times-app)" },
         timeout: 5000,
       });
       const addr = res.address;

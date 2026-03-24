@@ -16,6 +16,24 @@ import {
 
 const PRAYER_CHANNEL_ID = "prayer-notifications";
 
+// Deterministic notification IDs to prevent collisions on reschedule.
+const PRAYER_NOTIFICATION_BASE: Record<string, number> = {
+  Fajr: 1000,
+  Dhuhr: 2000,
+  Asr: 3000,
+  Maghrib: 4000,
+  Isha: 5000,
+};
+
+function notificationId(
+  prayerKey: string,
+  type: "before" | "at" | "after",
+): number {
+  const base = PRAYER_NOTIFICATION_BASE[prayerKey] ?? 9000;
+  const offset = type === "before" ? 1 : type === "at" ? 2 : 3;
+  return base + offset;
+}
+
 // Notification timing options (in minutes)
 export const NOTIFICATION_TIMING_OPTIONS = [0, 5, 10, 15, 20, 30] as const;
 export type NotificationTiming = (typeof NOTIFICATION_TIMING_OPTIONS)[number];
@@ -195,7 +213,6 @@ export function useNotifications(options?: UseNotificationsOptions) {
 
       if (!list.length) return;
 
-      let notificationId = 1;
       const { minutesBefore, minutesAfter, atPrayerTime } = settings.value;
 
       for (const prayer of list) {
@@ -210,7 +227,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
           if (beforeTime > now) {
             try {
               sendNotification({
-                id: notificationId++,
+                id: notificationId(prayer.key, "before"),
                 channelId: PRAYER_CHANNEL_ID,
                 title: "Meeqat - Prayer Reminder",
                 body: `Athan for ${prayer.label} in ${minutesBefore} minutes`,
@@ -228,7 +245,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
           if (atTime > now) {
             try {
               sendNotification({
-                id: notificationId++,
+                id: notificationId(prayer.key, "at"),
                 channelId: PRAYER_CHANNEL_ID,
                 title: "Meeqat - Prayer Time",
                 body: `It's time for ${prayer.label}`,
@@ -246,7 +263,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
           if (afterTime > now) {
             try {
               sendNotification({
-                id: notificationId++,
+                id: notificationId(prayer.key, "after"),
                 channelId: PRAYER_CHANNEL_ID,
                 title: "Meeqat - Iqama Reminder",
                 body: `Get ready for Iqama for ${prayer.label}`,
@@ -259,7 +276,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
         }
       }
 
-      console.log(`[useNotifications] Scheduled ${notificationId - 1} notifications for ${dateKey}`);
+      console.log(`[useNotifications] Scheduled notifications for ${dateKey}`);
       lastScheduledDateKey = dateKey;
       // Update timings hash to prevent immediate re-triggering from watcher
       lastTimingsHash = list.map((t) => `${t.key}:${t.minutes}`).join("|");

@@ -98,8 +98,8 @@ export default defineNuxtPlugin(async () => {
     items: [openItem, separatorItem, quitItem],
   });
 
-  const isMac = platform() === "macos";
-  const isWindows = platform() === "windows";
+  const isMac = currentPlatform === "macos";
+  const isWindows = currentPlatform === "windows";
   // Get icon path for non-macOS platforms (macOS uses text-only menu bar item)
   const iconPath = !isMac
     ? await resolveResource(

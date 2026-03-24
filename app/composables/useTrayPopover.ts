@@ -11,8 +11,23 @@ interface TrayRect {
 }
 
 let focusUnlisten: UnlistenFn | null = null;
-let focusGraceTimer: ReturnType<typeof setTimeout> | null = null;
-let focusGraceActive = false;
+const graceState = {
+  timer: null as ReturnType<typeof setTimeout> | null,
+  active: false,
+  clear() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.active = false;
+  },
+  start(durationMs: number) {
+    this.clear();
+    this.active = true;
+    this.timer = setTimeout(() => {
+      this.active = false;
+      this.timer = null;
+    }, durationMs);
+  },
+};
 
 export async function getTrayWindow(): Promise<WebviewWindow | null> {
   try {
@@ -96,16 +111,11 @@ export async function showPopover(trayRect?: TrayRect): Promise<void> {
 
     // Grace period so Windows doesn't immediately dismiss the popover
     // due to spurious focus-lost events right after showing an undecorated alwaysOnTop window
-    focusGraceActive = true;
-    if (focusGraceTimer) clearTimeout(focusGraceTimer);
-    focusGraceTimer = setTimeout(() => {
-      focusGraceActive = false;
-      focusGraceTimer = null;
-    }, 300);
+    graceState.start(300);
 
     focusUnlisten = await trayWindow.onFocusChanged(({ payload: focused }) => {
-      if (import.meta.dev) console.log("[TrayPopover] Focus changed:", focused, "grace:", focusGraceActive);
-      if (!focused && !focusGraceActive) {
+      if (import.meta.dev) console.log("[TrayPopover] Focus changed:", focused, "grace:", graceState.active);
+      if (!focused && !graceState.active) {
         hidePopover();
       }
     });
@@ -129,11 +139,7 @@ export async function hidePopover(): Promise<void> {
     focusUnlisten = null;
   }
 
-  if (focusGraceTimer) {
-    clearTimeout(focusGraceTimer);
-    focusGraceTimer = null;
-  }
-  focusGraceActive = false;
+  graceState.clear();
 }
 
 export async function togglePopover(trayRect?: TrayRect): Promise<void> {

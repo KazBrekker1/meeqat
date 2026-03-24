@@ -5,7 +5,7 @@
  */
 
 // Global state shared across all component instances
-const mockTimeOffsetMs = ref(0);
+const mockTimeOffsetMs = useState("mockTimeOffsetMs", () => 0);
 
 export function useMockTime() {
   /**
