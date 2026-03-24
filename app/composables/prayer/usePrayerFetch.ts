@@ -48,6 +48,20 @@ function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
+/** Build a properly typed CoordParams or CityParams from FetchParams. */
+function toApiParams(params: FetchParams): CoordParams | CityParams {
+  const base = {
+    methodId: params.methodId,
+    shafaq: params.shafaq,
+    tz: params.tz,
+    calendarMethod: params.calendarMethod,
+  };
+  if (params.lat != null && params.lng != null) {
+    return { ...base, lat: params.lat, lng: params.lng } satisfies CoordParams;
+  }
+  return { ...base, city: params.city, country: params.country } satisfies CityParams;
+}
+
 export function usePrayerFetch() {
   const state = usePrayerState();
   const cache = usePrayerCache();
@@ -77,10 +91,11 @@ export function usePrayerFetch() {
         : new Date();
       const dateParam = formatDdMmYyyy(targetDate);
 
+      const apiParams = toApiParams(params);
       const url =
-        params.lat != null && params.lng != null
-          ? buildTimingsByCoordinatesUrl(dateParam, params as unknown as CoordParams)
-          : buildTimingsByCityUrl(dateParam, params as unknown as CityParams);
+        "lat" in apiParams
+          ? buildTimingsByCoordinatesUrl(dateParam, apiParams)
+          : buildTimingsByCityUrl(dateParam, apiParams);
 
       const raw = await $fetch(url, { method: "GET" });
       const res = PrayerTimingsResponseSchema.parse(raw);
@@ -104,13 +119,7 @@ export function usePrayerFetch() {
       state.fetchError.value = null;
 
       // Prefetch upcoming days in background (calendar-based)
-      void cache.prefetchUpcoming(
-        params.lat != null && params.lng != null
-          ? (params as unknown as CoordParams)
-          : (params as unknown as CityParams),
-        optionsKey,
-        targetDate,
-      );
+      void cache.prefetchUpcoming(apiParams, optionsKey, targetDate);
       // Cleanup old entries
       void cache.cleanupOldEntries(optionsKey);
     } catch (err) {
@@ -177,8 +186,13 @@ export function usePrayerFetch() {
           return;
         }
 
-        // Cache is fresh
+        // Cache is fresh — still prefetch upcoming days in background
         state.isFetching.value = false;
+        const parsedTarget = parseYyyyMmDd(targetDateKey);
+        const targetDate = parsedTarget
+          ? new Date(parsedTarget.year, parsedTarget.month - 1, parsedTarget.day)
+          : new Date();
+        void cache.prefetchUpcoming(toApiParams(fetchParams), optionsKey, targetDate);
         return;
       }
 

@@ -69,6 +69,8 @@ export function usePrayerTimes() {
   });
 
   // --- Preferences load/save ---
+  let isLoadingPrefs = true; // Guard to prevent auto-save during initial load
+
   async function loadPreferences() {
     try {
       const store = await getSettingsStore();
@@ -130,6 +132,8 @@ export function usePrayerTimes() {
       await savePreferences();
     } catch (e) {
       console.warn("[usePrayerTimes] Failed to load preferences:", e);
+    } finally {
+      isLoadingPrefs = false;
     }
   }
 
@@ -179,7 +183,7 @@ export function usePrayerTimes() {
       state.gpsCity,
     ],
     () => {
-      void savePreferences();
+      if (!isLoadingPrefs) void savePreferences();
     },
   );
 

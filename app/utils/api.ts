@@ -1,5 +1,6 @@
 const ALADHAN_BASE = "https://api.aladhan.com/v1";
 
+// TODO: implement failover across mirrors when primary is unreachable
 export const API_MIRRORS = [
   "https://api.aladhan.com/v1",
   "https://aladhan.api.islamic.network/v1",
