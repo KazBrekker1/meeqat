@@ -1,5 +1,5 @@
 import type { CacheMap, CachedDay } from "@/utils/types";
-import { getDateKey, resetToMidnight } from "@/utils/time";
+import { resetToMidnight } from "@/utils/time";
 import { getCacheStore, cacheStoreKey } from "@/utils/store";
 import {
   buildCalendarByCoordinatesUrl,
