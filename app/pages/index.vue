@@ -525,14 +525,36 @@ watch(calendarPlaceholder, (newPlaceholder) => {
   }
 });
 
-// Push updates to the tray via Tauri event bus (throttled to at most once per second)
+// Tray title update — throttle 1s (countdown changes every second)
+watchThrottled(
+  [nextPrayerLabel, countdownToNext],
+  async () => {
+    try {
+      const titleCountdown = (countdownToNext.value ?? "")
+        .split(":")
+        .slice(0, 2)
+        .join(":");
+      const title =
+        nextPrayerLabel.value && titleCountdown
+          ? `${nextPrayerLabel.value} in ${titleCountdown}`
+          : null;
+
+      await emit("meeqat:tray:update", { title });
+    } catch {
+      // ignore emit errors in non-tauri/web
+    }
+  },
+  { throttle: 1000 },
+);
+
+// Tray full data update — throttle 30s (data changes at most a few times per day)
 watchThrottled(
   [
     gregorianDateVerbose,
     hijriDateVerbose,
-    nextPrayerLabel,
-    countdownToNext,
     timingsList,
+    () => locationMode.value === "gps" ? (gpsCity.value ?? "GPS") : selectedCity.value,
+    () => locationMode.value === "gps" ? "" : selectedCountry.value,
   ],
   async () => {
     try {
@@ -543,18 +565,11 @@ watchThrottled(
         dateLineParts.push(`Gregorian: ${gregorianDateVerbose.value}`);
       const dateLine = dateLineParts.join(" | ");
 
-      const titleCountdown = (countdownToNext.value ?? "")
-        .split(":")
-        .slice(0, 2)
-        .join(":");
-      const title =
-        nextPrayerLabel.value && titleCountdown
-          ? `${nextPrayerLabel.value} in ${titleCountdown}`
-          : null;
-
-      // Build Next and Since lines for tray
       const list = (timingsList.value || [])
-        .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
+        .filter(
+          (t) =>
+            typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key),
+        )
         .sort((a, b) => a.minutes! - b.minutes!);
 
       let nextLine = "Next: --";
@@ -569,10 +584,8 @@ watchThrottled(
 
       await emit("meeqat:tray:update", {
         dateLine,
-        title,
         nextLine,
         sinceLine,
-        // Additional fields for the tray popover
         hijriDate: hijriDateVerbose.value,
         gregorianDate: gregorianDateVerbose.value,
         nextPrayerLabel: nextPrayerLabel.value,
@@ -580,14 +593,18 @@ watchThrottled(
         sincePrayerLabel: previousPrayerLabel.value ?? "",
         sinceTime: timeSincePrevious.value ?? "",
         timingsList: list,
-        city: locationMode.value === 'gps' ? (gpsCity.value ?? 'GPS') : selectedCity.value,
-        countryCode: locationMode.value === 'gps' ? '' : selectedCountry.value,
+        city:
+          locationMode.value === "gps"
+            ? (gpsCity.value ?? "GPS")
+            : selectedCity.value,
+        countryCode:
+          locationMode.value === "gps" ? "" : selectedCountry.value,
       });
     } catch {
       // ignore emit errors in non-tauri/web
     }
   },
-  { throttle: 1000 },
+  { throttle: 30000 },
 );
 
 onBeforeUnmount(() => {
