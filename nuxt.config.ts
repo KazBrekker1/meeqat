@@ -29,6 +29,9 @@ export default defineNuxtConfig({
     autoImportPath: "@/assets/",
   },
   ssr: false,
+  imports: {
+    dirs: ["composables/prayer"],
+  },
   dir: {
     modules: "app/modules",
   },
