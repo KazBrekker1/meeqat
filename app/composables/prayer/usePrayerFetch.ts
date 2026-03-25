@@ -4,6 +4,7 @@ import {
   getUserTimezone,
   parseYyyyMmDd,
   formatDdMmYyyy,
+  ddmmyyyyToYyyymmdd,
 } from "@/utils/time";
 import {
   buildTimingsByCoordinatesUrl,
@@ -40,12 +41,6 @@ export function buildOptionsKey(params: FetchParams): string {
   const coordPart =
     params.lat != null ? `|@${params.lat},${params.lng}` : "";
   return `v1|${country}|${city}|m=${method}|tz=${tz}|sh=${sh}|cal=${cal}${coordPart}`;
-}
-
-function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
-  const m = ddmmyyyy.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-  if (!m) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
 /** Build a properly typed CoordParams or CityParams from FetchParams. */

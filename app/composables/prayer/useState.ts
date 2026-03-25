@@ -1,5 +1,4 @@
 export function usePrayerState() {
-  // --- Core prayer data ---
   const timings = useState<Record<string, string> | null>(
     "prayer:timings",
     () => null,
@@ -15,7 +14,6 @@ export function usePrayerState() {
   const isStale = useState("prayer:isStale", () => false);
   const isOffline = useState("prayer:isOffline", () => false);
 
-  // --- Preferences ---
   const selectedMethodId = useState("prayer:methodId", () => 4);
   const selectedCity = useState("prayer:city", () => "");
   const selectedCountry = useState("prayer:country", () => "");
@@ -26,7 +24,6 @@ export function usePrayerState() {
     () => false,
   );
 
-  // --- GPS location ---
   const locationMode = useState<"city" | "gps">(
     "prayer:locationMode",
     () => "city",
@@ -35,11 +32,9 @@ export function usePrayerState() {
   const gpsLng = useState<number | null>("prayer:gpsLng", () => null);
   const gpsCity = useState<string | null>("prayer:gpsCity", () => null);
 
-  // --- Derived ---
   const is24Hour = computed(() => timeFormat.value === "24h");
 
   return {
-    // core
     timings,
     dateReadable,
     timezone,
@@ -48,19 +43,16 @@ export function usePrayerState() {
     isFetching,
     isStale,
     isOffline,
-    // preferences
     selectedMethodId,
     selectedCity,
     selectedCountry,
     selectedExtraTimezone,
     timeFormat,
     showAdditionalTimes,
-    // GPS
     locationMode,
     gpsLat,
     gpsLng,
     gpsCity,
-    // derived
     is24Hour,
   };
 }

@@ -20,7 +20,6 @@ import {
   IslamicUmalquraCalendar,
 } from "@internationalized/date";
 
-// Extended prayer order including additional times
 const EXTENDED_ORDER: [string, string][] = [
   ["Imsak", "Imsak"],
   ["Fajr", "Fajr"],
@@ -37,7 +36,6 @@ const EXTENDED_ORDER: [string, string][] = [
 function parseTimeToMinutes(raw: string | undefined): number | null {
   if (!raw) return null;
   const cleaned = raw.trim();
-  // 12h with AM/PM
   const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (ampmMatch) {
     let hours = Number(ampmMatch[1]);
@@ -46,7 +44,6 @@ function parseTimeToMinutes(raw: string | undefined): number | null {
     if (hours === 12) hours = 0;
     return (isPM ? hours + 12 : hours) * 60 + minutes;
   }
-  // 24h
   const parts = cleaned.match(/^(\d{1,2}):(\d{2})/);
   if (!parts) return null;
   const h = Number(parts[1]);
@@ -59,7 +56,6 @@ export function usePrayerDisplay() {
   const state = usePrayerState();
   const { getNow } = useMockTime();
 
-  // --- Time tracking ---
   const now = ref<Date>(getNow());
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -73,14 +69,12 @@ export function usePrayerDisplay() {
     if (intervalId) clearInterval(intervalId);
   });
 
-  // --- Midnight rollover detection ---
   const todayDateKey = computed(() => getDateKey(now.value));
 
   const currentTimeString = computed(() =>
     formatTime(now.value, state.is24Hour, undefined, true),
   );
 
-  // Date portion only (changes once per day)
   const todayDate = computed(() => {
     const d = now.value;
     return {
@@ -121,23 +115,25 @@ export function usePrayerDisplay() {
     }
   });
 
-  // --- Timings list ---
-  const userTimezone = computed(() => getUserTimezone());
+  // Timezone never changes during a session — no need for reactivity
+  const userTimezone = getUserTimezone();
 
   function computeAltTimeForTimezone(
     timeStr: string,
     targetTz: string | null,
   ): string | undefined {
     if (!targetTz) return undefined;
-    if (targetTz === userTimezone.value) return undefined;
+    if (targetTz === userTimezone) return undefined;
     const mins = parseTimeToMinutes(timeStr);
     if (mins == null) return undefined;
-    const base = resetToMidnight(now.value);
+    // Use a fresh midnight Date to avoid reactive dependency on `now`
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
     base.setMinutes(mins);
     return formatDateInTimezone(base, state.is24Hour, targetTz);
   }
 
-  // Base timings — only recomputes when timings or settings change
+  // Only recomputes when timings or settings change (not every second)
   const baseTimingsList = computed<
     Omit<PrayerTimingItem, "isPast" | "isNext">[]
   >(() => {
@@ -180,7 +176,6 @@ export function usePrayerDisplay() {
 
   const { nowSecondsOfDay } = buildCurrentTimeRefs(now);
 
-  // Full timings list with isPast/isNext flags
   const timingsList = computed<PrayerTimingItem[]>(() => {
     const list = baseTimingsList.value;
     if (list.length === 0) return [];
@@ -204,17 +199,19 @@ export function usePrayerDisplay() {
     }));
   });
 
-  // --- Derived prayer info ---
-  const upcomingKey = computed(
-    () => timingsList.value.find((t) => t.isNext)?.key ?? null,
+  // Single lookup for the next prayer — avoids 3x .find() per second
+  const nextPrayerItem = computed(
+    () => timingsList.value.find((t) => t.isNext) ?? null,
   );
 
+  const upcomingKey = computed(() => nextPrayerItem.value?.key ?? null);
+
   const nextPrayerLabel = computed<string | null>(
-    () => timingsList.value.find((t) => t.isNext)?.label ?? null,
+    () => nextPrayerItem.value?.label ?? null,
   );
 
   const countdownToNext = computed<string | null>(() => {
-    const next = timingsList.value.find((t) => t.isNext);
+    const next = nextPrayerItem.value;
     if (!next || typeof next.minutes !== "number") return null;
     const target = resetToMidnight(now.value);
     target.setMinutes(next.minutes as number, 0, 0);

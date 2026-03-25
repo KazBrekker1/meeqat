@@ -335,10 +335,6 @@ export function useNotifications(options?: UseNotificationsOptions) {
     { deep: true }
   );
 
-  onBeforeUnmount(() => {
-    // Don't cancel notifications on unmount - let them fire even if app is closed
-  });
-
   // Load settings on init
   void loadNotificationSettings();
 

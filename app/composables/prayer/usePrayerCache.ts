@@ -1,5 +1,5 @@
 import type { CacheMap, CachedDay } from "@/utils/types";
-import { resetToMidnight } from "@/utils/time";
+import { resetToMidnight, parseYyyyMmDd, ddmmyyyyToYyyymmdd } from "@/utils/time";
 import { getCacheStore, cacheStoreKey } from "@/utils/store";
 import {
   buildCalendarByCoordinatesUrl,
@@ -45,9 +45,7 @@ export function usePrayerCache() {
     dateKey: string,
     data: CachedDay,
   ): Promise<void> {
-    const cache = await getCacheForOptions(optionsKey);
-    cache[dateKey] = data;
-    await setCacheForOptions(optionsKey, cache);
+    await setCachedDays(optionsKey, { [dateKey]: data });
   }
 
   async function setCachedDays(
@@ -75,13 +73,9 @@ export function usePrayerCache() {
 
     const keysToRemove: string[] = [];
     for (const dateKey of Object.keys(cache)) {
-      const match = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (!match) continue;
-      const entryDate = new Date(
-        Number(match[1]),
-        Number(match[2]) - 1,
-        Number(match[3]),
-      );
+      const parsed = parseYyyyMmDd(dateKey);
+      if (!parsed) continue;
+      const entryDate = new Date(parsed.year, parsed.month - 1, parsed.day);
       if (entryDate < cutoffDate) {
         keysToRemove.push(dateKey);
       }
@@ -117,11 +111,8 @@ export function usePrayerCache() {
 
       const entries: Record<string, CachedDay> = {};
       for (const day of res.data) {
-        // Aladhan calendar returns DD-MM-YYYY in gregorian.date
-        const ddmmyyyy = day.date.gregorian.date;
-        const m = ddmmyyyy.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-        if (!m) continue;
-        const dateKey = `${m[3]}-${m[2]}-${m[1]}`;
+        const dateKey = ddmmyyyyToYyyymmdd(day.date.gregorian.date);
+        if (!dateKey) continue;
         entries[dateKey] = {
           timings: day.timings,
           dateReadable: day.date.readable,
@@ -147,10 +138,11 @@ export function usePrayerCache() {
     optionsKey: string,
     targetDate: Date,
   ): Promise<void> {
-    // Always prefetch current month
-    await prefetchMonth(params, optionsKey, targetDate);
+    const promises: Promise<void>[] = [
+      prefetchMonth(params, optionsKey, targetDate),
+    ];
 
-    // If within last 5 days of month, also prefetch next month
+    // If within last 5 days of month, also prefetch next month in parallel
     const daysInMonth = new Date(
       targetDate.getFullYear(),
       targetDate.getMonth() + 1,
@@ -159,8 +151,10 @@ export function usePrayerCache() {
     if (targetDate.getDate() > daysInMonth - 5) {
       const nextMonth = new Date(targetDate);
       nextMonth.setMonth(nextMonth.getMonth() + 1, 1);
-      await prefetchMonth(params, optionsKey, nextMonth);
+      promises.push(prefetchMonth(params, optionsKey, nextMonth));
     }
+
+    await Promise.all(promises);
   }
 
   async function clearAllCache(): Promise<void> {

@@ -58,6 +58,12 @@ export function addDays(date: Date, days: number): Date {
   return d;
 }
 
+export function ddmmyyyyToYyyymmdd(ddmmyyyy: string): string | null {
+  const m = ddmmyyyy.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
 // --- Time difference ---
 
 export interface TimeDiff {
