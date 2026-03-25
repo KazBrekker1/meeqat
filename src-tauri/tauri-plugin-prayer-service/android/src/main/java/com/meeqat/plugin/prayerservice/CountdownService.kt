@@ -115,11 +115,24 @@ class CountdownService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "Task removed (app swiped from recents) — re-triggering safety nets")
+        // Re-ensure all update mechanisms survive app removal
+        WidgetUpdateReceiver.ensureUpdatesActive(this)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "Service destroyed")
+        Log.d(TAG, "Service destroyed — re-triggering safety nets")
         isRunning = false
         handler.removeCallbacks(updateRunnable)
+        // Ensure the service gets restarted via safety nets
+        try {
+            WidgetUpdateReceiver.ensureUpdatesActive(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to re-trigger safety nets on destroy: ${e.message}")
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
