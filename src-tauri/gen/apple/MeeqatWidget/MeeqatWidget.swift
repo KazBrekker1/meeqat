@@ -148,6 +148,20 @@ struct TimeFormatter {
     }
 }
 
+// MARK: - Countdown Text
+
+struct CountdownText: View {
+    let date: Date
+    let size: CGFloat
+
+    var body: some View {
+        Text(TimeFormatter.formatCountdown(to: date))
+            .font(.system(size: size, weight: .bold))
+            .monospacedDigit()
+            .foregroundColor(WidgetColors.accent)
+    }
+}
+
 // MARK: - Compact Widget View (Small)
 
 struct CompactWidgetView: View {
@@ -176,9 +190,7 @@ struct CompactWidgetView: View {
                     Text(nextPrayer.label)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(WidgetColors.textPrimary)
-                    Text(TimeFormatter.formatCountdown(to: nextPrayer.date))
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(WidgetColors.accent)
+                    CountdownText(date: nextPrayer.date, size: 24)
                 }
             } else {
                 Text("Loading...")
@@ -222,9 +234,7 @@ struct MediumWidgetView: View {
                         Text(nextPrayer.label)
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(WidgetColors.textPrimary)
-                        Text(TimeFormatter.formatCountdown(to: nextPrayer.date))
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(WidgetColors.accent)
+                        CountdownText(date: nextPrayer.date, size: 28)
                         Text(TimeFormatter.formatTime(nextPrayer.date))
                             .font(.system(size: 12))
                             .foregroundColor(WidgetColors.textSecondary)
@@ -295,9 +305,7 @@ struct LargeWidgetView: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text(TimeFormatter.formatCountdown(to: nextPrayer.date))
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundColor(WidgetColors.accent)
+                        CountdownText(date: nextPrayer.date, size: 32)
                         Text(TimeFormatter.formatTime(nextPrayer.date))
                             .font(.system(size: 13))
                             .foregroundColor(WidgetColors.textSecondary)
