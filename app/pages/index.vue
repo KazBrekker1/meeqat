@@ -525,9 +525,9 @@ watch(calendarPlaceholder, (newPlaceholder) => {
   }
 });
 
-// Tray title update — throttle 1s (countdown changes every second)
+// Tray title + countdown update — throttle 1s (countdown changes every second)
 watchThrottled(
-  [nextPrayerLabel, countdownToNext],
+  [nextPrayerLabel, countdownToNext, previousPrayerLabel, timeSincePrevious],
   async () => {
     try {
       const titleCountdown = (countdownToNext.value ?? "")
@@ -539,7 +539,13 @@ watchThrottled(
           ? `${nextPrayerLabel.value} in ${titleCountdown}`
           : null;
 
-      await emit("meeqat:tray:update", { title });
+      await emit("meeqat:tray:update", {
+        title,
+        nextPrayerLabel: nextPrayerLabel.value,
+        countdown: countdownToNext.value,
+        sincePrayerLabel: previousPrayerLabel.value ?? "",
+        sinceTime: timeSincePrevious.value ?? "",
+      });
     } catch {
       // ignore emit errors in non-tauri/web
     }
