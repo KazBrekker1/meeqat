@@ -89,6 +89,19 @@ let ro: ResizeObserver | null = null;
 let io: IntersectionObserver | null = null;
 let uRes: WebGLUniformLocation | null = null;
 let uTime: WebGLUniformLocation | null = null;
+let lastDraw = 0;
+
+// The twinkle runs a full-screen fragment shader every frame, which pins the GPU
+// behind the whole UI — far too costly on phones. On touch devices (and when the
+// user prefers reduced motion) render the star-field ONCE and stop; on desktop
+// animate but cap to ~30fps. Mobile also drops to 1x pixel density.
+const mql = (q: string) =>
+  typeof window !== "undefined" && window.matchMedia ? window.matchMedia(q).matches : false;
+const coarse = mql("(pointer: coarse)");
+const reduceMotion = mql("(prefers-reduced-motion: reduce)");
+const animate = !coarse && !reduceMotion;
+const maxDpr = coarse ? 1 : 1.5;
+const FRAME_MS = 1000 / 30;
 
 function compile(g: WebGLRenderingContext, type: number, src: string) {
   const sh = g.createShader(type)!;
@@ -103,7 +116,7 @@ function compile(g: WebGLRenderingContext, type: number, src: string) {
 function resize() {
   const c = cv.value;
   if (!c || !gl) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
   const w = Math.max(1, Math.round(c.clientWidth * dpr));
   const h = Math.max(1, Math.round(c.clientHeight * dpr));
   if (c.width !== w || c.height !== h) {
@@ -113,19 +126,32 @@ function resize() {
   }
 }
 
+function draw(timeSec: number) {
+  if (!gl || !cv.value) return;
+  resize();
+  gl.uniform2f(uRes, cv.value.width, cv.value.height);
+  gl.uniform1f(uTime, timeSec);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
 function frame(t: number) {
   if (!gl || !cv.value) return;
   if (!start) start = t;
-  resize();
-  gl.uniform2f(uRes, cv.value.width, cv.value.height);
-  gl.uniform1f(uTime, (t - start) / 1000);
-  gl.drawArrays(gl.TRIANGLES, 0, 3);
-  if (visible) raf = requestAnimationFrame(frame);
+  if (t - lastDraw >= FRAME_MS) {
+    lastDraw = t;
+    draw((t - start) / 1000);
+  }
+  if (visible && animate) raf = requestAnimationFrame(frame);
 }
 
 function play() {
   if (!visible) return;
   cancelAnimationFrame(raf);
+  if (!animate) {
+    // Static render — one frame at a fixed phase so the twinkle looks settled.
+    draw(8);
+    return;
+  }
   raf = requestAnimationFrame(frame);
 }
 
@@ -163,7 +189,8 @@ onMounted(() => {
   gl.uniform1f(gl.getUniformLocation(prog, "u_nebula"), props.nebula ? 1 : 0);
 
   resize();
-  ro = new ResizeObserver(resize);
+  // On animate, the next frame repaints after a resize; on static, repaint here.
+  ro = new ResizeObserver(() => (animate ? resize() : play()));
   ro.observe(c);
 
   // Only animate while on screen — keeps the gallery (many canvases) light.
