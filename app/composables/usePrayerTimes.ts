@@ -19,37 +19,24 @@ const PREFERENCES_KEY = "preferences";
 export function usePrayerTimes() {
   const state = usePrayerState();
   const display = usePrayerDisplay();
-  const { fetchPrayerTimingsByCity, fetchByCoordinates, refreshInBackground } =
-    usePrayerFetch();
+  const {
+    fetchPrayerTimingsByCity,
+    fetchByCoordinates,
+    refreshInBackground,
+    getNextDayFirstPrayer,
+  } = usePrayerFetch();
   const { clearAllCache } = usePrayerCache();
 
-  // --- Online/offline tracking ---
-  function handleOnline() {
-    state.isOffline.value = false;
-    if (state.isStale.value) {
-      refreshInBackground();
-    }
-  }
-
-  function handleOffline() {
-    state.isOffline.value = true;
-  }
-
-  onMounted(() => {
-    state.isOffline.value =
-      typeof navigator !== "undefined" && !navigator.onLine;
-    if (typeof window !== "undefined") {
-      window.addEventListener("online", handleOnline);
-      window.addEventListener("offline", handleOffline);
-    }
-  });
-
-  onBeforeUnmount(() => {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    }
-  });
+  // --- Online/offline tracking (VueUse handles listener add/cleanup) ---
+  const online = useOnline();
+  watch(
+    online,
+    (isOnline) => {
+      state.isOffline.value = !isOnline;
+      if (isOnline && state.isStale.value) refreshInBackground();
+    },
+    { immediate: true },
+  );
 
   // --- Midnight rollover: auto-refetch when date changes ---
   watch(display.todayDateKey, () => {
@@ -223,6 +210,7 @@ export function usePrayerTimes() {
     // actions
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
+    getNextDayFirstPrayer,
     loadPreferences,
     savePreferences,
     clearTimings,

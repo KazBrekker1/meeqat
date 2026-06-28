@@ -260,9 +260,42 @@ export function usePrayerFetch() {
     await fetchWithSWR(fetchParams, options?.date);
   }
 
+  /**
+   * Resolve tomorrow's first prayer (Fajr) from cached calendar data, at its
+   * ACTUAL computed time — not today's Fajr + 24h, which drifts a minute or two
+   * daily and is an hour off across a DST change. Returns null on a cache miss
+   * (caller falls back to the +24h approximation). Uses the same options key and
+   * cache as the active fetch context so it always matches the displayed city.
+   */
+  async function getNextDayFirstPrayer(): Promise<{
+    prayerName: string;
+    prayerTime: number;
+    label: string;
+  } | null> {
+    if (!currentOptionsKey) return null;
+    try {
+      const now = getNow();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      const cached = await cache.getCachedDay(currentOptionsKey, getDateKey(tomorrow));
+      const fajrRaw = cached?.timings?.Fajr;
+      if (!fajrRaw) return null;
+      const m = String(fajrRaw).match(/(\d{1,2}):(\d{2})/);
+      if (!m) return null;
+      const minutes = Number(m[1]) * 60 + Number(m[2]);
+      const t = new Date(tomorrow);
+      t.setHours(0, 0, 0, 0);
+      t.setMinutes(minutes);
+      return { prayerName: "Fajr", prayerTime: t.getTime(), label: "Fajr" };
+    } catch {
+      return null;
+    }
+  }
+
   return {
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
     refreshInBackground,
+    getNextDayFirstPrayer,
   };
 }

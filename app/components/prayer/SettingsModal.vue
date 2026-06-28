@@ -12,55 +12,49 @@
       <div class="space-y-6">
 
         <!-- Location Section -->
-        <section class="space-y-4">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-map-pin" class="w-5 h-5 text-primary" />
-            <h3 class="font-semibold">Location</h3>
-          </div>
-
-          <div class="space-y-3 pl-7">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">Use GPS Location</p>
-                <p class="text-xs text-muted">Set precise coordinates instead of city</p>
-              </div>
-              <USwitch
-                :model-value="locationMode === 'gps'"
-                @update:model-value="$emit('update:locationMode', $event ? 'gps' : 'city')"
-              />
-            </div>
-
-            <Transition
-              enter-active-class="transition duration-200 ease-out"
-              enter-from-class="opacity-0 -translate-y-2"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition duration-150 ease-in"
-              leave-from-class="opacity-100 translate-y-0"
-              leave-to-class="opacity-0 -translate-y-2"
+        <section>
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Location</p>
+          <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-elevated border border-default">
+            <button
+              class="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm cursor-pointer transition-colors"
+              :class="locationMode !== 'gps' ? 'bg-primary/15 ring-1 ring-primary/40 font-medium' : 'text-muted hover:text-default'"
+              @click="$emit('update:locationMode', 'city')"
             >
-              <PrayerLocationMapPicker
-                v-if="locationMode === 'gps'"
-                :lat="gpsLat"
-                :lng="gpsLng"
-                @update:location="$emit('update:gpsLocation', $event)"
-              />
-            </Transition>
+              <UIcon name="i-lucide-building-2" class="size-4" /> City
+            </button>
+            <button
+              class="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm cursor-pointer transition-colors"
+              :class="locationMode === 'gps' ? 'bg-primary/15 ring-1 ring-primary/40 font-medium' : 'text-muted hover:text-default'"
+              @click="$emit('update:locationMode', 'gps')"
+            >
+              <UIcon name="i-lucide-satellite" class="size-4" /> GPS
+            </button>
           </div>
+
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 -translate-y-2"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-2"
+          >
+            <PrayerLocationMapPicker
+              v-if="locationMode === 'gps'"
+              class="mt-3"
+              :lat="gpsLat"
+              :lng="gpsLng"
+              @update:location="$emit('update:gpsLocation', $event)"
+            />
+          </Transition>
         </section>
 
-        <USeparator />
-
         <!-- Prayer Calculation Section -->
-        <section class="space-y-4">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-calculator" class="w-5 h-5 text-primary" />
-            <h3 class="font-semibold">Prayer Calculation</h3>
-          </div>
-
-          <div class="space-y-3 pl-7">
-            <!-- Calculation Method -->
+        <section>
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Calculation</p>
+          <div class="rounded-xl bg-elevated border border-default p-3 space-y-3">
             <div class="space-y-1.5">
-              <label class="text-sm font-medium">Calculation Method</label>
+              <label class="text-sm font-medium">Calculation method</label>
               <USelectMenu
                 v-model="selectedMethodIdModel"
                 :items="methodSelectOptions"
@@ -69,12 +63,9 @@
                 value-key="value"
                 class="w-full"
               />
-              <p class="text-xs text-muted">Different regions use different calculation methods</p>
             </div>
-
-            <!-- Display Timezone -->
             <div class="space-y-1.5">
-              <label class="text-sm font-medium">Display Timezone</label>
+              <label class="text-sm font-medium">Display timezone</label>
               <USelectMenu
                 v-model="selectedExtraTimezoneModel"
                 :items="timezoneSelectOptions"
@@ -85,49 +76,26 @@
                 searchable
                 searchable-placeholder="Search timezones..."
               />
-              <p class="text-xs text-muted">Show times in a different timezone</p>
             </div>
           </div>
         </section>
 
-        <USeparator />
-
         <!-- Display Section -->
-        <section class="space-y-4">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-palette" class="w-5 h-5 text-primary" />
-            <h3 class="font-semibold">Display</h3>
-          </div>
-
-          <div class="space-y-3 pl-7">
-            <!-- Theme -->
-            <div class="flex items-center justify-between">
+        <section>
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Display</p>
+          <div class="rounded-xl bg-elevated border border-default divide-y divide-default overflow-hidden">
+            <div class="flex items-center justify-between gap-3 px-4 py-3">
               <div>
-                <p class="text-sm font-medium">Theme</p>
-                <p class="text-xs text-muted">Light or dark mode</p>
-              </div>
-              <UColorModeButton size="md" />
-            </div>
-
-            <!-- Time Format -->
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">Time Format</p>
+                <p class="text-sm font-medium">Time format</p>
                 <p class="text-xs text-muted">12-hour or 24-hour</p>
               </div>
-              <UButton
-                size="sm"
-                variant="soft"
-                @click="$emit('toggle-time-format')"
-              >
+              <UButton size="sm" variant="soft" @click="$emit('toggle-time-format')">
                 {{ timeFormat === '24h' ? '24h' : '12h' }}
               </UButton>
             </div>
-
-            <!-- Additional Prayer Times -->
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-3 px-4 py-3">
               <div>
-                <p class="text-sm font-medium">Additional Times</p>
+                <p class="text-sm font-medium">Additional times</p>
                 <p class="text-xs text-muted">Imsak, Midnight, night thirds</p>
               </div>
               <USwitch
@@ -135,19 +103,13 @@
                 @update:model-value="$emit('toggle-additional-times')"
               />
             </div>
-
           </div>
         </section>
 
-        <USeparator />
-
         <!-- Notifications Section -->
-        <section class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-bell" class="w-5 h-5 text-primary" />
-              <h3 class="font-semibold">Notifications</h3>
-            </div>
+        <section>
+          <div class="flex items-center justify-between mb-1.5">
+            <p class="text-[11px] uppercase tracking-wider text-muted">Notifications</p>
             <USwitch
               :model-value="notificationSettings?.enabled"
               @update:model-value="toggleNotifications"
@@ -162,36 +124,18 @@
             leave-from-class="opacity-100 translate-y-0"
             leave-to-class="opacity-0 -translate-y-2"
           >
-            <div v-if="notificationSettings?.enabled" class="space-y-3 pl-7">
-              <!-- Minutes Before -->
-              <div class="flex items-center justify-between gap-4">
+            <div v-if="notificationSettings?.enabled" class="rounded-xl bg-elevated border border-default divide-y divide-default overflow-hidden">
+              <div class="flex items-center justify-between gap-4 px-4 py-3">
                 <p class="text-sm">Remind before prayer</p>
-                <USelect
-                  v-model="minutesBefore"
-                  :items="timingOptions"
-                  size="sm"
-                  class="w-24"
-                />
+                <USelect v-model="minutesBefore" :items="timingOptions" size="sm" class="w-24" />
               </div>
-
-              <!-- At Prayer Time -->
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between gap-4 px-4 py-3">
                 <p class="text-sm">Notify at prayer time</p>
-                <USwitch
-                  :model-value="notificationSettings?.atPrayerTime"
-                  @update:model-value="toggleAtPrayerTime"
-                />
+                <USwitch :model-value="notificationSettings?.atPrayerTime" @update:model-value="toggleAtPrayerTime" />
               </div>
-
-              <!-- Minutes After -->
-              <div class="flex items-center justify-between gap-4">
+              <div class="flex items-center justify-between gap-4 px-4 py-3">
                 <p class="text-sm">Iqama reminder after</p>
-                <USelect
-                  v-model="minutesAfter"
-                  :items="timingOptions"
-                  size="sm"
-                  class="w-24"
-                />
+                <USelect v-model="minutesAfter" :items="timingOptions" size="sm" class="w-24" />
               </div>
             </div>
           </Transition>
@@ -277,32 +221,24 @@
           </section>
         </template>
 
-        <USeparator />
-
         <!-- Data Section -->
-        <section class="space-y-4">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-database" class="w-5 h-5 text-primary" />
-            <h3 class="font-semibold">Data</h3>
-          </div>
-
-          <div class="pl-7">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">Clear Cache</p>
-                <p class="text-xs text-muted">Remove cached prayer times</p>
-              </div>
-              <UButton
-                size="sm"
-                color="error"
-                variant="soft"
-                :loading="isLoading"
-                @click="$emit('clear-cache')"
-                icon="i-lucide-trash-2"
-              >
-                Clear
-              </UButton>
+        <section>
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Data</p>
+          <div class="rounded-xl bg-elevated border border-default px-4 py-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium">Clear cache</p>
+              <p class="text-xs text-muted">Remove cached prayer times</p>
             </div>
+            <UButton
+              size="sm"
+              color="error"
+              variant="soft"
+              :loading="isLoading"
+              icon="i-lucide-trash-2"
+              @click="$emit('clear-cache')"
+            >
+              Clear
+            </UButton>
           </div>
         </section>
 

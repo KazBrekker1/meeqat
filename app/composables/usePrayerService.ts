@@ -107,8 +107,14 @@ export function usePrayerService(options: {
   gregorianDate?: Ref<string | null>;
   city?: Ref<string | null>;
   countryCode?: Ref<string | null>;
+  /** Resolves tomorrow's first prayer at its real time (from cached calendar). */
+  getNextDayPrayer?: () => Promise<{
+    prayerName: string;
+    prayerTime: number;
+    label: string;
+  } | null>;
 }) {
-  const { timingsList, hijriDate, gregorianDate, city, countryCode } = options;
+  const { timingsList, hijriDate, gregorianDate, city, countryCode, getNextDayPrayer } = options;
 
   const isAndroid = ref(false);
 
@@ -147,7 +153,12 @@ export function usePrayerService(options: {
       const nextPrayerIndex = findNextPrayerIndex(timingsList.value);
 
       // Compute next-day first prayer if all today's prayers have passed
-      const nextDay = computeNextDayFirstPrayer(prayers);
+      // After Isha, prefer tomorrow's REAL first prayer (from cached calendar);
+      // fall back to today's Fajr + 24h only on a cache miss.
+      const fallbackNextDay = computeNextDayFirstPrayer(prayers);
+      const nextDay = fallbackNextDay
+        ? ((await getNextDayPrayer?.()) ?? fallbackNextDay)
+        : null;
 
       await api.updatePrayerTimes({
         prayers,

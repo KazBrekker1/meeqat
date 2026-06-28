@@ -1,6 +1,29 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Celestial navy surfaces in dark mode — translates the prototype palette to
+   every Nuxt UI overlay (modals, drawers, select menus, calendar) instead of
+   the default neutral/zinc greys. */
+.dark {
+	--ui-bg: #0a0e22;
+	--ui-bg-muted: #111a3a;
+	--ui-bg-elevated: #161f44;
+	--ui-bg-accented: #232e58;
+	--ui-border: #1f2a4f;
+	--ui-border-muted: #18213f;
+	--ui-border-accented: #2a3760;
+}
+
+/* Mobile safe-area insets (status bar / notch / gesture bar). Centralised here
+   so the source can later be swapped to a native plugin (e.g. for the Android
+   SDK 35 env() bug) by editing only these vars — components keep using .*-safe. */
+:root {
+	--safe-top: env(safe-area-inset-top, 0px);
+	--safe-bottom: env(safe-area-inset-bottom, 0px);
+	--safe-left: env(safe-area-inset-left, 0px);
+	--safe-right: env(safe-area-inset-right, 0px);
+}
+
 @theme {
 	--font-heading: "Montserrat", sans-serif;
 	--font-sans: "Inter", sans-serif;
@@ -27,6 +50,11 @@
 		user-select: none;
 		-webkit-user-drag: none;
 	}
+	/* Safe-area padding helpers — reference the centralised --safe-* vars */
+	.pt-safe { padding-top: var(--safe-top); }
+	.pb-safe { padding-bottom: var(--safe-bottom); }
+	.pl-safe { padding-left: var(--safe-left); }
+	.pr-safe { padding-right: var(--safe-right); }
 	.flex-center {
 		@apply flex justify-center items-center;
 	}
@@ -124,4 +152,38 @@ body, .dark, [data-theme] {
 	transition-property: background-color, border-color;
 	transition-duration: 150ms;
 	transition-timing-function: ease;
+}
+
+/* Celestial themed scrollbar — applies to the element itself (.scroll-celestial)
+   and to every scroll area inside a celestial screen (.celestial-sky). */
+.scroll-celestial,
+.celestial-sky,
+.celestial-sky * {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(165, 180, 252, 0.45) transparent;
+}
+.scroll-celestial::-webkit-scrollbar,
+.celestial-sky ::-webkit-scrollbar {
+	width: 7px;
+	height: 7px;
+}
+.scroll-celestial::-webkit-scrollbar-track,
+.celestial-sky ::-webkit-scrollbar-track {
+	background: transparent;
+}
+.scroll-celestial::-webkit-scrollbar-thumb,
+.celestial-sky ::-webkit-scrollbar-thumb {
+	border-radius: 9999px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+	background-color: rgba(165, 180, 252, 0.55);
+	background-image: linear-gradient(180deg, rgba(125, 211, 252, 0.8), rgba(165, 180, 252, 0.8), rgba(192, 132, 252, 0.8));
+}
+.scroll-celestial::-webkit-scrollbar-thumb:hover,
+.celestial-sky ::-webkit-scrollbar-thumb:hover {
+	background-image: linear-gradient(180deg, rgba(125, 211, 252, 1), rgba(192, 132, 252, 1));
+}
+.scroll-celestial::-webkit-scrollbar-corner,
+.celestial-sky ::-webkit-scrollbar-corner {
+	background: transparent;
 }

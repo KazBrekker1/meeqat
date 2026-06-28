@@ -1,7 +1,7 @@
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emit } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { availableMonitors } from "@tauri-apps/api/window";
+import { availableMonitors, cursorPosition, type Monitor } from "@tauri-apps/api/window";
 import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { platform } from "@tauri-apps/plugin-os";
 
@@ -47,56 +47,98 @@ export async function showPopover(trayRect?: TrayRect): Promise<void> {
   }
 
   try {
-    if (trayRect) {
-      // Position relative to the tray icon using its physical coordinates
-      const trayX = trayRect.position.x;
-      const trayY = trayRect.position.y;
-      const trayWidth = trayRect.size.width;
-      const trayHeight = trayRect.size.height;
+    const currentPlatform = platform();
+    const windowSize = await trayWindow.outerSize();
+    const windowWidth = windowSize.width;
+    const windowHeight = windowSize.height;
 
-      const [windowSize, monitors] = await Promise.all([
-        trayWindow.outerSize(),
-        availableMonitors(),
-      ]);
-      const windowWidth = windowSize.width;
-      const windowHeight = windowSize.height;
+    const monitors = await availableMonitors();
+    const within = (m: Monitor, px: number, py: number) =>
+      px >= m.position.x &&
+      px < m.position.x + m.size.width &&
+      py >= m.position.y &&
+      py < m.position.y + m.size.height;
 
-      // Center horizontally on tray icon
-      let x = trayX + Math.round(trayWidth / 2) - Math.round(windowWidth / 2);
+    // The cursor is the reliable signal for *which display* the tray was clicked
+    // on — the macOS menu-bar tray rect can be (0,0) or main-relative on secondary
+    // displays, which previously made the popover always land on the main monitor.
+    let cursor: { x: number; y: number } | null = null;
+    try {
+      cursor = await cursorPosition();
+    } catch {
+      // cursor position unavailable — fall back to the tray rect below
+    }
+
+    const trayX = trayRect?.position.x ?? 0;
+    const trayY = trayRect?.position.y ?? 0;
+    const trayW = trayRect?.size.width ?? 0;
+    const trayH = trayRect?.size.height ?? 0;
+
+    // Anchor monitor: prefer the one under the cursor, then the tray rect, then primary.
+    const targetMonitor =
+      (cursor && monitors.find((m) => within(m, cursor!.x, cursor!.y))) ||
+      (trayRect && monitors.find((m) => within(m, trayX, trayY))) ||
+      monitors[0];
+
+    if (targetMonitor) {
+      const monLeft = targetMonitor.position.x;
+      const monTop = targetMonitor.position.y;
+      const monRight = monLeft + targetMonitor.size.width;
+      const monBottom = monTop + targetMonitor.size.height;
+      const workTop = targetMonitor.workArea?.position.y ?? monTop;
+      const workBottom =
+        (targetMonitor.workArea?.position.y ?? monTop) +
+        (targetMonitor.workArea?.size.height ?? targetMonitor.size.height);
+
+      // Only trust the tray rect when it's non-empty AND on the chosen monitor.
+      const rectUsable =
+        !!trayRect && (trayX !== 0 || trayY !== 0) && within(targetMonitor, trayX, trayY);
+
+      // Horizontal: under the icon if usable, else under the cursor, else monitor centre.
+      const anchorX = rectUsable
+        ? trayX + trayW / 2
+        : cursor && within(targetMonitor, cursor.x, cursor.y)
+          ? cursor.x
+          : (monLeft + monRight) / 2;
+      let x = Math.round(anchorX - windowWidth / 2);
 
       let y: number;
-      const currentPlatform = platform();
-
       if (currentPlatform === "windows") {
-        // Windows: tray is in taskbar (usually bottom). Position above the icon.
-        y = trayY - windowHeight;
-        if (y < 0) y = trayY + trayHeight;
+        // Taskbar usually at the bottom: place above the icon (or below if no room).
+        y = rectUsable ? trayY - windowHeight : workBottom - windowHeight;
+        if (y < workTop) y = rectUsable ? trayY + trayH : workTop;
       } else {
-        // macOS: tray is in menu bar (top). Position below the icon.
-        y = trayY + trayHeight;
+        // macOS menu bar at the top: drop just below it.
+        y = rectUsable ? trayY + trayH : workTop;
       }
 
-      // Clamp to monitor bounds
-      const targetMonitor = monitors.find(m =>
-        trayX >= m.position.x &&
-        trayX < m.position.x + m.size.width &&
-        trayY >= m.position.y &&
-        trayY < m.position.y + m.size.height
-      );
-      if (targetMonitor) {
-        const monLeft = targetMonitor.position.x;
-        const monRight = targetMonitor.position.x + targetMonitor.size.width;
-        const monBottom = targetMonitor.position.y + targetMonitor.size.height;
-        x = Math.max(monLeft, Math.min(x, monRight - windowWidth));
-        y = Math.min(y, monBottom - windowHeight);
-      }
+      // Clamp inside the chosen monitor.
+      x = Math.max(monLeft, Math.min(x, monRight - windowWidth));
+      y = Math.max(monTop, Math.min(y, monBottom - windowHeight));
 
-      if (import.meta.dev) console.log(`[TrayPopover] Positioning at physical (${x}, ${y})`);
+      if (import.meta.dev)
+        console.log("[TrayPopover] place", {
+          monitor: targetMonitor.name,
+          rectUsable,
+          cursor,
+          trayRect,
+          x,
+          y,
+        });
       await trayWindow.setPosition(new PhysicalPosition(x, y));
     } else {
-      // Fallback: use positioner plugin via event (tray.vue handles it)
+      // No monitor info at all — fall back to the positioner plugin (tray.vue handles it).
       await emit("meeqat:tray:show");
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    // macOS: let the popover appear over another app's native fullscreen Space.
+    // A normal window (even alwaysOnTop) lacks NSWindowCollectionBehaviorCanJoinAllSpaces,
+    // so show() would place it on the previous Space — invisible behind the fullscreen app.
+    try {
+      await trayWindow.setVisibleOnAllWorkspaces(true);
+    } catch (e) {
+      if (import.meta.dev) console.warn("[TrayPopover] setVisibleOnAllWorkspaces failed:", e);
     }
 
     // Show the window

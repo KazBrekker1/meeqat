@@ -8,6 +8,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { handleIconState } from "@tauri-apps/plugin-positioner";
 import { togglePopover } from "@/composables/useTrayPopover";
 import { isTauriAvailable } from "@/utils/store";
+import type { TrayUpdatePayload } from "@/utils/types";
 
 declare global {
   interface Window {
@@ -138,12 +139,7 @@ export default defineNuxtPlugin(async () => {
   window.__MEEQAT_TRAY__!.tray = tray;
 
   // Listen for events from the UI to update the tray title
-  const unlisten = await listen<{
-    dateLine?: string;
-    title?: string | null;
-    nextLine?: string;
-    sinceLine?: string;
-  }>("meeqat:tray:update", async (evt) => {
+  const unlisten = await listen<TrayUpdatePayload>("meeqat:tray:update", async (evt) => {
     try {
       const payload = evt.payload || {};
       // Update tray title (shown in menu bar on macOS)

@@ -1,107 +1,166 @@
 <template>
-  <div class="flex flex-col h-screen w-full">
-    <!-- Sticky TopBar -->
-    <PrayerTopBar
-      :current-city="locationMode === 'gps' ? (gpsCity ?? undefined) : selectedCity"
-      :current-country-name="locationMode === 'gps' ? (gpsCity ? '' : 'GPS Location') : selectedCountryName"
-      :current-time-string="currentTimeString"
-      @open-settings="showSettingsModal = true"
-    />
-
-    <!-- Scrollable Content -->
-    <main class="flex-1 overflow-y-auto p-3">
-      <section class="max-w-2xl mx-auto space-y-2.5">
-        <!-- Location -->
-        <div class="animate-slide-up opacity-0">
-          <div v-if="locationMode === 'gps'" class="flex items-center gap-2 text-sm text-muted px-1 py-2">
-            <UIcon name="lucide:satellite" class="size-4 shrink-0" />
-            <span v-if="gpsCity">{{ gpsCity }}</span>
-            <span v-else-if="gpsLat != null && gpsLng != null" class="tabular-nums">
-              {{ gpsLat.toFixed(4) }}, {{ gpsLng.toFixed(4) }}
-            </span>
-            <span v-else class="text-dimmed">GPS mode — set location in Settings</span>
+  <div class="h-screen w-full relative">
+    <PrototypesCelestialSkyBackground class="h-full" :stars="70" :seed="11">
+      <div class="h-full flex flex-col text-white">
+        <!-- App bar -->
+        <header class="flex items-center justify-between px-3 sm:px-4 min-h-12 shrink-0 border-b border-white/10 bg-black/20 backdrop-blur-sm pt-safe">
+          <div class="flex items-center gap-2 min-w-0">
+            <MeeqatMark class="size-5 text-indigo-300 shrink-0" />
+            <span class="text-sm font-semibold shrink-0">Meeqat</span>
           </div>
-          <PrayerLocationSelector
-            v-else
-            :favorites="favorites"
-            :current-city="selectedCity"
-            :current-country-code="selectedCountry"
-            :max-favorites="MAX_FAVORITES"
-            :loading="isLoading"
-            @select="onLocationSelect"
-            @add-favorite="onAddCurrentToFavorites"
-            @remove-favorite="onRemoveFavorite"
-          />
+          <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
+            <button class="flex items-center gap-1 text-sm text-white/80 hover:text-white min-w-0 cursor-pointer" @click="showLocationModal = true">
+              <UIcon :name="locationMode === 'gps' ? 'lucide:satellite' : 'lucide:map-pin'" class="size-3.5 shrink-0" />
+              <span class="truncate">{{ locationMode === 'gps' ? (gpsCity ?? 'GPS Location') : (selectedCity || 'No location') }}</span>
+              <UIcon name="lucide:chevron-down" class="size-3.5 text-white/45 shrink-0" />
+            </button>
+            <span class="text-sm tabular-nums font-mono text-white/55 shrink-0">{{ currentTimeString }}</span>
+            <UButton icon="heroicons:cog-6-tooth-20-solid" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Open settings" @click="showSettingsModal = true" />
+          </div>
+        </header>
+
+        <!-- Body: single column on narrow, two-pane on wide -->
+        <div class="flex-1 min-h-0 overflow-y-auto scroll-celestial pb-safe md:pb-0 md:overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_380px]">
+          <!-- LEFT: orbit + countdown -->
+          <section class="flex flex-col items-center justify-center gap-2 px-4 py-6">
+            <PrototypesOrbitBumps
+              v-if="orbitPrayers.length"
+              :key="orbitSize"
+              :prayers="orbitPrayers"
+              :time="nowHHMM"
+              :moon-phase="moonPhase"
+              :size="orbitSize"
+            />
+            <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
+
+            <div v-if="nextPrayerLabel" class="text-center mt-1">
+              <p class="uppercase tracking-[0.2em] text-white/55 text-[11px] md:text-xs">Until {{ nextPrayerLabel }}</p>
+              <p class="font-mono font-bold tabular-nums mt-1 text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)] text-[2.4rem] leading-none md:text-6xl">
+                {{ countdownToNext }}
+              </p>
+              <p v-if="hijriDateVerbose || gregorianDateVerbose" class="text-white/55 mt-2 text-[11px] md:text-sm">
+                {{ hijriDateVerbose }}<span v-if="hijriDateVerbose && gregorianDateVerbose"> · </span>{{ gregorianDateVerbose }}
+              </p>
+              <p v-if="previousPrayerLabel && timeSincePrevious" class="text-white/60 mt-1 text-xs md:text-sm">
+                <UIcon name="lucide:moon" class="size-3 inline -mt-0.5" /> {{ timeSincePrevious }} since {{ previousPrayerLabel }}
+              </p>
+            </div>
+          </section>
+
+          <!-- RIGHT: location + schedule + calendar -->
+          <aside class="min-h-0 md:overflow-y-auto scroll-celestial md:border-l md:border-white/10 md:bg-black/25 md:backdrop-blur-md p-3 flex flex-col gap-3">
+            <p v-if="fetchError" class="text-red-300 text-sm px-1">{{ fetchError }}</p>
+
+            <Transition
+              enter-active-class="transition duration-200 ease-out"
+              enter-from-class="opacity-0 -translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 -translate-y-1"
+            >
+              <UAlert
+                v-if="isOffline || isStale"
+                :color="isOffline ? 'warning' : 'info'"
+                variant="subtle"
+                :icon="isOffline ? 'lucide:wifi-off' : 'lucide:refresh-cw'"
+                :title="isOffline ? 'You are offline' : 'Refreshing data...'"
+                :description="
+                  isOffline
+                    ? 'Showing cached prayer times. Data will refresh when you reconnect.'
+                    : 'Showing cached data while fetching latest prayer times.'
+                "
+              />
+            </Transition>
+
+            <!-- Schedule -->
+            <div>
+              <h2 class="text-[11px] uppercase tracking-wider text-white/45 mb-1.5 px-1">Today's prayers</h2>
+              <PrayerSkeleton v-if="isLoading && !timingsList.length" :count="6" />
+              <ul v-else-if="timingsList.length" class="rounded-xl bg-white/[0.06] border border-white/10 divide-y divide-white/[0.07] overflow-hidden">
+                <li
+                  v-for="t in timingsList"
+                  :key="t.key"
+                  class="flex items-center gap-2.5 px-3 py-2"
+                  :class="[t.isPast ? 'opacity-45' : '', t.isNext ? 'bg-white/[0.08]' : '']"
+                >
+                  <UIcon :name="t.isNext ? 'lucide:star' : iconFor(t.key.toLowerCase())" class="size-4 shrink-0" :class="t.isNext ? 'text-amber-300 fill-amber-300' : 'text-white/45'" />
+                  <span class="text-sm flex-1 truncate" :class="t.isNext ? 'font-semibold' : ''">{{ t.label }}</span>
+                  <span v-if="t.isNext && shortCountdown" class="text-[10px] text-amber-300/80 tabular-nums shrink-0">in {{ shortCountdown }}</span>
+                  <span v-else-if="t.altTime" class="text-xs tabular-nums text-white/40">{{ t.altTime }}</span>
+                  <span class="text-sm tabular-nums font-mono" :class="t.isNext ? 'text-indigo-100' : 'text-white/65'">{{ t.time }}</span>
+                </li>
+              </ul>
+              <div v-else class="text-center py-8 text-white/55">
+                <UIcon name="lucide:map-pin" class="size-8 mx-auto mb-2 text-white/30" />
+                <p class="text-sm">Select a city to view prayer times</p>
+              </div>
+            </div>
+
+            <!-- Mini calendar (desktop only) -->
+            <div class="hidden md:block">
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex p-0.5 rounded-lg bg-white/[0.06] border border-white/10 text-xs">
+                  <button
+                    class="px-2.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                    :class="calendarSystem === 'islamic' ? 'bg-indigo-400/25 ring-1 ring-indigo-300/40 font-medium' : 'text-white/60 hover:text-white'"
+                    @click="calendarSystem !== 'islamic' && toggleCalendarSystem()"
+                  >Hijri</button>
+                  <button
+                    class="px-2.5 py-0.5 rounded-md transition-colors cursor-pointer"
+                    :class="calendarSystem === 'gregorian' ? 'bg-indigo-400/25 ring-1 ring-indigo-300/40 font-medium' : 'text-white/60 hover:text-white'"
+                    @click="calendarSystem !== 'gregorian' && toggleCalendarSystem()"
+                  >Gregorian</button>
+                </div>
+                <UButton icon="lucide:calendar-check" size="xs" variant="ghost" color="neutral" class="text-white/60" aria-label="Jump to today" @click="selectToday" />
+              </div>
+              <UCalendar
+                v-model="calendarDate"
+                v-model:placeholder="calendarPlaceholder"
+                size="sm"
+                class="rounded-xl bg-white/[0.04] border border-white/10 p-2"
+              >
+                <template #heading>
+                  <span class="text-sm font-semibold">{{ calendarHeading }}</span>
+                </template>
+                <template #day="{ day }">
+                  <span class="relative grid place-items-center w-full h-full">
+                    {{ day.day }}
+                    <PrototypesCelestialMoonPhase
+                      :phase="lunarPhaseOf(day)"
+                      :size="10"
+                      :glow="false"
+                      :craters="false"
+                      dark-color="#0a1024"
+                      class="absolute bottom-0 right-0"
+                    />
+                  </span>
+                </template>
+              </UCalendar>
+            </div>
+
+            <!-- Calendar button (opens the full calendar popup) -->
+            <UButton
+              class="mt-auto"
+              block
+              variant="soft"
+              color="neutral"
+              icon="lucide:calendar"
+              label="Open calendar"
+              @click="showCalendarDrawer = true"
+            />
+          </aside>
         </div>
-
-        <div v-if="fetchError" class="text-[var(--ui-color-error-500)] text-sm">{{ fetchError }}</div>
-
-        <!-- Offline / Stale Alert -->
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="opacity-0 -translate-y-1"
-          enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition duration-150 ease-in"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 -translate-y-1"
-        >
-          <UAlert
-            v-if="isOffline || isStale"
-            :color="isOffline ? 'warning' : 'info'"
-            variant="subtle"
-            :icon="isOffline ? 'lucide:wifi-off' : 'lucide:refresh-cw'"
-            :title="isOffline ? 'You are offline' : 'Refreshing data...'"
-            :description="
-              isOffline
-                ? 'Showing cached prayer times. Data will refresh when you reconnect.'
-                : 'Showing cached data while fetching latest prayer times.'
-            "
-          />
-        </Transition>
-
-        <!-- Hero Card -->
-        <div class="animate-slide-up opacity-0 delay-100">
-          <PrayerHeroCard
-            :next-prayer-label="nextPrayerLabel || undefined"
-            :next-prayer-time="nextPrayerTime || undefined"
-            :countdown-to-next="countdownToNext || undefined"
-            :progress-percent="progressPercent"
-            :previous-prayer-label="previousPrayerLabel || undefined"
-            :time-since-previous="timeSincePrevious || undefined"
-            :hijri-date="hijriDateVerbose || undefined"
-            :gregorian-date="gregorianDateVerbose || undefined"
-          />
-        </div>
-
-        <!-- Prayer Row List -->
-        <div class="animate-slide-up opacity-0 delay-150">
-          <PrayerRowList :timings-list="timingsList" :loading="isLoading && !timingsList.length" />
-        </div>
-
-        <!-- Calendar Button -->
-        <div class="animate-slide-up opacity-0 delay-200">
-          <UButton
-            block
-            variant="outline"
-            icon="lucide:calendar"
-            label="Calendar"
-            @click="showCalendarDrawer = true"
-          />
-        </div>
-      </section>
-    </main>
+      </div>
+    </PrototypesCelestialSkyBackground>
 
     <!-- Calendar Drawer -->
     <PrayerCalendarDrawer
-      :open="showCalendarDrawer"
-      @update:open="showCalendarDrawer = $event"
-      :calendar-date="calendarDate"
-      @update:calendar-date="calendarDate = $event"
-      :calendar-placeholder="calendarPlaceholder"
-      @update:calendar-placeholder="calendarPlaceholder = $event as CalendarDate"
+      v-model:open="showCalendarDrawer"
+      v-model:calendar-date="calendarDate"
+      v-model:calendar-placeholder="calendarPlaceholder"
       :calendar-system="calendarSystem"
       :calendar-heading="calendarHeading"
-      :is-today="isToday"
       :hijri-date-verbose="hijriDateVerbose || undefined"
       :gregorian-date-verbose="gregorianDateVerbose || undefined"
       :format-tooltip="formatTooltip"
@@ -131,6 +190,31 @@
       @toggle-additional-times="showAdditionalTimes = !showAdditionalTimes"
       @update:notification-settings="onUpdateNotificationSettings"
     />
+
+    <!-- Location Modal (opened from the header) -->
+    <UModal v-model:open="showLocationModal" title="Location" description="Choose your city or use GPS">
+      <template #body>
+        <div class="space-y-3">
+          <div v-if="locationMode === 'gps'" class="flex items-center gap-2 text-sm text-muted">
+            <UIcon name="lucide:satellite" class="size-4 shrink-0" />
+            <span v-if="gpsCity">{{ gpsCity }}</span>
+            <span v-else-if="gpsLat != null && gpsLng != null" class="tabular-nums">{{ gpsLat.toFixed(4) }}, {{ gpsLng.toFixed(4) }}</span>
+            <span v-else class="text-dimmed">GPS mode — set coordinates in Settings</span>
+          </div>
+          <PrayerLocationSelector
+            v-else
+            :favorites="favorites"
+            :current-city="selectedCity"
+            :current-country-code="selectedCountry"
+            :max-favorites="MAX_FAVORITES"
+            :loading="isLoading"
+            @select="(c: string, cc: string) => { onLocationSelect(c, cc); showLocationModal = false; }"
+            @add-favorite="onAddCurrentToFavorites"
+            @remove-favorite="onRemoveFavorite"
+          />
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 
@@ -138,144 +222,32 @@
 import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { pad2, getSecondsOfDay } from "@/utils/time";
-import { MAIN_PRAYER_KEYS_SET, ISLAMIC_MONTHS } from "@/constants/prayers";
-import type { DateValue, CalendarDate } from "@internationalized/date";
-import {
-  DateFormatter,
-  getLocalTimeZone,
-  GregorianCalendar,
-  IslamicUmalquraCalendar,
-  toCalendar,
-  today,
-} from "@internationalized/date";
+import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { iconFor } from "@/components/prototypes/celestial/prayerIcons";
+import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
+import { GregorianCalendar, toCalendar } from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
 import { watchThrottled } from "@vueuse/core";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
+import type { TrayUpdatePayload } from "@/utils/types";
 
-const timeZone = getLocalTimeZone();
-const islamicDate = shallowRef(
-  toCalendar(today(timeZone), new IslamicUmalquraCalendar())
-);
-const gregorianDate = shallowRef(
-  toCalendar(today(timeZone), new GregorianCalendar())
-);
-
-const calendarSystem = shallowRef<"islamic" | "gregorian">("islamic");
-
-const calendarDate = computed<CalendarDate>({
-  get() {
-    return calendarSystem.value === "islamic"
-      ? (islamicDate.value as CalendarDate)
-      : (gregorianDate.value as CalendarDate);
-  },
-  set(val: CalendarDate) {
-    if (calendarSystem.value === "islamic") {
-      islamicDate.value = toCalendar(val, new IslamicUmalquraCalendar());
-    } else {
-      gregorianDate.value = toCalendar(val, new GregorianCalendar());
-    }
-  },
-});
-
-const calendarPlaceholder = shallowRef<CalendarDate>(calendarDate.value);
-
-const gregorianFormatter = new DateFormatter("en-US", { dateStyle: "long" });
-const monthYearFormatter = new DateFormatter("en-US", { month: "long", year: "numeric" });
-
-/**
- * Format Islamic date using hardcoded month names.
- * This avoids Intl.DateTimeFormat issues on Android WebViews which
- * don't properly support Islamic calendar locales.
- */
-function formatIslamicDate(date: DateValue): string {
-  const islamic = date.calendar instanceof IslamicUmalquraCalendar
-    ? date
-    : toCalendar(date, new IslamicUmalquraCalendar());
-  const monthName = ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
-  return `${islamic.day} ${monthName} ${islamic.year} AH`;
-}
-
-const calendarHeading = computed(() => {
-  const date = calendarPlaceholder.value;
-  if (calendarSystem.value === "islamic") {
-    const islamic = date.calendar instanceof IslamicUmalquraCalendar
-      ? date
-      : toCalendar(date, new IslamicUmalquraCalendar());
-    const monthName = ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
-    return `${monthName} ${islamic.year}`;
-  }
-  const greg = date.calendar instanceof GregorianCalendar
-    ? date
-    : toCalendar(date, new GregorianCalendar());
-  return monthYearFormatter.format(greg.toDate(timeZone));
-});
-
-function formatTooltip(date: DateValue) {
-  if (calendarSystem.value == "islamic") {
-    // When viewing Islamic calendar, tooltip shows Gregorian date
-    const greg = toCalendar(date, new GregorianCalendar());
-    return gregorianFormatter.format(greg.toDate(timeZone));
-  } else {
-    // When viewing Gregorian calendar, tooltip shows Islamic date with hardcoded months
-    return formatIslamicDate(date);
-  }
-}
-
-function selectToday() {
-  if (calendarSystem.value === "islamic") {
-    const todayIslamic = toCalendar(
-      today(timeZone),
-      new IslamicUmalquraCalendar()
-    );
-    islamicDate.value = todayIslamic;
-    calendarPlaceholder.value = todayIslamic as CalendarDate;
-  } else {
-    const todayGreg = toCalendar(today(timeZone), new GregorianCalendar());
-    gregorianDate.value = todayGreg;
-    calendarPlaceholder.value = todayGreg as CalendarDate;
-  }
-}
+// Dual Hijri/Gregorian calendar state + formatting (shared composable).
+const {
+  calendarSystem,
+  calendarDate,
+  calendarPlaceholder,
+  calendarHeading,
+  formatTooltip,
+  toggleCalendarSystem,
+  selectToday,
+  lunarPhaseOf,
+} = useHijriCalendar();
 
 const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
-
-const isToday = computed(() => {
-  const baseToday = today(timeZone);
-  if (calendarSystem.value === "islamic") {
-    const todayIslamic = toCalendar(baseToday, new IslamicUmalquraCalendar());
-    return calendarDate.value.compare(todayIslamic) === 0;
-  } else {
-    const todayGregorian = toCalendar(baseToday, new GregorianCalendar());
-    return calendarDate.value.compare(todayGregorian) === 0;
-  }
-});
-
-function toggleCalendarSystem() {
-  if (calendarSystem.value === "islamic") {
-    // convert current islamic date to gregorian and switch
-    gregorianDate.value = toCalendar(
-      islamicDate.value,
-      new GregorianCalendar()
-    );
-    calendarSystem.value = "gregorian";
-    calendarPlaceholder.value = toCalendar(
-      calendarPlaceholder.value,
-      new GregorianCalendar()
-    ) as CalendarDate;
-  } else {
-    islamicDate.value = toCalendar(
-      gregorianDate.value,
-      new IslamicUmalquraCalendar()
-    );
-    calendarSystem.value = "islamic";
-    calendarPlaceholder.value = toCalendar(
-      calendarPlaceholder.value,
-      new IslamicUmalquraCalendar()
-    ) as CalendarDate;
-  }
-}
+const showLocationModal = shallowRef(false);
 
 const { confirm } = useConfirm();
 
@@ -308,40 +280,52 @@ const {
   gpsLng,
   gpsCity,
   fetchByCoordinates,
+  getNextDayFirstPrayer,
 } = usePrayerTimes();
 
 const { reverseGeocode } = useGeolocation();
 
-// Progress percent for hero card
 const { getNow } = useMockTime();
-const progressPercent = computed(() => {
-  // countdownToNext updates every second, giving us a per-second reactive tick
+
+// --- Celestial redesign ---
+useHead({ htmlAttrs: { class: "dark" } });
+
+// Real moon phase for the current moment (mock-time aware).
+const moonPhase = computed(() => {
   void countdownToNext.value;
-  const list = timingsList.value;
-  if (!list.length) return 0;
-  const nextIdx = list.findIndex(t => t.isNext);
-  if (nextIdx === -1) return 0;
-  const nextItem = list[nextIdx]!;
-  if (typeof nextItem.minutes !== 'number') return 0;
-  const prevItem = nextIdx > 0 ? list[nextIdx - 1] : list[list.length - 1];
-  if (!prevItem || typeof prevItem.minutes !== 'number') return 0;
-  const currentMins = getSecondsOfDay(getNow()) / 60;
-  const prevMins = prevItem.minutes as number;
-  const nextMins = nextItem.minutes as number;
-  let total: number, elapsed: number;
-  if (nextMins <= prevMins) {
-    total = (1440 - prevMins) + nextMins;
-    elapsed = currentMins >= prevMins ? currentMins - prevMins : (1440 - prevMins) + currentMins;
-  } else {
-    total = nextMins - prevMins;
-    elapsed = currentMins - prevMins;
-  }
-  if (total <= 0) return 0;
-  return Math.min(100, Math.max(0, Math.round((elapsed / total) * 100)));
+  return lunarPhase(getNow());
 });
 
-// Next prayer time for hero card
-const nextPrayerTime = computed(() => timingsList.value.find(t => t.isNext)?.time ?? null);
+// Current time as 24h HH:MM for the orbit's "now" position (ticks each second).
+const nowHHMM = computed(() => {
+  void countdownToNext.value;
+  const m = Math.floor(getSecondsOfDay(getNow()) / 60);
+  return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+});
+
+// Prayers plotted on the orbit (24h times, lowercase keys for the sky gradient).
+const ORBIT_KEYS = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"];
+const orbitPrayers = computed(() =>
+  ORBIT_KEYS.flatMap((k) => {
+    const t = timingsList.value.find((x) => x.key === k);
+    if (!t || typeof t.minutes !== "number") return [];
+    const min = t.minutes;
+    return [{
+      key: k.toLowerCase(),
+      time: `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`,
+      isNext: !!t.isNext,
+      isPast: !!t.isPast,
+    }];
+  })
+);
+
+// Orbit grows on wide (desktop two-pane) windows. useMediaQuery only reacts
+// when the breakpoint is crossed (cheaper than per-pixel useWindowSize).
+const isWide = useMediaQuery("(min-width: 768px)");
+const orbitSize = computed(() => (isWide.value ? 300 : 230));
+
+// Short "in MM:SS"/"in HH:MM" badge next to the next prayer in the list.
+const shortCountdown = computed(() => (countdownToNext.value || "").split(":").slice(0, 2).join(":"));
 
 // Start notifications scheduler with custom settings
 const { startPrayerNotifications, stopPrayerNotifications, send, settings: notificationSettings } =
@@ -541,11 +525,13 @@ watchThrottled(
 
       await emit("meeqat:tray:update", {
         title,
+        moonPhase: moonPhase.value,
+        now: nowHHMM.value,
         nextPrayerLabel: nextPrayerLabel.value,
         countdown: countdownToNext.value,
         sincePrayerLabel: previousPrayerLabel.value ?? "",
         sinceTime: timeSincePrevious.value ?? "",
-      });
+      } satisfies TrayUpdatePayload);
     } catch {
       // ignore emit errors in non-tauri/web
     }
@@ -605,7 +591,7 @@ watchThrottled(
             : selectedCity.value,
         countryCode:
           locationMode.value === "gps" ? "" : selectedCountry.value,
-      });
+      } satisfies TrayUpdatePayload);
     } catch {
       // ignore emit errors in non-tauri/web
     }

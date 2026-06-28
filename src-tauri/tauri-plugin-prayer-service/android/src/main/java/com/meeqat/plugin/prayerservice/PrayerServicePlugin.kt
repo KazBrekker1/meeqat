@@ -250,7 +250,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
      * Update all widgets and ensure per-second service + safety nets are active.
      */
     private fun refreshWidgets() {
-        PrayerWidgetProvider.updateAllWidgets(appContext)
+        PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
         WidgetUpdateReceiver.ensureUpdatesActive(appContext)
     }
 
@@ -346,7 +346,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             DebugTimeProvider.setOffset(appContext, args.offsetMs)
 
             // Trigger widget refresh to show new time
-            PrayerWidgetProvider.updateAllWidgets(appContext)
+            PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -384,7 +384,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             DebugTimeProvider.clearOffset(appContext)
 
             // Trigger widget refresh to show real time
-            PrayerWidgetProvider.updateAllWidgets(appContext)
+            PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
 
             invoke.resolve()
         } catch (e: Exception) {

@@ -1,64 +1,74 @@
 <template>
   <UDrawer
-    :open="open"
-    @update:open="$emit('update:open', $event)"
+    v-model:open="open"
     title="Calendar"
     description="View prayer times for a specific date"
   >
     <template #body>
-      <div class="space-y-4 pb-4">
-        <!-- Date display -->
-        <div class="text-center space-y-0.5">
-          <p v-if="hijriDateVerbose" class="text-sm font-medium">
-            {{ hijriDateVerbose }}
-          </p>
-          <p v-if="gregorianDateVerbose" class="text-xs text-muted">
-            {{ gregorianDateVerbose }}
-          </p>
+      <div class="space-y-3 pb-4">
+        <!-- Hijri / Gregorian segmented -->
+        <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-elevated border border-default">
+          <button
+            class="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm cursor-pointer transition-colors"
+            :class="calendarSystem === 'islamic' ? 'bg-primary/15 ring-1 ring-primary/40 font-medium' : 'text-muted hover:text-default'"
+            @click="calendarSystem !== 'islamic' && $emit('toggle-calendar-system')"
+          >
+            <UIcon name="lucide:moon" class="size-4" /> Hijri
+          </button>
+          <button
+            class="flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-sm cursor-pointer transition-colors"
+            :class="calendarSystem === 'gregorian' ? 'bg-primary/15 ring-1 ring-primary/40 font-medium' : 'text-muted hover:text-default'"
+            @click="calendarSystem !== 'gregorian' && $emit('toggle-calendar-system')"
+          >
+            <UIcon name="lucide:sun" class="size-4" /> Gregorian
+          </button>
         </div>
 
-        <!-- Calendar controls -->
-        <div class="flex items-center justify-center gap-2">
-          <UFieldGroup size="xs">
-            <UButton
-              :variant="calendarSystem === 'islamic' ? 'solid' : 'outline'"
-              @click="calendarSystem !== 'islamic' && $emit('toggle-calendar-system')"
-              label="Hijri"
-              icon="lucide:moon"
-            />
-            <UButton
-              :variant="calendarSystem === 'gregorian' ? 'solid' : 'outline'"
-              @click="calendarSystem !== 'gregorian' && $emit('toggle-calendar-system')"
-              label="Gregorian"
-              icon="lucide:sun"
-            />
-          </UFieldGroup>
-          <UButton
-            v-if="showTodayButton"
-            @click="$emit('select-today')"
-            label="Today"
-            size="xs"
-            variant="soft"
-            icon="lucide:calendar-check"
-          />
-        </div>
-
-        <!-- Calendar -->
+        <!-- Calendar grid -->
         <UCalendar
-          :model-value="calendarDate"
-          @update:model-value="onCalendarDateUpdate"
-          :placeholder="calendarPlaceholder"
-          @update:placeholder="onPlaceholderUpdate"
+          v-model="calendarDate"
+          v-model:placeholder="calendarPlaceholder"
+          class="rounded-xl bg-elevated border border-default p-2"
         >
           <template #heading>
             <span class="text-sm font-semibold">{{ calendarHeading }}</span>
           </template>
           <template #day="{ day }">
             <UTooltip :text="formatTooltip(day)" :delay-duration="0">
-              <span>{{ day.day }}</span>
+              <span class="relative grid place-items-center w-full h-full">
+                {{ day.day }}
+                <PrototypesCelestialMoonPhase
+                  :phase="lunarPhaseOfDay(day)"
+                  :size="10"
+                  :glow="false"
+                  :craters="false"
+                  dark-color="#0a1024"
+                  class="absolute bottom-0 right-0"
+                />
+              </span>
             </UTooltip>
           </template>
         </UCalendar>
+
+        <!-- Selected day detail -->
+        <div class="rounded-xl bg-elevated border border-default p-3 flex items-center gap-3">
+          <PrototypesCelestialMoonPhase :phase="selectedPhase" :size="52" halo halo-color="#cdd6ff" />
+          <div class="leading-tight min-w-0">
+            <p v-if="hijriDateVerbose" class="text-sm font-semibold truncate">{{ hijriDateVerbose }}</p>
+            <p v-if="gregorianDateVerbose" class="text-xs text-muted truncate">{{ gregorianDateVerbose }}</p>
+            <p class="text-xs text-muted mt-0.5">{{ selectedPhaseName }} · {{ selectedIllum }}% illuminated</p>
+          </div>
+        </div>
+
+        <!-- Jump to today -->
+        <UButton
+          block
+          label="Jump to today"
+          icon="lucide:calendar-check"
+          color="neutral"
+          variant="soft"
+          @click="$emit('select-today')"
+        />
       </div>
     </template>
   </UDrawer>
@@ -66,40 +76,28 @@
 
 <script lang="ts" setup>
 import type { DateValue, CalendarDate } from "@internationalized/date";
+import { moonIllumination, moonPhaseName } from "@/components/prototypes/celestial/lunar";
+import { lunarPhaseOfDay } from "@/composables/useHijriCalendar";
 
-const props = defineProps<{
-  open: boolean;
-  calendarDate: CalendarDate;
-  calendarPlaceholder: CalendarDate;
+const open = defineModel<boolean>("open", { default: false });
+const calendarDate = defineModel<CalendarDate>("calendarDate", { required: true });
+const calendarPlaceholder = defineModel<CalendarDate>("calendarPlaceholder", { required: true });
+
+defineProps<{
   calendarSystem: "islamic" | "gregorian";
   calendarHeading: string;
-  isToday: boolean;
   hijriDateVerbose?: string;
   gregorianDateVerbose?: string;
   formatTooltip: (day: DateValue) => string;
 }>();
 
-const showTodayButton = computed(() => {
-  if (!props.isToday) return true;
-  // Also show if the visible month differs from the selected date's month
-  const p = props.calendarPlaceholder;
-  const d = props.calendarDate;
-  return p.month !== d.month || p.year !== d.year;
-});
-
-const emit = defineEmits<{
-  (e: "update:open", value: boolean): void;
-  (e: "update:calendarDate", value: CalendarDate): void;
-  (e: "update:calendarPlaceholder", value: CalendarDate): void;
-  (e: "toggle-calendar-system"): void;
-  (e: "select-today"): void;
+defineEmits<{
+  "toggle-calendar-system": [];
+  "select-today": [];
 }>();
 
-function onCalendarDateUpdate(val: unknown) {
-  if (val) emit('update:calendarDate', val as CalendarDate);
-}
-
-function onPlaceholderUpdate(val: unknown) {
-  if (val) emit('update:calendarPlaceholder', val as CalendarDate);
-}
+// Selected-day moon detail.
+const selectedPhase = computed(() => lunarPhaseOfDay(calendarDate.value));
+const selectedIllum = computed(() => moonIllumination(selectedPhase.value));
+const selectedPhaseName = computed(() => moonPhaseName(selectedPhase.value));
 </script>

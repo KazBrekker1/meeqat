@@ -1,98 +1,61 @@
 <template>
-  <div class="min-h-screen bg-default">
-    <div class="p-3 flex flex-col gap-2">
-      <!-- Close button -->
-      <UButton
-        icon="lucide:x"
-        variant="ghost"
-        color="neutral"
-        size="xs"
-        class="absolute top-2 right-2"
-        @click="closeOverlay"
-      />
-
-      <!-- Header with dates (draggable) -->
-      <div class="text-center pb-2 border-b border-default cursor-move select-none" @mousedown="startDrag">
-        <div v-if="hijriDate" class="text-xs font-medium text-default">{{ hijriDate }}</div>
-        <div v-if="gregorianDate" class="text-xs text-muted">{{ gregorianDate }}</div>
-        <div v-if="city" class="flex items-center justify-center gap-1 mt-0.5">
-          <UIcon name="lucide:map-pin" class="size-2.5 text-dimmed" />
-          <span class="text-[10px] text-dimmed">{{ city }}<span v-if="countryCode">, {{ countryCode }}</span></span>
-        </div>
-      </div>
-
-      <!-- Next prayer highlight (HeroCard style) -->
-      <div
-        v-if="nextPrayerLabel && countdown"
-        class="relative rounded-xl border border-[var(--ui-color-primary-500)]/20 bg-gradient-to-br from-[var(--ui-color-primary-500)]/10 via-[var(--ui-color-primary-500)]/5 to-transparent overflow-hidden"
-      >
-        <!-- Islamic pattern overlay -->
-        <div class="absolute inset-0 pattern-islamic opacity-30 pointer-events-none" />
-
-        <div class="relative px-3 py-2.5 space-y-1">
-          <p class="text-[10px] uppercase tracking-wider text-muted font-medium">Next Prayer</p>
-          <div class="flex items-baseline justify-between gap-2">
-            <h2 class="text-base font-bold text-[var(--ui-color-primary-400)]">{{ nextPrayerLabel }}</h2>
-            <span class="text-lg font-mono font-bold tabular-nums text-default">{{ countdown }}</span>
+  <div class="h-screen w-full relative overflow-hidden">
+    <PrototypesCelestialSkyBackground class="h-full" :stars="34" :seed="11" :shooting="false" scrim="top">
+      <div class="h-full flex flex-col p-3 text-white">
+        <!-- Header (draggable) + close -->
+        <div class="flex items-center justify-between cursor-move select-none" @mousedown="startDrag">
+          <div class="flex items-center gap-1 min-w-0">
+            <UIcon name="lucide:map-pin" class="size-3 text-white/55 shrink-0" />
+            <span v-if="city" class="text-xs font-medium truncate">{{ city }}<span v-if="countryCode" class="text-white/45">, {{ countryCode }}</span></span>
           </div>
-
-          <!-- Since previous -->
-          <div v-if="sincePrayerLabel && sinceTime" class="flex items-center gap-1.5 text-[10px] text-dimmed pt-1 border-t border-default">
-            <UIcon name="lucide:clock" class="size-3 shrink-0" />
-            <span>Since {{ sincePrayerLabel }}: {{ sinceTime }}</span>
-          </div>
+          <UButton icon="lucide:x" variant="ghost" color="neutral" size="xs" class="text-white/50 -mr-1" @click="closeOverlay" @mousedown.stop />
         </div>
-      </div>
 
-      <!-- Prayer list (RowList + Row style) -->
-      <div
-        v-if="prayers.length"
-        class="rounded-xl border border-default bg-elevated overflow-hidden divide-y divide-default"
-      >
-        <div
-          v-for="prayer in prayers"
-          :key="prayer.key"
-          class="flex items-center gap-2 px-3 py-1.5"
-          :class="getRowClasses(prayer)"
+        <!-- Compact orbit + countdown -->
+        <div class="flex flex-col items-center mt-1 shrink-0">
+          <PrototypesOrbitBumps
+            v-if="orbitPrayers.length"
+            :prayers="orbitPrayers"
+            :time="nowHHMM"
+            :moon-phase="moonPhase"
+            :size="150"
+          />
+          <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
+
+          <p v-if="nextPrayerLabel" class="text-[10px] uppercase tracking-[0.18em] text-white/55 -mt-1">Until {{ nextPrayerLabel }}</p>
+          <p v-if="countdown" class="text-2xl font-mono font-bold tabular-nums text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">{{ countdown }}</p>
+          <p v-if="hijriDate" class="text-[10px] text-white/50">{{ hijriDate }}</p>
+          <p v-if="sincePrayerLabel && sinceTime" class="text-[10px] text-white/50">
+            <UIcon name="lucide:moon" class="size-2.5 inline -mt-0.5" /> {{ sinceTime }} since {{ sincePrayerLabel }}
+          </p>
+        </div>
+
+        <!-- Prayer list -->
+        <ul
+          v-if="decoratedPrayers.length"
+          ref="listEl"
+          class="mt-2 flex-1 min-h-0 rounded-xl bg-white/[0.06] border border-white/10 divide-y divide-white/[0.07] overflow-y-auto scroll-celestial"
         >
-          <!-- Left accent bar -->
-          <div class="w-1 self-stretch rounded-full shrink-0" :class="getAccentClasses(prayer)" />
+          <li
+            v-for="prayer in decoratedPrayers"
+            :key="prayer.key"
+            :data-next="prayer.isNext ? 'true' : undefined"
+            class="flex items-center gap-2 px-3 py-1"
+            :class="[prayer.isPast ? 'opacity-45' : '', prayer.isNext ? 'bg-white/[0.08]' : '']"
+          >
+            <span class="size-1.5 rounded-full shrink-0" :class="prayer.isNext ? 'bg-amber-300' : 'bg-white/35'" />
+            <span class="text-xs flex-1 min-w-0 truncate" :class="prayer.isNext ? 'font-semibold' : ''">{{ prayer.label }}</span>
+            <span class="text-xs tabular-nums font-mono text-white/70">{{ prayer.time }}</span>
+          </li>
+        </ul>
 
-          <!-- Prayer name -->
-          <span class="text-xs font-medium flex-1 min-w-0 truncate" :class="getLabelClasses(prayer)">
-            {{ prayer.label }}
-          </span>
-
-          <!-- Time -->
-          <span class="text-xs font-semibold tabular-nums" :class="getTimeClasses(prayer)">
-            {{ prayer.time }}
-          </span>
-
-          <!-- Status icon -->
-          <UIcon
-            v-if="prayer.isNext"
-            name="lucide:chevron-right"
-            class="size-3.5 shrink-0 text-[var(--ui-color-primary-500)]"
-          />
-          <UIcon
-            v-else-if="prayer.isPast"
-            name="lucide:check"
-            class="size-3.5 shrink-0 text-muted"
-          />
-          <div v-else class="size-3.5 shrink-0" />
+        <!-- Actions -->
+        <div class="flex gap-2 pt-2 mt-auto">
+          <UButton label="Open Meeqat" size="xs" color="neutral" variant="soft" class="flex-1 justify-center" @click="openApp" />
+          <UButton label="Quit" size="xs" color="neutral" variant="ghost" class="flex-1 justify-center text-white/60" @click="quitApp" />
         </div>
       </div>
-
-      <!-- Actions -->
-      <div class="flex gap-2 pt-2 mt-auto border-t border-default">
-        <UButton color="primary" size="xs" class="flex-1" @click="openApp">
-          Open Meeqat
-        </UButton>
-        <UButton variant="outline" color="neutral" size="xs" class="flex-1" @click="quitApp">
-          Quit
-        </UButton>
-      </div>
-    </div>
+    </PrototypesCelestialSkyBackground>
   </div>
 </template>
 
@@ -110,70 +73,136 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { moveWindowConstrained, Position } from "@tauri-apps/plugin-positioner";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { pad2 } from "@/utils/time";
 import { hidePopover } from "@/composables/useTrayPopover";
-import type { PrayerTimingItem } from "@/utils/types";
-
-interface TrayUpdatePayload {
-  dateLine?: string;
-  title?: string | null;
-  nextLine?: string;
-  sinceLine?: string;
-  timingsList?: Array<{
-    key: string;
-    label: string;
-    time: string;
-    minutes?: number;
-    isNext?: boolean;
-    isPast?: boolean;
-  }>;
-  hijriDate?: string;
-  gregorianDate?: string;
-  nextPrayerLabel?: string;
-  countdown?: string;
-  sincePrayerLabel?: string;
-  sinceTime?: string;
-  city?: string;
-  countryCode?: string;
-}
+import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
 
 const hijriDate = ref<string>("");
-const gregorianDate = ref<string>("");
-const nextPrayerLabel = ref<string>("");
-const countdown = ref<string>("");
-const sincePrayerLabel = ref<string>("");
-const sinceTime = ref<string>("");
+const receivedMoonPhase = ref<number | null>(null);
 const city = ref<string>("");
 const countryCode = ref<string>("");
 const prayers = ref<PrayerTimingItem[]>([]);
 
-function getRowClasses(prayer: PrayerTimingItem) {
-  if (prayer.isNext) return 'bg-[var(--ui-color-primary-950)]';
-  if (prayer.isPast) return 'opacity-50';
-  return '';
-}
+// --- Local clock ---------------------------------------------------------
+// The tray derives countdown / next-prayer / since LOCALLY from a ticking clock
+// rather than from a per-second push by the main window. The main window's timer
+// is throttled/paused while it's hidden (exactly when the tray is in use), which
+// previously froze the tray until the app was reopened. The tray webview is live
+// whenever it's shown, so its own interval keeps everything current.
+const localNow = ref<Date>(new Date());
+let clockId: ReturnType<typeof setInterval> | null = null;
+const nowSec = computed(() => {
+  const d = localNow.value;
+  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+});
 
-function getAccentClasses(prayer: PrayerTimingItem) {
-  if (prayer.isNext) return 'bg-[var(--ui-color-primary-500)]';
-  if (prayer.isPast) return 'bg-[var(--ui-text-dimmed)]';
-  return 'bg-transparent';
-}
+const hhmm = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
 
-function getLabelClasses(prayer: PrayerTimingItem) {
-  if (prayer.isNext) return 'text-[var(--ui-color-primary-300)]';
-  if (prayer.isPast) return 'text-muted';
-  return '';
-}
+// Prefer the accurate astronomical phase sent by the main window; fall back to
+// a rough hijri-day estimate only until the first payload arrives.
+const moonPhase = computed(() => {
+  if (receivedMoonPhase.value != null) return receivedMoonPhase.value;
+  const day = parseInt((hijriDate.value || "").trim(), 10) || 1;
+  return ((day - 1) / 29.53) % 1;
+});
 
-function getTimeClasses(prayer: PrayerTimingItem) {
-  if (prayer.isNext) return 'text-[var(--ui-color-primary-400)]';
-  if (prayer.isPast) return 'text-muted';
-  return '';
+// Prayers decorated with LOCAL next/past flags (overriding any stale pushed flags).
+const decoratedPrayers = computed(() => {
+  const list = prayers.value.filter((p) => typeof p.minutes === "number");
+  const ns = nowSec.value;
+  let nextIdx = list.findIndex((p) => (p.minutes as number) * 60 > ns);
+  if (nextIdx === -1) nextIdx = 0; // all passed → next is tomorrow's first
+  return list.map((p, i) => ({
+    ...p,
+    isNext: i === nextIdx,
+    isPast: i !== nextIdx && (p.minutes as number) * 60 <= ns,
+  }));
+});
+
+const orbitPrayers = computed(() =>
+  decoratedPrayers.value.map((p) => ({
+    key: p.key.toLowerCase(),
+    time: hhmm(p.minutes as number),
+    isNext: p.isNext,
+    isPast: p.isPast,
+  }))
+);
+
+// "Now" position for the orbit, from the local clock.
+const nowHHMM = computed(() => hhmm(Math.floor(nowSec.value / 60)));
+
+const nextPrayer = computed(() => decoratedPrayers.value.find((p) => p.isNext) ?? null);
+const nextPrayerLabel = computed(() => nextPrayer.value?.label ?? "");
+
+const countdown = computed(() => {
+  const next = nextPrayer.value;
+  if (!next || typeof next.minutes !== "number") return "";
+  let diff = next.minutes * 60 - nowSec.value;
+  if (diff <= 0) diff += 86400; // next prayer is tomorrow's first
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  return h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${m}:${pad2(s)}`;
+});
+
+// Most recent prayer that has passed today (else yesterday's last prayer).
+const sinceInfo = computed(() => {
+  const list = decoratedPrayers.value;
+  const ns = nowSec.value;
+  let prev: (typeof list)[number] | null = null;
+  for (const p of list) {
+    if ((p.minutes as number) * 60 <= ns) prev = p;
+  }
+  let elapsed: number;
+  if (prev) {
+    elapsed = ns - (prev.minutes as number) * 60;
+  } else if (list.length) {
+    prev = list[list.length - 1]!; // yesterday's last (e.g. Isha)
+    elapsed = ns + (86400 - (prev.minutes as number) * 60);
+  } else {
+    return null;
+  }
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  return { label: prev.label, time: h > 0 ? `${h}h ${m}m` : `${m}m` };
+});
+const sincePrayerLabel = computed(() => sinceInfo.value?.label ?? "");
+const sinceTime = computed(() => sinceInfo.value?.time ?? "");
+
+// Centre the prayer list on the active/next prayer when the popover opens.
+const listEl = ref<HTMLElement | null>(null);
+function scrollActiveIntoView() {
+  const ul = listEl.value;
+  if (!ul) return;
+  const target = ul.querySelector<HTMLElement>('[data-next="true"]');
+  if (!target) return;
+  const delta =
+    target.getBoundingClientRect().top -
+    ul.getBoundingClientRect().top -
+    (ul.clientHeight - target.clientHeight) / 2;
+  ul.scrollTop += delta;
 }
 
 let unlistenUpdate: UnlistenFn | null = null;
 let unlistenShow: UnlistenFn | null = null;
+let unlistenFocus: UnlistenFn | null = null;
 
 onMounted(async () => {
+  // Local 1s clock — keeps countdown/next/since live whenever the popover is open,
+  // independent of the main window's (throttled) push.
+  localNow.value = new Date();
+  clockId = setInterval(() => {
+    localNow.value = new Date();
+  }, 1000);
+
+  // When the popover gains focus (i.e. it was just shown), centre on the next prayer.
+  unlistenFocus = await getCurrentWebviewWindow().onFocusChanged(({ payload: focused }) => {
+    if (focused) {
+      localNow.value = new Date(); // resync immediately on show
+      nextTick(scrollActiveIntoView);
+    }
+  });
+
   // Listen for show event to position window at tray (fallback)
   unlistenShow = await listen("meeqat:tray:show", async () => {
     try {
@@ -183,76 +212,39 @@ onMounted(async () => {
     }
   });
 
-  // Listen for updates from main window
+  // Listen for updates from main window. We only consume the slowly-changing data
+  // (prayer times, dates, location, moon phase) — countdown/next/since are derived
+  // locally from the tray's own clock so they stay live while the main window sleeps.
   unlistenUpdate = await listen<TrayUpdatePayload>("meeqat:tray:update", (event) => {
     const payload = event.payload;
 
-    if (payload.hijriDate) {
-      hijriDate.value = payload.hijriDate;
-    }
-    if (payload.gregorianDate) {
-      gregorianDate.value = payload.gregorianDate;
-    }
-    if (payload.nextPrayerLabel) {
-      nextPrayerLabel.value = payload.nextPrayerLabel;
-    }
-    if (payload.countdown) {
-      countdown.value = payload.countdown;
-    }
-    if (payload.sincePrayerLabel) {
-      sincePrayerLabel.value = payload.sincePrayerLabel;
-    }
-    if (payload.sinceTime) {
-      sinceTime.value = payload.sinceTime;
-    }
-    if (payload.city) {
-      city.value = payload.city;
-    }
-    if (payload.countryCode) {
-      countryCode.value = payload.countryCode;
-    }
+    if (payload.hijriDate) hijriDate.value = payload.hijriDate;
+    if (typeof payload.moonPhase === "number") receivedMoonPhase.value = payload.moonPhase;
+    if (payload.city) city.value = payload.city;
+    if (payload.countryCode) countryCode.value = payload.countryCode;
     if (payload.timingsList) {
-      prayers.value = payload.timingsList.filter(p => MAIN_PRAYER_KEYS_SET.has(p.key));
+      prayers.value = payload.timingsList.filter((p) => MAIN_PRAYER_KEYS_SET.has(p.key));
     }
 
-    // Fallback: parse sinceLine if individual fields not provided
-    if (payload.sinceLine && !payload.sincePrayerLabel) {
-      const sinceMatch = payload.sinceLine.match(/^(.+?)\s+(?:since\s+)?(\d.*)$/i);
-      if (sinceMatch?.[1] && sinceMatch[2]) {
-        sincePrayerLabel.value = sinceMatch[1].trim();
-        sinceTime.value = sinceMatch[2].trim().replace(/\s*ago$/i, "");
-      }
-    }
-
-    // Fallback: parse from dateLine if individual fields not provided
-    if (payload.dateLine && !payload.hijriDate && !payload.gregorianDate) {
-      const parts = payload.dateLine.split(" | ");
-      for (const part of parts) {
-        if (part.startsWith("Hijri: ")) {
-          hijriDate.value = part.replace("Hijri: ", "");
-        } else if (part.startsWith("Gregorian: ")) {
-          gregorianDate.value = part.replace("Gregorian: ", "");
-        }
-      }
-    }
-
-    // Fallback: parse nextLine for label and countdown
-    if (payload.nextLine && !payload.nextPrayerLabel) {
-      const match = payload.nextLine.match(/^(.+?)\s+in\s+(.+)$/);
-      if (match?.[1] && match[2]) {
-        nextPrayerLabel.value = match[1].trim();
-        countdown.value = match[2].trim();
+    // Fallback: parse Hijri date from dateLine if individual field not provided
+    if (payload.dateLine && !payload.hijriDate) {
+      for (const part of payload.dateLine.split(" | ")) {
+        if (part.startsWith("Hijri: ")) hijriDate.value = part.replace("Hijri: ", "");
       }
     }
   });
 });
 
 onBeforeUnmount(() => {
+  if (clockId) clearInterval(clockId);
   if (unlistenUpdate) {
     unlistenUpdate();
   }
   if (unlistenShow) {
     unlistenShow();
+  }
+  if (unlistenFocus) {
+    unlistenFocus();
   }
 });
 

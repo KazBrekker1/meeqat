@@ -1,12 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Meeqat mark (orbit ring + now-dot + crescent moon) as a monochrome
+     status-bar notification icon. The system tints it; keep it white-on-transparent.
+     The ring is a filled annulus (even-odd) rather than a stroke so it stays
+     crisp and legible at small status-bar sizes. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24"
     android:tint="#FFFFFF">
-    <!-- Crescent moon icon for prayer notification -->
+    <!-- orbit ring -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M12,3c-0.04,0 -0.08,0.01 -0.12,0.01C14.15,4.74 15.5,7.2 15.5,10c0,2.8 -1.35,5.26 -3.62,6.99c0.04,0 0.08,0.01 0.12,0.01c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM9.5,2C5.36,2 2,5.36 2,9.5c0,4.14 3.36,7.5 7.5,7.5c1.53,0 2.94,-0.46 4.12,-1.25C11.47,14.78 10,12.31 10,9.5c0,-2.81 1.47,-5.28 3.62,-6.25C12.44,2.46 11.03,2 9.5,2z"/>
+        android:fillType="evenOdd"
+        android:pathData="M2,12 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 Z M3.6,12 a8.4,8.4 0 1,0 16.8,0 a8.4,8.4 0 1,0 -16.8,0 Z" />
+    <!-- now-dot on the ring (lower-left) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M2.3,17.7 a1.5,1.5 0 1,0 3,0 a1.5,1.5 0 1,0 -3,0" />
+    <!-- crescent moon at the centre -->
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:scaleX="0.5"
+        android:scaleY="0.5">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,3 a6,6 0 0 0 9,9 9,9 0 1 1 -9,-9 Z" />
+    </group>
 </vector>

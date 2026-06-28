@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Always-visible daily times strip (6 weighted columns: label over time).
+     Next prayer is highlighted amber at runtime; past dimmed. Included by every
+     detailed widget layout so per-prayer times stay glanceable without hover/tap. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/times_strip"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:baselineAligned="false">
+
+    <LinearLayout
+        android:id="@+id/strip_col_1"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginEnd="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Fajr" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="4:21" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/strip_col_2"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="1dp"
+        android:layout_marginEnd="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sunrise" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5:38" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/strip_col_3"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="1dp"
+        android:layout_marginEnd="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Dhuhr" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="11:54" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/strip_col_4"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="1dp"
+        android:layout_marginEnd="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Asr" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3:42" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/strip_col_5"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="1dp"
+        android:layout_marginEnd="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Maghrib" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="6:39" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/strip_col_6"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="1dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp">
+        <TextView android:id="@+id/strip_label_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Isha" android:textColor="#8CFFFFFF" android:textSize="9sp" android:maxLines="1" />
+        <TextView android:id="@+id/strip_time_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="8:01" android:textColor="#CCFFFFFF" android:textSize="11sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+</LinearLayout>

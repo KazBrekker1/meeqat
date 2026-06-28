@@ -35,7 +35,7 @@
 		"devUrl": "http://localhost:3001"
 	},
 	"productName": "Meeqat",
-	"version": "2.4.3",
+	"version": "2.4.4",
 	"identifier": "com.meeqat.app",
 	"plugins": {},
 	"app": {
@@ -43,10 +43,10 @@
 			{
 				"label": "main",
 				"title": "Meeqat",
-				"width": 750,
-				"height": 830,
-				"minWidth": 760,
-				"minHeight": 480,
+				"width": 920,
+				"height": 860,
+				"minWidth": 800,
+				"minHeight": 740,
 				"resizable": true,
 				"fullscreen": false
 			},

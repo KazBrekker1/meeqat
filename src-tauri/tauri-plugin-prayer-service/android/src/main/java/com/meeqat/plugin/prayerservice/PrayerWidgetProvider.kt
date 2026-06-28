@@ -15,8 +15,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * AppWidgetProvider that displays prayer times on the home screen.
- * Reads prayer data from SharedPreferences (shared with the plugin).
+ * AppWidgetProvider that displays prayer times on the home screen as the "orbit"
+ * design: a Canvas-rendered orbit/moon bitmap (see [MeeqatOrbit]) plus a live
+ * countdown, progress bar, an always-visible daily times strip, and a "since" line.
+ *
+ * Update strategy: the orbit bitmap only changes once a minute, so the per-second
+ * service tick does a cheap partiallyUpdateAppWidget (countdown/progress/since/clock)
+ * and the full update (which ships the bitmap + strip over IPC) runs once per minute
+ * or whenever the data changes.
  */
 class PrayerWidgetProvider : AppWidgetProvider() {
 
@@ -38,368 +44,307 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         private val timeFormat = ThreadLocal.withInitial { SimpleDateFormat("h:mm a", Locale.getDefault()) }
         private val timeFormatShort = ThreadLocal.withInitial { SimpleDateFormat("h:mm", Locale.getDefault()) }
-        private val gregorianFormat = ThreadLocal.withInitial { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
+        private val gregorianFormat = ThreadLocal.withInitial { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
 
-        // Data older than this is considered stale (25 hours — covers a full day plus margin)
         private const val DATA_STALENESS_THRESHOLD_MS = 25 * 60 * 60 * 1000L
-
         private const val MS_PER_DAY = 24 * 60 * 60 * 1000L
         private const val PRAYER_ISHA = "Isha"
 
-        // Cached PendingIntent to avoid per-second packageManager queries
         @Volatile private var cachedLaunchPendingIntent: PendingIntent? = null
+        // Minute at which we last shipped a full update (bitmap + strip). The per-second
+        // tick only does partial updates between minute boundaries.
+        @Volatile private var lastFullMinute = -1L
 
-        private fun hasDetailedLayout(layoutId: Int): Boolean {
-            return layoutId == R.layout.widget_prayer_compact
-                || layoutId == R.layout.widget_prayer_4x4
-                || layoutId == R.layout.widget_prayer_wide
-                || layoutId == R.layout.widget_prayer_4x3
+        private val stripLabelIds = intArrayOf(
+            R.id.strip_label_1, R.id.strip_label_2, R.id.strip_label_3,
+            R.id.strip_label_4, R.id.strip_label_5, R.id.strip_label_6
+        )
+        private val stripTimeIds = intArrayOf(
+            R.id.strip_time_1, R.id.strip_time_2, R.id.strip_time_3,
+            R.id.strip_time_4, R.id.strip_time_5, R.id.strip_time_6
+        )
+        private val stripColIds = intArrayOf(
+            R.id.strip_col_1, R.id.strip_col_2, R.id.strip_col_3,
+            R.id.strip_col_4, R.id.strip_col_5, R.id.strip_col_6
+        )
+
+        private fun layoutFor(minWidth: Int, minHeight: Int): Int {
+            // Any landscape widget with room for the orbit beside the timers uses the
+            // side-by-side "wide" layout (orbit left, countdown/progress right, strip below).
+            val landscape = minWidth >= 320 && minHeight >= 120 && minWidth > minHeight * 1.2
+            return when {
+                landscape -> R.layout.widget_prayer_wide
+                minHeight >= 250 -> R.layout.widget_prayer_4x4
+                minHeight >= 160 -> R.layout.widget_prayer_4x3
+                minHeight >= 110 -> R.layout.widget_prayer_compact
+                else -> R.layout.widget_prayer_4x2
+            }
         }
+
+        /** Orbit/moon image: (viewId, drawOrbit, renderPx). 4×2 is moon-only. */
+        private fun bitmapSpec(layoutId: Int): Triple<Int, Boolean, Int> = when (layoutId) {
+            R.layout.widget_prayer_4x4 -> Triple(R.id.orbit_image, true, 360)
+            R.layout.widget_prayer_4x3 -> Triple(R.id.orbit_image, true, 300)
+            R.layout.widget_prayer_compact -> Triple(R.id.orbit_image, true, 260)
+            R.layout.widget_prayer_wide -> Triple(R.id.orbit_image, true, 300)
+            else -> Triple(R.id.moon_image, false, 140)
+        }
+
+        // ---- entry points -------------------------------------------------------
 
         /**
-         * Directly update all widgets via AppWidgetManager (no broadcast overhead).
-         * Preferred for high-frequency updates (per-second from CountdownService).
+         * Called per-second by CountdownService. Does a full update (bitmap) at most
+         * once per minute and a cheap partial update for the live countdown otherwise.
          */
-        fun updateAllWidgets(context: Context) {
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-            val widgetIds = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, PrayerWidgetProvider::class.java)
-            )
-            for (widgetId in widgetIds) {
-                doUpdateWidget(context, appWidgetManager, widgetId)
+        fun updateAllWidgets(context: Context, forceFull: Boolean = false) {
+            val mgr = AppWidgetManager.getInstance(context)
+            val ids = mgr.getAppWidgetIds(ComponentName(context, PrayerWidgetProvider::class.java))
+            if (ids.isEmpty()) return
+            val minute = System.currentTimeMillis() / 60000L
+            val full = forceFull || minute != lastFullMinute
+            for (id in ids) {
+                if (full) fullUpdate(context, mgr, id) else partialUpdate(context, mgr, id)
             }
+            if (full) lastFullMinute = minute
         }
 
-        private fun doUpdateWidget(
-            context: Context,
-            appWidgetManager: AppWidgetManager,
-            appWidgetId: Int
-        ) {
-            // Get widget size to determine layout
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
-            val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
+        // ---- shared computed state ---------------------------------------------
 
-            // Select layout based on width and height
-            // Wide layout only for very wide widgets (5+ columns, 2 rows) with high aspect ratio
-            val isWide = minWidth >= 380 && minHeight < 160 && minWidth > minHeight * 2.0
-            val layoutId = when {
-                isWide -> R.layout.widget_prayer_wide               // Wide horizontal layout (5x2 or 6x2)
-                minHeight >= 250 -> R.layout.widget_prayer_4x4      // Full (all 6 prayers vertical)
-                minHeight >= 160 -> R.layout.widget_prayer_4x3      // 4x3 with next prayer + 2-col grid
-                minHeight >= 110 -> R.layout.widget_prayer_compact  // Compact with prev prayer
-                else -> R.layout.widget_prayer_4x2                  // Minimal (countdown only)
+        private data class WidgetState(
+            val untilText: String,
+            val countdown: String,
+            val progressPct: Int,
+            val sinceText: String?,
+            val nowClock: String
+        )
+
+        private fun computeState(
+            context: Context,
+            prayers: List<PrayerTimeData>,
+            nextIndex: Int,
+            nextDayPrayer: PrayerTimeData?
+        ): WidgetState {
+            val now = DebugTimeProvider.currentTimeMillis(context)
+            val next = nextDayPrayer ?: prayers.getOrNull(nextIndex)
+            val untilText = if (next != null) "Until ${next.label} · ${formatTimeShort(next.prayerTime)}" else ""
+            val countdown = if (next != null) formatCountdown(context, next.prayerTime) else ""
+
+            // progress between previous prayer and next
+            var pct = 0
+            if (next != null) {
+                var prevTime = 0L
+                for (p in prayers) if (p.prayerTime in (prevTime + 1)..now) prevTime = p.prayerTime
+                if (prevTime == 0L) {
+                    val isha = prayers.find { it.prayerName.equals(PRAYER_ISHA, true) }
+                    prevTime = (isha?.prayerTime ?: next.prayerTime) - MS_PER_DAY
+                }
+                val span = next.prayerTime - prevTime
+                if (span > 0) pct = (((now - prevTime).toDouble() / span) * 100).toInt().coerceIn(0, 100)
             }
 
+            // since: most recent prayer that has passed (else yesterday's Isha)
+            var prev: PrayerTimeData? = null
+            for (p in prayers) if (p.prayerTime < now && (prev == null || p.prayerTime > prev!!.prayerTime)) prev = p
+            val sinceText = when {
+                prev != null -> "${prev!!.label} · ${formatElapsed(context, prev!!.prayerTime)}"
+                else -> prayers.find { it.prayerName.equals(PRAYER_ISHA, true) }
+                    ?.let { "Isha · ${formatElapsed(context, it.prayerTime - MS_PER_DAY)}" }
+            }
+
+            return WidgetState(untilText, countdown, pct, sinceText, formatTime(now))
+        }
+
+        // ---- full update (bitmap + everything) ----------------------------------
+
+        private fun fullUpdate(context: Context, mgr: AppWidgetManager, appWidgetId: Int) {
+            val options = mgr.getAppWidgetOptions(appWidgetId)
+            val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
+            val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
+            val layoutId = layoutFor(minWidth, minHeight)
             val views = RemoteViews(context.packageName, layoutId)
 
-            // Load prayer data (PrayerTimeUtils handles SharedPreferences caching)
             val prayers = PrayerTimeUtils.loadPrayerTimes(context)
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val nextPrayerIndex = prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0)
+            val storedIndex = prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0)
 
-            // Set up click intent to open app (cached to avoid per-second packageManager queries)
-            val pendingIntent = cachedLaunchPendingIntent ?: run {
-                val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                launchIntent?.let {
+            // click → open app
+            val pi = cachedLaunchPendingIntent ?: run {
+                context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
                     PendingIntent.getActivity(
                         context, 0, it,
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    ).also { pi -> cachedLaunchPendingIntent = pi }
+                    ).also { p -> cachedLaunchPendingIntent = p }
                 }
             }
-            if (pendingIntent != null) {
-                views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+            if (pi != null) views.setOnClickPendingIntent(R.id.widget_root, pi)
+
+            val (imageId, drawOrbitBase, px) = bitmapSpec(layoutId)
+
+            if (prayers.isEmpty()) {
+                showMessage(views, "Open Meeqat")
+                views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, 0, DebugTimeProvider.currentTimeMillis(context), false))
+                setHeaderData(context, views, prefs)
+                mgr.updateAppWidget(appWidgetId, views)
+                return
             }
 
-            if (prayers.isNotEmpty()) {
-                // Recalculate the actual next prayer index based on current time
-                // This handles the case where the app is in background and prayer time passes
-                val actualNextIndex = PrayerTimeUtils.findNextPrayerIndex(context, prayers, nextPrayerIndex)
+            val nextIndex = PrayerTimeUtils.findNextPrayerIndex(context, prayers, storedIndex)
+            if (nextIndex != storedIndex) prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, nextIndex).commit()
 
-                // Update SharedPreferences if index changed
-                if (actualNextIndex != nextPrayerIndex) {
-                    prefs.edit().putInt(KEY_NEXT_PRAYER_INDEX, actualNextIndex).commit()
-                }
+            val allPassed = PrayerTimeUtils.allPrayersPassed(context, prayers)
+            val nextDayPrayer = if (allPassed) PrayerTimeUtils.loadNextDayPrayer(context) else null
 
-                // Check if all today's prayers have passed — use next-day prayer if available
-                val allPassed = PrayerTimeUtils.allPrayersPassed(context, prayers)
-                val nextDayPrayer = if (allPassed) PrayerTimeUtils.loadNextDayPrayer(context) else null
-
-                // Detect stale data: >25 hours old AND all prayers passed AND no next-day prayer
-                val dataTimestamp = prefs.getLong("data_timestamp", 0L)
-                val dataAge = System.currentTimeMillis() - dataTimestamp
-                val isStale = dataAge > DATA_STALENESS_THRESHOLD_MS
-
-                if (isStale && allPassed && nextDayPrayer == null) {
-                    showStaleState(views)
-                } else {
-                    populateWidget(context, views, prayers, actualNextIndex, layoutId, nextDayPrayer)
-                }
+            val dataAge = System.currentTimeMillis() - prefs.getLong("data_timestamp", 0L)
+            if (dataAge > DATA_STALENESS_THRESHOLD_MS && allPassed && nextDayPrayer == null) {
+                showMessage(views, "Tap to refresh")
             } else {
-                showLoadingState(views)
+                val state = computeState(context, prayers, nextIndex, nextDayPrayer)
+                applyState(views, state)
+                populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1)
             }
 
-            // Set calendar dates from SharedPreferences (passed from frontend)
-            setHeaderData(context, views, prefs)
+            // orbit/moon bitmap
+            val now = DebugTimeProvider.currentTimeMillis(context)
+            val drawOrbit = drawOrbitBase && prayers.isNotEmpty()
+            views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, nextIndex, now, drawOrbit))
 
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+            setHeaderData(context, views, prefs)
+            mgr.updateAppWidget(appWidgetId, views)
         }
 
-        private fun populateWidget(
-            context: Context,
-            views: RemoteViews,
-            prayers: List<PrayerTimeData>,
-            nextPrayerIndex: Int,
-            layoutId: Int,
-            nextDayPrayer: PrayerTimeData? = null
-        ) {
-            // Set next prayer info — use next-day prayer if all today's prayers passed
-            if (nextDayPrayer != null) {
-                views.setTextViewText(R.id.next_prayer_name, nextDayPrayer.label)
-                views.setTextViewText(R.id.next_prayer_time, formatTime(nextDayPrayer.prayerTime))
-                views.setTextViewText(R.id.countdown, formatCountdown(context, nextDayPrayer.prayerTime))
-            } else if (nextPrayerIndex in prayers.indices) {
-                val nextPrayer = prayers[nextPrayerIndex]
-                views.setTextViewText(R.id.next_prayer_name, nextPrayer.label)
-                views.setTextViewText(R.id.next_prayer_time, formatTime(nextPrayer.prayerTime))
-                views.setTextViewText(R.id.countdown, formatCountdown(context, nextPrayer.prayerTime))
+        // ---- partial update (per-second, no bitmap) ------------------------------
+
+        private fun partialUpdate(context: Context, mgr: AppWidgetManager, appWidgetId: Int) {
+            val options = mgr.getAppWidgetOptions(appWidgetId)
+            val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
+            val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250)
+            val layoutId = layoutFor(minWidth, minHeight)
+
+            val prayers = PrayerTimeUtils.loadPrayerTimes(context)
+            if (prayers.isEmpty()) return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val nextIndex = PrayerTimeUtils.findNextPrayerIndex(context, prayers, prefs.getInt(KEY_NEXT_PRAYER_INDEX, 0))
+            val nextDayPrayer = if (PrayerTimeUtils.allPrayersPassed(context, prayers)) PrayerTimeUtils.loadNextDayPrayer(context) else null
+
+            val state = computeState(context, prayers, nextIndex, nextDayPrayer)
+            val views = RemoteViews(context.packageName, layoutId)
+            applyState(views, state)
+            try { mgr.partiallyUpdateAppWidget(appWidgetId, views) } catch (e: Exception) {
+                Log.w(TAG, "partial update failed: ${e.message}")
             }
+        }
 
-            // Set previous prayer info (for layouts that support it)
-            if (hasDetailedLayout(layoutId)) {
-                // Find the most recent prayer that has actually passed (single-pass)
-                val now = DebugTimeProvider.currentTimeMillis(context)
-                var prevPrayer: PrayerTimeData? = null
-                for (p in prayers) {
-                    if (p.prayerTime < now && (prevPrayer == null || p.prayerTime > prevPrayer.prayerTime)) {
-                        prevPrayer = p
-                    }
-                }
+        private fun applyState(views: RemoteViews, s: WidgetState) {
+            views.setTextViewText(R.id.until_label, s.untilText)
+            views.setTextViewText(R.id.countdown, s.countdown)
+            views.setProgressBar(R.id.next_progress, 100, s.progressPct, false)
+            if (s.sinceText != null) {
+                views.setTextViewText(R.id.since_line, s.sinceText)
+                views.setViewVisibility(R.id.since_line, View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.since_line, View.INVISIBLE)
+            }
+            try { views.setTextViewText(R.id.now_clock, s.nowClock) } catch (_: Exception) {}
+        }
 
-                if (prevPrayer != null) {
-                    try {
-                        views.setTextViewText(R.id.prev_prayer_name, prevPrayer.label)
-                        views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, prevPrayer.prayerTime))
-                        views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "prev_prayer views not in layout")
+        private fun populateStrip(context: Context, views: RemoteViews, prayers: List<PrayerTimeData>, nextIndex: Int) {
+            for (i in 0 until 6) {
+                if (i < prayers.size) {
+                    val p = prayers[i]
+                    views.setTextViewText(stripLabelIds[i], p.label)
+                    views.setTextViewText(stripTimeIds[i], formatTimeShort(p.prayerTime))
+                    views.setViewVisibility(stripColIds[i], View.VISIBLE)
+                    when {
+                        i == nextIndex -> {
+                            views.setInt(stripColIds[i], "setBackgroundResource", R.drawable.widget_highlight_bg)
+                            views.setTextColor(stripLabelIds[i], 0xFFFDE68A.toInt())
+                            views.setTextColor(stripTimeIds[i], 0xFFFDE68A.toInt())
+                        }
+                        nextIndex in 0..5 && i < nextIndex -> { // past
+                            views.setInt(stripColIds[i], "setBackgroundColor", 0x00000000)
+                            views.setTextColor(stripLabelIds[i], 0x59FFFFFF)
+                            views.setTextColor(stripTimeIds[i], 0x66FFFFFF)
+                        }
+                        else -> { // upcoming
+                            views.setInt(stripColIds[i], "setBackgroundColor", 0x00000000)
+                            views.setTextColor(stripLabelIds[i], 0x8CFFFFFF.toInt())
+                            views.setTextColor(stripTimeIds[i], 0xCCFFFFFF.toInt())
+                        }
                     }
                 } else {
-                    // No prayer has passed yet today (before Fajr)
-                    // Show "Since Isha" from yesterday if we have Isha in the list
-                    val isha = prayers.find { it.prayerName.equals(PRAYER_ISHA, ignoreCase = true) }
-                    if (isha != null) {
-                        try {
-                            // Isha from yesterday = today's Isha time - 24 hours
-                            val yesterdayIshaTime = isha.prayerTime - MS_PER_DAY
-                            views.setTextViewText(R.id.prev_prayer_name, "Isha")
-                            views.setTextViewText(R.id.prev_prayer_elapsed, formatElapsed(context, yesterdayIshaTime))
-                            views.setViewVisibility(R.id.prev_prayer_container, View.VISIBLE)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "prev_prayer views not in layout")
-                        }
-                    } else {
-                        try {
-                            views.setViewVisibility(R.id.prev_prayer_container, View.GONE)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "prev_prayer views not in layout")
-                        }
-                    }
-                }
-            }
-
-            // Populate prayer list for layouts with prayer rows
-            if (hasDetailedLayout(layoutId)) {
-                val maxRows = 6
-                val prayersToShow = prayers.take(maxRows)
-
-                val rowNameIds = intArrayOf(
-                    R.id.prayer_name_1, R.id.prayer_name_2, R.id.prayer_name_3,
-                    R.id.prayer_name_4, R.id.prayer_name_5, R.id.prayer_name_6
-                )
-                val rowTimeIds = intArrayOf(
-                    R.id.prayer_time_1, R.id.prayer_time_2, R.id.prayer_time_3,
-                    R.id.prayer_time_4, R.id.prayer_time_5, R.id.prayer_time_6
-                )
-                val rowContainerIds = intArrayOf(
-                    R.id.prayer_row_1, R.id.prayer_row_2, R.id.prayer_row_3,
-                    R.id.prayer_row_4, R.id.prayer_row_5, R.id.prayer_row_6
-                )
-
-                // Use shorter time format for compact/wide/4x3 layouts
-                val useShortTime = layoutId == R.layout.widget_prayer_compact || layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x3
-
-                for (i in 0 until maxRows) {
-                    if (i < prayersToShow.size && i < rowNameIds.size) {
-                        val prayer = prayersToShow[i]
-                        views.setTextViewText(rowNameIds[i], prayer.label)
-                        views.setTextViewText(rowTimeIds[i], if (useShortTime) formatTimeShort(prayer.prayerTime) else formatTime(prayer.prayerTime))
-                        views.setViewVisibility(rowContainerIds[i], View.VISIBLE)
-
-                        // Highlight current prayer row (skip highlight when showing next-day prayer)
-                        if (nextDayPrayer == null && i == nextPrayerIndex) {
-                            views.setInt(rowContainerIds[i], "setBackgroundResource", R.drawable.widget_highlight_bg)
-                            views.setTextColor(rowNameIds[i], 0xFFFFFFFF.toInt())
-                            views.setTextColor(rowTimeIds[i], 0xFFFFFFFF.toInt())
-                        } else {
-                            views.setInt(rowContainerIds[i], "setBackgroundResource", R.drawable.widget_prayer_row_bg)
-                            views.setTextColor(rowNameIds[i], 0xB3FFFFFF.toInt())
-                            views.setTextColor(rowTimeIds[i], 0x80FFFFFF.toInt())
-                        }
-                    } else if (i < rowContainerIds.size) {
-                        views.setViewVisibility(rowContainerIds[i], View.GONE)
-                    }
+                    views.setViewVisibility(stripColIds[i], View.GONE)
                 }
             }
         }
 
-        private fun showLoadingState(views: RemoteViews) {
-            views.setTextViewText(R.id.next_prayer_name, "Open Meeqat")
-            views.setTextViewText(R.id.next_prayer_time, "")
-            views.setTextViewText(R.id.countdown, "")
-            hideSecondaryViews(views)
-        }
-
-        private fun showStaleState(views: RemoteViews) {
-            views.setTextViewText(R.id.next_prayer_name, "Tap to refresh")
-            views.setTextViewText(R.id.next_prayer_time, "")
-            views.setTextViewText(R.id.countdown, "")
-            hideSecondaryViews(views)
-        }
-
-        private fun hideSecondaryViews(views: RemoteViews) {
-            try { views.setViewVisibility(R.id.prev_prayer_container, View.GONE) } catch (_: Exception) {}
-            val rowContainerIds = intArrayOf(
-                R.id.prayer_row_1, R.id.prayer_row_2, R.id.prayer_row_3,
-                R.id.prayer_row_4, R.id.prayer_row_5, R.id.prayer_row_6
-            )
-            for (id in rowContainerIds) {
-                try { views.setViewVisibility(id, View.GONE) } catch (_: Exception) {}
-            }
+        private fun showMessage(views: RemoteViews, msg: String) {
+            views.setTextViewText(R.id.countdown, msg)
+            try { views.setTextViewText(R.id.until_label, "") } catch (_: Exception) {}
+            try { views.setViewVisibility(R.id.since_line, View.INVISIBLE) } catch (_: Exception) {}
+            for (id in stripColIds) try { views.setViewVisibility(id, View.GONE) } catch (_: Exception) {}
         }
 
         private fun setHeaderData(context: Context, views: RemoteViews, prefs: android.content.SharedPreferences) {
-            val hijriDate = prefs.getString(KEY_HIJRI_DATE, null)
-            val gregorianDate = prefs.getString(KEY_GREGORIAN_DATE, null)
+            val hijri = prefs.getString(KEY_HIJRI_DATE, null)
+            val greg = prefs.getString(KEY_GREGORIAN_DATE, null)
             val city = prefs.getString(KEY_CITY, null)
-            val countryCode = prefs.getString(KEY_COUNTRY_CODE, null)
+            val cc = prefs.getString(KEY_COUNTRY_CODE, null)
 
-            if (gregorianDate != null) {
-                views.setTextViewText(R.id.gregorian_date, gregorianDate)
-            } else {
-                views.setTextViewText(R.id.gregorian_date, gregorianFormat.get()!!.format(Date(DebugTimeProvider.currentTimeMillis(context))))
-            }
-
-            if (hijriDate != null) {
-                views.setTextViewText(R.id.hijri_date, hijriDate)
-            } else {
-                views.setTextViewText(R.id.hijri_date, "")
-            }
-
-            if (city != null && countryCode != null) {
-                try {
-                    views.setTextViewText(R.id.location_text, "$city, $countryCode")
+            try {
+                views.setTextViewText(R.id.gregorian_date, greg
+                    ?: gregorianFormat.get()!!.format(Date(DebugTimeProvider.currentTimeMillis(context))))
+            } catch (_: Exception) {}
+            try { views.setTextViewText(R.id.hijri_date, hijri ?: "") } catch (_: Exception) {}
+            try {
+                if (city != null) {
+                    views.setTextViewText(R.id.location_text, if (cc != null) "$city, $cc" else city)
                     views.setViewVisibility(R.id.location_text, View.VISIBLE)
-                } catch (e: Exception) {
-                    Log.w(TAG, "location_text view not in layout")
                 }
-            } else {
-                try {
-                    views.setViewVisibility(R.id.location_text, View.GONE)
-                } catch (e: Exception) {
-                    Log.w(TAG, "location_text view not in layout")
-                }
-            }
+            } catch (_: Exception) {}
         }
 
-        private fun formatTime(timestamp: Long): String {
-            return timeFormat.get()!!.format(Date(timestamp))
-        }
-
-        private fun formatTimeShort(timestamp: Long): String {
-            return timeFormatShort.get()!!.format(Date(timestamp))
-        }
+        private fun formatTime(ts: Long) = timeFormat.get()!!.format(Date(ts))
+        private fun formatTimeShort(ts: Long) = timeFormatShort.get()!!.format(Date(ts))
 
         private fun formatElapsed(context: Context, prayerTime: Long): String {
-            val now = DebugTimeProvider.currentTimeMillis(context)
-            val diff = now - prayerTime
-
-            if (diff <= 0) {
-                return "now"
-            }
-
+            val diff = DebugTimeProvider.currentTimeMillis(context) - prayerTime
+            if (diff <= 0) return "now"
             val hours = diff / (1000 * 60 * 60)
             val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
-
-            return when {
-                hours > 0 -> "${hours}h ${minutes}m ago"
-                else -> "${minutes}m ago"
-            }
+            return if (hours > 0) "${hours}h ${minutes}m ago" else "${minutes}m ago"
         }
 
-        private fun formatCountdown(context: Context, targetTime: Long): String {
-            val diff = targetTime - DebugTimeProvider.currentTimeMillis(context)
-            return PrayerTimeUtils.formatDuration(diff)
-        }
-
-        private fun getLayoutName(layoutId: Int): String {
-            return when (layoutId) {
-                R.layout.widget_prayer_4x4 -> "4x4"
-                R.layout.widget_prayer_4x3 -> "4x3"
-                R.layout.widget_prayer_compact -> "compact"
-                R.layout.widget_prayer_wide -> "wide"
-                R.layout.widget_prayer_4x2 -> "4x2"
-                else -> "unknown"
-            }
-        }
+        private fun formatCountdown(context: Context, targetTime: Long) =
+            PrayerTimeUtils.formatDuration(targetTime - DebugTimeProvider.currentTimeMillis(context))
     }
 
-    override fun onUpdate(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetIds: IntArray
-    ) {
-        Log.d(TAG, "onUpdate called for ${appWidgetIds.size} widgets")
-        for (appWidgetId in appWidgetIds) {
-            doUpdateWidget(context, appWidgetManager, appWidgetId)
-        }
+    override fun onUpdate(context: Context, mgr: AppWidgetManager, appWidgetIds: IntArray) {
+        for (id in appWidgetIds) fullUpdate(context, mgr, id)
+        lastFullMinute = System.currentTimeMillis() / 60000L
         WidgetUpdateReceiver.ensureUpdatesActive(context)
     }
 
     override fun onEnabled(context: Context) {
         super.onEnabled(context)
-        Log.d(TAG, "onEnabled - first widget added, starting per-second updates")
         WidgetUpdateReceiver.ensureUpdatesActive(context)
     }
 
     override fun onDisabled(context: Context) {
         super.onDisabled(context)
-        Log.d(TAG, "onDisabled - last widget removed, stopping updates")
-        // Stop everything when last widget is removed
         WidgetUpdateReceiver.cancelScheduledUpdates(context)
         WidgetKeepAliveWorker.cancel(context)
     }
 
-    override fun onAppWidgetOptionsChanged(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-        newOptions: Bundle
-    ) {
-        Log.d(TAG, "onAppWidgetOptionsChanged for widget $appWidgetId")
-        doUpdateWidget(context, appWidgetManager, appWidgetId)
+    override fun onAppWidgetOptionsChanged(context: Context, mgr: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        fullUpdate(context, mgr, appWidgetId)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_WIDGET_UPDATE) {
-            Log.d(TAG, "Received WIDGET_UPDATE broadcast")
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-            val widgetIds = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, PrayerWidgetProvider::class.java)
-            )
-            onUpdate(context, appWidgetManager, widgetIds)
+            val mgr = AppWidgetManager.getInstance(context)
+            val ids = mgr.getAppWidgetIds(ComponentName(context, PrayerWidgetProvider::class.java))
+            onUpdate(context, mgr, ids)
         }
     }
 }

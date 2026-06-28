@@ -61,14 +61,24 @@ struct PrayerTimelineProvider: TimelineProvider {
 // MARK: - Widget Colors
 
 struct WidgetColors {
-    static let background = Color(red: 30/255, green: 30/255, blue: 30/255)  // #1E1E1E
-    static let cardBackground = Color(red: 40/255, green: 40/255, blue: 40/255)  // #282828
-    static let accent = Color(red: 99/255, green: 102/255, blue: 241/255)  // Indigo #6366F1
-    static let accentLight = Color(red: 129/255, green: 140/255, blue: 248/255)  // Light indigo
+    // Aurora glass — celestial navy surfaces, amber next-prayer highlight.
+    static let background = Color(red: 0x0a/255, green: 0x0e/255, blue: 0x22/255)  // #0A0E22
+    static let backgroundGradient = LinearGradient(
+        gradient: Gradient(colors: [
+            Color(red: 0x1f/255, green: 0x2a/255, blue: 0x63/255),  // #1F2A63
+            Color(red: 0x14/255, green: 0x1c/255, blue: 0x40/255),  // #141C40
+            Color(red: 0x0a/255, green: 0x0e/255, blue: 0x22/255)   // #0A0E22
+        ]),
+        startPoint: .topTrailing,
+        endPoint: .bottomLeading
+    )
+    static let cardBackground = Color.white.opacity(0.06)  // glass
+    static let accent = Color(red: 0xfc/255, green: 0xd3/255, blue: 0x4d/255)  // amber #FCD34D
+    static let accentLight = Color(red: 0xfd/255, green: 0xe6/255, blue: 0x8a/255)  // amber-200
     static let textPrimary = Color.white
     static let textSecondary = Color.white.opacity(0.7)
     static let textTertiary = Color.white.opacity(0.5)
-    static let highlightBackground = Color(red: 99/255, green: 102/255, blue: 241/255).opacity(0.2)
+    static let highlightBackground = Color(red: 0xfc/255, green: 0xd3/255, blue: 0x4d/255).opacity(0.15)
 }
 
 // MARK: - Formatting Helpers
@@ -158,7 +168,79 @@ struct CountdownText: View {
         Text(TimeFormatter.formatCountdown(to: date))
             .font(.system(size: size, weight: .bold))
             .monospacedDigit()
-            .foregroundColor(WidgetColors.accent)
+            .foregroundColor(WidgetColors.textPrimary)
+    }
+}
+
+// MARK: - Progress bar (previous → next prayer)
+
+struct PrayerProgressBar: View {
+    let previous: Date?
+    let next: Date?
+
+    private var fraction: Double {
+        guard let prev = previous, let nxt = next else { return 0 }
+        let total = nxt.timeIntervalSince(prev)
+        guard total > 0 else { return 0 }
+        let elapsed = Date().timeIntervalSince(prev)
+        return min(1, max(0, elapsed / total))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.12))
+                Capsule()
+                    .fill(LinearGradient(
+                        gradient: Gradient(colors: [WidgetColors.accentLight, WidgetColors.accent]),
+                        startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(4, geo.size.width * fraction))
+            }
+        }
+        .frame(height: 5)
+    }
+}
+
+// MARK: - Moon phase glyph (current synodic phase via SF Symbols)
+
+struct MoonView: View {
+    var size: CGFloat = 30
+
+    // 0 = new, 0.5 = full — mean synodic month from a known new moon.
+    private var fraction: Double {
+        let synodic = 29.530588853
+        let refNewMoon = Date(timeIntervalSince1970: 947182440) // 2000-01-06 18:14 UTC
+        var p = (Date().timeIntervalSince(refNewMoon) / 86400.0 / synodic).truncatingRemainder(dividingBy: 1)
+        if p < 0 { p += 1 }
+        return p
+    }
+
+    private var symbolName: String {
+        let f = fraction
+        switch f {
+        case ..<0.03, 0.97...: return "moonphase.new.moon"
+        case ..<0.22: return "moonphase.waxing.crescent"
+        case ..<0.28: return "moonphase.first.quarter"
+        case ..<0.47: return "moonphase.waxing.gibbous"
+        case ..<0.53: return "moonphase.full.moon"
+        case ..<0.72: return "moonphase.waning.gibbous"
+        case ..<0.78: return "moonphase.last.quarter"
+        default: return "moonphase.waning.crescent"
+        }
+    }
+
+    var body: some View {
+        Group {
+            if #available(iOS 16.0, *) {
+                Image(systemName: symbolName)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Color(red: 0xee/255, green: 0xf2/255, blue: 1.0), Color.white.opacity(0.18))
+            } else {
+                Image(systemName: "moon.fill")
+                    .foregroundColor(Color(red: 0xcd/255, green: 0xd6/255, blue: 1.0))
+            }
+        }
+        .font(.system(size: size))
     }
 }
 
@@ -169,28 +251,30 @@ struct CompactWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Dates
-            VStack(alignment: .leading, spacing: 2) {
-                Text(TimeFormatter.formatGregorianDate())
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(WidgetColors.textSecondary)
-                Text(TimeFormatter.formatHijriDate())
-                    .font(.system(size: 10))
-                    .foregroundColor(WidgetColors.textTertiary)
+            // Dates + moon
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(TimeFormatter.formatGregorianDate())
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(WidgetColors.textSecondary)
+                    Text(TimeFormatter.formatHijriDate())
+                        .font(.system(size: 10))
+                        .foregroundColor(WidgetColors.textTertiary)
+                }
+                Spacer()
+                MoonView(size: 26)
             }
 
             Spacer()
 
-            // Next prayer
+            // Next prayer + progress
             if let nextPrayer = entry.nextPrayer {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Next Prayer")
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Until \(nextPrayer.label) · \(TimeFormatter.formatTimeShort(nextPrayer.date))")
                         .font(.system(size: 10))
                         .foregroundColor(WidgetColors.textTertiary)
-                    Text(nextPrayer.label)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(WidgetColors.textPrimary)
                     CountdownText(date: nextPrayer.date, size: 24)
+                    PrayerProgressBar(previous: entry.previousPrayer?.date, next: nextPrayer.date)
                 }
             } else {
                 Text("Loading...")
@@ -198,9 +282,9 @@ struct CompactWidgetView: View {
                     .foregroundColor(WidgetColors.textSecondary)
             }
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(WidgetColors.background)
+        .background(WidgetColors.backgroundGradient)
     }
 }
 
@@ -213,31 +297,30 @@ struct MediumWidgetView: View {
         HStack(spacing: 16) {
             // Left side: Next prayer info
             VStack(alignment: .leading, spacing: 8) {
-                // Dates
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(TimeFormatter.formatGregorianDate())
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(WidgetColors.textSecondary)
-                    Text(TimeFormatter.formatHijriDate())
-                        .font(.system(size: 10))
-                        .foregroundColor(WidgetColors.textTertiary)
+                // Dates + moon
+                HStack(alignment: .top, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(TimeFormatter.formatGregorianDate())
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(WidgetColors.textSecondary)
+                        Text(TimeFormatter.formatHijriDate())
+                            .font(.system(size: 10))
+                            .foregroundColor(WidgetColors.textTertiary)
+                    }
+                    Spacer()
+                    MoonView(size: 22)
                 }
 
                 Spacer()
 
-                // Next prayer
+                // Next prayer + progress
                 if let nextPrayer = entry.nextPrayer {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Next Prayer")
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Until \(nextPrayer.label) · \(TimeFormatter.formatTimeShort(nextPrayer.date))")
                             .font(.system(size: 10))
                             .foregroundColor(WidgetColors.textTertiary)
-                        Text(nextPrayer.label)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(WidgetColors.textPrimary)
                         CountdownText(date: nextPrayer.date, size: 28)
-                        Text(TimeFormatter.formatTime(nextPrayer.date))
-                            .font(.system(size: 12))
-                            .foregroundColor(WidgetColors.textSecondary)
+                        PrayerProgressBar(previous: entry.previousPrayer?.date, next: nextPrayer.date)
                     }
                 }
 
@@ -268,7 +351,7 @@ struct MediumWidgetView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WidgetColors.background)
+        .background(WidgetColors.backgroundGradient)
     }
 }
 
@@ -279,8 +362,8 @@ struct LargeWidgetView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Header: Dates
-            HStack {
+            // Header: dates · current time · moon
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TimeFormatter.formatGregorianDate())
                         .font(.system(size: 13, weight: .medium))
@@ -290,30 +373,40 @@ struct LargeWidgetView: View {
                         .foregroundColor(WidgetColors.textTertiary)
                 }
                 Spacer()
+                HStack(spacing: 8) {
+                    Text(TimeFormatter.formatTime(Date()))
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundColor(WidgetColors.textSecondary)
+                    MoonView(size: 28)
+                }
             }
 
-            // Next prayer card
+            // Next prayer card + progress
             if let nextPrayer = entry.nextPrayer {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Next Prayer")
-                            .font(.system(size: 11))
-                            .foregroundColor(WidgetColors.textTertiary)
-                        Text(nextPrayer.label)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(WidgetColors.textPrimary)
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Until \(nextPrayer.label)")
+                                .font(.system(size: 11))
+                                .foregroundColor(WidgetColors.textTertiary)
+                            Text(nextPrayer.label)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(WidgetColors.textPrimary)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            CountdownText(date: nextPrayer.date, size: 32)
+                            Text("at \(TimeFormatter.formatTime(nextPrayer.date))")
+                                .font(.system(size: 13))
+                                .foregroundColor(WidgetColors.textSecondary)
+                        }
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 4) {
-                        CountdownText(date: nextPrayer.date, size: 32)
-                        Text(TimeFormatter.formatTime(nextPrayer.date))
-                            .font(.system(size: 13))
-                            .foregroundColor(WidgetColors.textSecondary)
-                    }
+                    PrayerProgressBar(previous: entry.previousPrayer?.date, next: nextPrayer.date)
                 }
-                .padding(12)
-                .background(WidgetColors.highlightBackground)
-                .cornerRadius(12)
+                .padding(14)
+                .background(WidgetColors.cardBackground)
+                .cornerRadius(14)
             }
 
             // Previous prayer
@@ -344,7 +437,7 @@ struct LargeWidgetView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WidgetColors.background)
+        .background(WidgetColors.backgroundGradient)
     }
 }
 
@@ -359,7 +452,7 @@ struct PrayerRowView: View {
         HStack {
             Text(prayer.label)
                 .font(.system(size: 13, weight: isHighlighted ? .semibold : .regular))
-                .foregroundColor(isHighlighted ? WidgetColors.textPrimary : WidgetColors.textSecondary)
+                .foregroundColor(isHighlighted ? WidgetColors.accentLight : WidgetColors.textSecondary)
             Spacer()
             Text(showShortTime ? TimeFormatter.formatTimeShort(prayer.date) : TimeFormatter.formatTime(prayer.date))
                 .font(.system(size: 13, weight: isHighlighted ? .semibold : .regular))

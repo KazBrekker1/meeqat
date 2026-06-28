@@ -59,14 +59,32 @@ export function usePrayerDisplay() {
   const now = ref<Date>(getNow());
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
+  // The 1s interval is throttled/paused by the OS while the window is hidden or
+  // backgrounded, so `now` (and everything derived from it — the next-prayer
+  // pointer, the midnight-rollover refetch, the tray push) freezes. Resync the
+  // moment the app becomes visible/focused again so times correct instantly
+  // instead of waiting on a throttled tick.
+  const resync = () => {
+    now.value = getNow();
+  };
+  const onVisible = () => {
+    if (typeof document === "undefined" || !document.hidden) resync();
+  };
+
   onMounted(() => {
     intervalId = setInterval(() => {
       now.value = getNow();
     }, 1000);
+    if (typeof document !== "undefined")
+      document.addEventListener("visibilitychange", onVisible);
+    if (typeof window !== "undefined") window.addEventListener("focus", resync);
   });
 
   onBeforeUnmount(() => {
     if (intervalId) clearInterval(intervalId);
+    if (typeof document !== "undefined")
+      document.removeEventListener("visibilitychange", onVisible);
+    if (typeof window !== "undefined") window.removeEventListener("focus", resync);
   });
 
   const todayDateKey = computed(() => getDateKey(now.value));

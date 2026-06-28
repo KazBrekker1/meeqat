@@ -1,3 +1,4 @@
+import { load as loadTauriStore } from "@tauri-apps/plugin-store";
 import type { TauriStore } from "@/utils/types";
 
 interface TauriWindow extends Window {
@@ -62,7 +63,7 @@ function loadStore(filename: string): () => Promise<TauriStore> {
       if (!isTauriAvailable()) {
         promise = Promise.resolve(createWebFallbackStore(filename));
       } else {
-        promise = useTauriStoreLoad(filename, {
+        promise = loadTauriStore(filename, {
           autoSave: true,
           defaults: {},
         }).catch((err) => {
