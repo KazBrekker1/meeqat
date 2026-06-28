@@ -12,12 +12,18 @@
 
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { platform } from "@tauri-apps/plugin-os";
 
 const route = useRoute();
 
 onMounted(async () => {
   // Skip close handler for tray window
   if (route.path === '/tray') return;
+  // Desktop only: hide-on-close keeps the app alive in the tray. On mobile this
+  // would trap the user by hiding the sole window on a back/close gesture — let
+  // the OS handle it natively instead.
+  const currentPlatform = platform();
+  if (currentPlatform === 'android' || currentPlatform === 'ios') return;
 
   try {
     const win = getCurrentWindow();
