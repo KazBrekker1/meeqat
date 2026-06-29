@@ -152,6 +152,12 @@
             />
           </aside>
         </div>
+
+        <!-- Footer: app version -->
+        <footer class="shrink-0 flex items-center justify-center gap-1 py-1 text-[10px] text-white/30 border-t border-white/5 pb-safe">
+          <MeeqatMark class="size-2.5 opacity-60" />
+          <span>Meeqat v{{ appVersion }}</span>
+        </footer>
       </div>
     </PrototypesCelestialSkyBackground>
 
@@ -298,6 +304,9 @@ const moonPhase = computed(() => {
 });
 
 // Current time as 24h HH:MM for the orbit's "now" position (ticks each second).
+// App version for the footer (from package.json via runtimeConfig).
+const appVersion = useRuntimeConfig().public.version;
+
 const nowHHMM = computed(() => {
   void countdownToNext.value;
   const m = Math.floor(getSecondsOfDay(getNow()) / 60);

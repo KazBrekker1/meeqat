@@ -1,5 +1,12 @@
+import pkg from "./package.json";
+
 export default defineNuxtConfig({
   modules: ["@vueuse/nuxt", "@nuxt/ui", "nuxt-svgo", "reka-ui/nuxt"],
+  runtimeConfig: {
+    public: {
+      version: pkg.version,
+    },
+  },
   app: {
     head: {
       title: "Meeqat",
