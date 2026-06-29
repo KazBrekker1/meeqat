@@ -235,8 +235,9 @@ const sonarRings = computed(() =>
   Array.from({ length: SONAR_RINGS }, (_, k) => ({ delay: -(k * sonarPeriod.value) / SONAR_RINGS }))
 );
 
-// Caption pills (since / until). Hidden on small instances (tray, mini widgets).
-const showLabels = computed(() => props.cueLabels && props.size >= 200);
+// Caption pills (since / until). Shown down to the tray's 150px orbit; hidden only
+// on the tiny home-screen-widget sizes where they can't fit.
+const showLabels = computed(() => props.cueLabels && props.size >= 140);
 const sinceLblPt = computed(() => ptAt(nowFrac.value, Ro + props.size * 0.085, C, C));
 const untilLblPt = computed(() => ptAt(br.value.nextMin / 1440, Ro + props.size * 0.085, C, C));
 const sinceText = computed(() => `${fmtDur(br.value.sinceMin)} since ${labelFor(br.value.prevKey)}`);

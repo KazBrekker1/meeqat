@@ -78,7 +78,7 @@ const BAR = "linear-gradient(90deg, #818cf8, #fcd34d)";
           </div>
           <span class="shrink-0 text-[11px] tabular-nums text-white/60">{{ d.now }}</span>
         </div>
-        <PrototypesOrbitBumps :prayers="ORBIT_PRAYERS" :time="NOW_HHMM" :moon-phase="d.moonPhase" :size="196" class="my-3" />
+        <PrototypesOrbitBumps :prayers="ORBIT_PRAYERS" :time="NOW_HHMM" :moon-phase="d.moonPhase" :size="196" :cue-labels="false" class="my-3" />
         <p class="text-[10px] uppercase tracking-[0.16em] text-white/55">Until {{ d.next.label }} · {{ d.next.time }}</p>
         <p class="mt-0.5 font-mono text-[32px] font-bold tabular-nums leading-none">{{ d.next.countdown }}</p>
         <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
