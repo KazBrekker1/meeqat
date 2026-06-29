@@ -184,6 +184,28 @@ function scrollActiveIntoView() {
   ul.scrollTop += delta;
 }
 
+// On show, WKWebView can leave the freshly-updated list unpainted until the first
+// manual scroll, and the layout isn't ready for an immediate scroll-to-active.
+// Nudge a compositor repaint, then centre once layout has settled (double rAF).
+function revealAndCenter() {
+  const ul = listEl.value;
+  if (!ul) return;
+  ul.style.transform = "translateZ(0)";
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const el = listEl.value;
+      if (!el) return;
+      el.style.transform = "";
+      scrollActiveIntoView();
+    })
+  );
+}
+
+// Re-centre whenever the next/active prayer changes — this also fires on the
+// initial data arrival (undefined → first key), which both paints the list and
+// scrolls it to the active prayer.
+watch(() => nextPrayer.value?.key, () => revealAndCenter());
+
 let unlistenUpdate: UnlistenFn | null = null;
 let unlistenShow: UnlistenFn | null = null;
 let unlistenFocus: UnlistenFn | null = null;
@@ -200,7 +222,7 @@ onMounted(async () => {
   unlistenFocus = await getCurrentWebviewWindow().onFocusChanged(({ payload: focused }) => {
     if (focused) {
       localNow.value = new Date(); // resync immediately on show
-      nextTick(scrollActiveIntoView);
+      revealAndCenter();
     }
   });
 
