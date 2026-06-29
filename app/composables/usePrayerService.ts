@@ -70,24 +70,25 @@ function findNextPrayerIndex(timingsList: PrayerTimingItem[]): number {
 }
 
 /**
- * Compute tomorrow's first prayer when all of today's prayers have passed.
- * Returns null if any prayer is still upcoming.
+ * Compute tomorrow's first prayer (today's first + 24h) as a fallback rollover
+ * target for the widget. Returns null only when there's no prayer data.
+ *
+ * This is computed UNCONDITIONALLY (not just after Isha). The native widget only
+ * *uses* it once all of today's prayers have passed (and guards prayerTime > now),
+ * but the value must already be stored by then: after Isha the app is usually
+ * closed, so update() won't run to provide it. Previously this returned null
+ * before Isha, which made savePrayerData wipe the next-day keys during the day —
+ * so after Isha the widget had no rollover target and stuck on "Until Isha · Now".
  */
 function computeNextDayFirstPrayer(
   prayers: PrayerTimeData[]
 ): { prayerName: string; prayerTime: number; label: string } | null {
   if (prayers.length === 0) return null;
 
-  const now = Date.now();
-  const allPassed = prayers.every((p) => p.prayerTime <= now);
-  if (!allPassed) return null;
-
-  // Find the earliest prayer by time-of-day (sorted by minutes from midnight)
-  // All prayers have today's timestamps, so the first one sorted by time is the first prayer
+  // Earliest prayer by timestamp = today's first prayer (Fajr). Shift +24h for
+  // tomorrow's. (The caller prefers the real cached-calendar time when available.)
   const sorted = [...prayers].sort((a, b) => a.prayerTime - b.prayerTime);
-  const first = sorted[0];
-
-  // Shift the timestamp forward by 24 hours to get tomorrow's time
+  const first = sorted[0]!;
   const tomorrowTime = first.prayerTime + 24 * 60 * 60 * 1000;
 
   return {
