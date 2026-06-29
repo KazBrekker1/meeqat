@@ -28,6 +28,7 @@
               :key="orbitSize"
               :prayers="orbitPrayers"
               :time="nowHHMM"
+              :now-seconds="nowSecondsLive"
               :moon-phase="moonPhase"
               :size="orbitSize"
             />
@@ -301,6 +302,13 @@ const nowHHMM = computed(() => {
   void countdownToNext.value;
   const m = Math.floor(getSecondsOfDay(getNow()) / 60);
   return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+});
+
+// Sub-minute now for the orbit comet, so it advances smoothly each tick in sync
+// with the countdown instead of stepping once a minute. (countdownToNext ticks 1s.)
+const nowSecondsLive = computed(() => {
+  void countdownToNext.value;
+  return getSecondsOfDay(getNow());
 });
 
 // Prayers plotted on the orbit (24h times, lowercase keys for the sky gradient).

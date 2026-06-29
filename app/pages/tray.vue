@@ -17,6 +17,7 @@
             v-if="orbitPrayers.length"
             :prayers="orbitPrayers"
             :time="nowHHMM"
+            :now-seconds="nowSec"
             :moon-phase="moonPhase"
             :size="150"
           />

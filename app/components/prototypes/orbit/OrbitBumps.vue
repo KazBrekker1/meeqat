@@ -103,6 +103,10 @@ const props = withDefaults(
     cue?: boolean;
     /** Show the since / until caption pills on the orbit. Auto-hidden when small. */
     cueLabels?: boolean;
+    /** Seconds-of-day for the now position. Sub-minute precision → the comet
+     *  advances smoothly each tick instead of stepping once a minute (which looks
+     *  frozen next to a ticking countdown). Falls back to `time` when omitted. */
+    nowSeconds?: number;
   }>(),
   { size: 320, baseAmp: 0.022, hoverAmp: 0.07, sigma: 0.022, cue: true, cueLabels: true }
 );
@@ -199,7 +203,10 @@ const points = computed(() =>
 );
 const hotspot = (i: number) => ptAt(fracs[i]!, Ro + baseA, C, C);
 
-const nowFrac = computed(() => frac(props.time));
+const nowSecNorm = computed(() =>
+  props.nowSeconds == null ? null : ((props.nowSeconds % 86400) + 86400) % 86400
+);
+const nowFrac = computed(() => (nowSecNorm.value == null ? frac(props.time) : nowSecNorm.value / 86400));
 
 // ── Comet · sonar cue ──────────────────────────────────────────────────────
 const TAIL_CAP = 150; // minutes the tail can span before it saturates
@@ -211,7 +218,7 @@ const sonarMaxR = props.size * 0.095;
 // lands on them and tracks the hover bumps.
 const rEdge = (t: number) => outerR(t) - props.size * 0.016;
 
-const nowMin = computed(() => toMin(props.time));
+const nowMin = computed(() => (nowSecNorm.value == null ? toMin(props.time) : nowSecNorm.value / 60));
 const br = computed(() => bracket(props.prayers, nowMin.value));
 const headPt = computed(() => ptAt(nowFrac.value, rEdge(nowFrac.value), C, C));
 const prayerPt = computed(() => ptAt(br.value.nextMin / 1440, rEdge(br.value.nextMin / 1440), C, C));
