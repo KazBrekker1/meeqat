@@ -31,6 +31,8 @@
     "core:webview:allow-create-webview-window",
     "os:default",
     "prayer-service:default",
-    "positioner:default"
+    "positioner:default",
+    "updater:default",
+    "process:default"
   ]
 }

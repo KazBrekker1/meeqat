@@ -100,3 +100,13 @@ export async function getMockTimeOffset(): Promise<MockTimeOffsetResult> {
 export async function clearMockTimeOffset(): Promise<void> {
   return invoke("plugin:prayer-service|clear_mock_time_offset");
 }
+
+/**
+ * Android only: download a release APK and hand it to the system installer
+ * (Telegram-style in-app update). On desktop/iOS this rejects with
+ * PlatformNotSupported — desktop uses the Tauri updater plugin instead.
+ * @param url - Direct download URL of the APK asset.
+ */
+export async function installApk(url: string): Promise<void> {
+  return invoke("plugin:prayer-service|install_apk", { url });
+}

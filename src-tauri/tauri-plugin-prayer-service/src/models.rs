@@ -60,3 +60,9 @@ pub struct SetMockTimeOffsetArgs {
 pub struct MockTimeOffsetResult {
     pub offset_ms: i64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallApkArgs {
+    pub url: String,
+}

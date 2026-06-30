@@ -17,7 +17,8 @@ pub use models::{
     NotificationPermissionStatus,
     BatteryOptimizationStatus,
     SetMockTimeOffsetArgs,
-    MockTimeOffsetResult
+    MockTimeOffsetResult,
+    InstallApkArgs
 };
 
 use mobile::PrayerService;
@@ -49,6 +50,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_mock_time_offset,
             commands::get_mock_time_offset,
             commands::clear_mock_time_offset,
+            commands::install_apk,
         ])
         .setup(|app, api| {
             let prayer_service = mobile::init(app, api)?;

@@ -15,4 +15,5 @@ permissions = [
     "allow-set-mock-time-offset",
     "allow-get-mock-time-offset",
     "allow-clear-mock-time-offset",
+    "allow-install-apk",
 ]

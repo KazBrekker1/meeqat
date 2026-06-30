@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "set_mock_time_offset",
     "get_mock_time_offset",
     "clear_mock_time_offset",
+    "install_apk",
 ];
 
 fn main() {

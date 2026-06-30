@@ -149,10 +149,19 @@
           </aside>
         </div>
 
-        <!-- Footer: app version -->
-        <footer class="shrink-0 flex items-center justify-center gap-1 py-1 text-[10px] text-white/30 border-t border-white/5 pb-safe">
+        <!-- Footer: app version (+ update pill when a newer release is available) -->
+        <footer class="shrink-0 flex items-center justify-center gap-2 py-1 text-[10px] text-white/30 border-t border-white/5 pb-safe">
           <MeeqatMark class="size-2.5 opacity-60" />
           <span>Meeqat v{{ appVersion }}</span>
+          <button
+            v-if="isUpdateAvailable"
+            type="button"
+            class="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-primary hover:bg-primary/25 transition-colors"
+            @click="showUpdateModal = true"
+          >
+            <UIcon name="lucide:arrow-up-circle" class="size-3" />
+            <span>Update to v{{ latestVersion }}</span>
+          </button>
         </footer>
       </div>
     </PrototypesCelestialSkyBackground>
@@ -170,6 +179,9 @@
       @toggle-calendar-system="toggleCalendarSystem"
       @select-today="selectToday"
     />
+
+    <!-- Update Modal -->
+    <AppUpdateModal v-model:open="showUpdateModal" />
 
     <!-- Settings Modal -->
     <PrayerSettingsModal
@@ -326,6 +338,10 @@ const moonPhase = computed(() => {
 // Current time as 24h HH:MM for the orbit's "now" position (ticks each second).
 // App version for the footer (from package.json via runtimeConfig).
 const appVersion = useRuntimeConfig().public.version;
+
+// In-app updater: silently check on launch; surface a pill in the footer.
+const { isUpdateAvailable, latestVersion, checkForUpdate } = useAppUpdate();
+const showUpdateModal = shallowRef(false);
 
 const nowHHMM = computed(() => {
   void countdownToNext.value;
@@ -523,6 +539,14 @@ onMounted(async () => {
     onFetchByCity();
   }
   startPrayerNotifications();
+  // Quietly check for a newer release; the footer pill appears only if one exists.
+  checkForUpdate();
+});
+
+// Prompt once, automatically, the first time an update is detected. The footer
+// pill stays as a persistent reminder if the user dismisses with "Later".
+watch(isUpdateAvailable, (available) => {
+  if (available) showUpdateModal.value = true;
 });
 
 watch(selectedMethodId, () => {

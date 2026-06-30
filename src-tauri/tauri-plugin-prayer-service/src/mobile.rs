@@ -7,7 +7,7 @@ use tauri::{
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult};
+use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "android")]
@@ -81,6 +81,7 @@ impl<R: Runtime> PrayerService<R> {
     platform_method!(set_mock_time_offset, "setMockTimeOffset", SetMockTimeOffsetArgs);
     platform_method!(get_mock_time_offset, "getMockTimeOffset" => MockTimeOffsetResult, MockTimeOffsetResult { offset_ms: 0 });
     platform_method!(clear_mock_time_offset, "clearMockTimeOffset");
+    platform_method!(install_apk, "installApk", InstallApkArgs);
 }
 
 #[cfg(target_os = "android")]

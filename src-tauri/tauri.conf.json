@@ -1,6 +1,7 @@
 {
 	"bundle": {
 		"active": true,
+		"createUpdaterArtifacts": true,
 		"targets": "all",
 		"windows": {
 			"certificateThumbprint": null,
@@ -35,9 +36,16 @@
 		"devUrl": "http://localhost:3001"
 	},
 	"productName": "Meeqat",
-	"version": "3.1.1",
+	"version": "3.2.0",
 	"identifier": "com.meeqat.app",
-	"plugins": {},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBRjhEQjAyREE4MkExOEUKUldTT29ZTGFBdHY0aXRUVGErUXdTU1lZc0pTZStmdlNjUnR1eVRWbm91STRna2FGWnFuSW8vSXcK",
+			"endpoints": [
+				"https://github.com/KazBrekker1/meeqat/releases/latest/download/latest.json"
+			]
+		}
+	},
 	"app": {
 		"windows": [
 			{

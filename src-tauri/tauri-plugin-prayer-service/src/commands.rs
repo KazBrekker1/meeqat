@@ -1,6 +1,6 @@
 use tauri::{command, AppHandle, Runtime};
 
-use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult};
+use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
 use crate::error::Result;
 use crate::PrayerServiceExt;
 
@@ -87,4 +87,10 @@ pub fn get_mock_time_offset<R: Runtime>(app: AppHandle<R>) -> Result<MockTimeOff
 #[command]
 pub fn clear_mock_time_offset<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.prayer_service().clear_mock_time_offset()
+}
+
+#[command]
+pub fn install_apk<R: Runtime>(app: AppHandle<R>, url: String) -> Result<()> {
+    let args = InstallApkArgs { url };
+    app.prayer_service().install_apk(args)
 }

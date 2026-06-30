@@ -61,6 +61,11 @@ class PrayerArg {
     lateinit var label: String
 }
 
+@InvokeArg
+class InstallApkArgs {
+    lateinit var url: String
+}
+
 @TauriPlugin
 class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
@@ -391,5 +396,84 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.e(TAG, "Error clearing mock time offset: ${e.message}", e)
             invoke.reject("Failed to clear mock time offset: ${e.message}")
         }
+    }
+
+    /**
+     * Telegram-style in-app update for Android: download the release APK and hand
+     * it to the system package installer, which shows its own confirm dialog.
+     *
+     * On Android 8+ the app must hold the "install unknown apps" grant; if it
+     * doesn't, we route the user to that settings screen and ask them to retry.
+     */
+    @Command
+    fun installApk(invoke: Invoke) {
+        try {
+            val args = invoke.parseArgs(InstallApkArgs::class.java)
+
+            // Android 8+ (API 26): require the per-app "install unknown apps" grant.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !appContext.packageManager.canRequestPackageInstalls()
+            ) {
+                val settingsIntent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${appContext.packageName}")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                appContext.startActivity(settingsIntent)
+                invoke.reject("Allow installing apps from Meeqat, then tap update again.")
+                return
+            }
+
+            // Download off the main thread, then launch the installer.
+            Thread {
+                try {
+                    val apkFile = downloadApk(args.url)
+                    launchInstaller(apkFile)
+                    invoke.resolve()
+                } catch (e: Exception) {
+                    Log.e(TAG, "APK download/install failed: ${e.message}", e)
+                    invoke.reject("Update failed: ${e.message}")
+                }
+            }.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "installApk error: ${e.message}", e)
+            invoke.reject("Update failed: ${e.message}")
+        }
+    }
+
+    private fun downloadApk(url: String): java.io.File {
+        val connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 30_000
+            readTimeout = 60_000
+            connect()
+        }
+        try {
+            if (connection.responseCode !in 200..299) {
+                throw java.io.IOException("HTTP ${connection.responseCode}")
+            }
+            val outFile = java.io.File(appContext.cacheDir, "meeqat-update.apk")
+            if (outFile.exists()) outFile.delete()
+            connection.inputStream.use { input ->
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            }
+            return outFile
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun launchInstaller(apkFile: java.io.File) {
+        // Reuse the app's existing FileProvider (declared in the app manifest).
+        val apkUri = androidx.core.content.FileProvider.getUriForFile(
+            appContext,
+            "${appContext.packageName}.fileprovider",
+            apkFile
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        appContext.startActivity(intent)
     }
 }

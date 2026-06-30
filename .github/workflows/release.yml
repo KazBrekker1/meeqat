@@ -151,6 +151,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Skip Apple code signing (no certificates configured)
           APPLE_SIGNING_IDENTITY: "-"
+          # Updater signing — produces the .sig files the desktop updater verifies.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.create-release.outputs.tag }}
           releaseName: Meeqat v${{ needs.create-release.outputs.version }}
@@ -296,6 +299,74 @@ jobs:
           fi
 
           echo "Upload complete"
+
+  # Compose a single authoritative latest.json for the desktop updater.
+  # Runs after every desktop platform is uploaded, so it never races the matrix
+  # jobs (each of which would otherwise overwrite the others' manifest).
+  updater-manifest:
+    needs: [create-release, publish-desktop]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compose and upload latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+
+          ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
+          BASE_URL="https://github.com/$REPO/releases/download/$TAG"
+
+          # Tauri updater target -> filename suffix of its updater artifact.
+          declare -A PATTERNS=(
+            ["darwin-aarch64"]="aarch64.app.tar.gz"
+            ["darwin-x86_64"]="x64.app.tar.gz"
+            ["linux-x86_64"]="amd64.AppImage"
+            ["windows-x86_64"]="x64-setup.exe"
+          )
+
+          PLATFORMS="{}"
+          for TARGET in "${!PATTERNS[@]}"; do
+            SUFFIX="${PATTERNS[$TARGET]}"
+            ESC="$(printf '%s' "$SUFFIX" | sed 's/\./\\./g')"
+            ART="$(printf '%s\n' "$ASSETS" | grep -E "${ESC}$" | head -1 || true)"
+            if [ -z "$ART" ]; then
+              echo "WARN: no updater artifact for $TARGET (*$SUFFIX)"; continue
+            fi
+            SIG_NAME="${ART}.sig"
+            if ! printf '%s\n' "$ASSETS" | grep -qxF "$SIG_NAME"; then
+              echo "WARN: missing signature $SIG_NAME for $TARGET"; continue
+            fi
+            gh release download "$TAG" --repo "$REPO" --pattern "$SIG_NAME" --dir . --clobber
+            SIG="$(cat "$SIG_NAME")"
+            URL="$BASE_URL/$ART"
+            PLATFORMS="$(printf '%s' "$PLATFORMS" | jq \
+              --arg t "$TARGET" --arg s "$SIG" --arg u "$URL" \
+              '. + {($t): {signature:$s, url:$u}}')"
+          done
+
+          COUNT="$(printf '%s' "$PLATFORMS" | jq 'length')"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "ERROR: no signed platforms found; refusing to upload an empty manifest" >&2
+            exit 1
+          fi
+
+          jq -n \
+            --arg v "$VERSION" \
+            --arg notes "See https://github.com/$REPO/releases/tag/$TAG" \
+            --argjson p "$PLATFORMS" \
+            '{version:$v, notes:$notes, pub_date:(now|todate), platforms:$p}' > latest.json
+
+          echo "=== latest.json ($COUNT platforms) ==="
+          cat latest.json
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
 
   # Optional: Build iOS (requires macOS runner and Apple Developer account)
   # publish-ios:

@@ -18,6 +18,12 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_positioner::init());
 
+    // Auto-update is desktop-only; Android/iOS update via a separate in-app flow.
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
     builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -16,6 +16,7 @@ Default permissions for the prayer service plugin
 - `allow-set-mock-time-offset`
 - `allow-get-mock-time-offset`
 - `allow-clear-mock-time-offset`
+- `allow-install-apk`
 
 ## Permission Table
 
@@ -126,6 +127,32 @@ Enables the get_mock_time_offset command without any pre-configured scope.
 <td>
 
 Denies the get_mock_time_offset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:allow-install-apk`
+
+</td>
+<td>
+
+Enables the install_apk command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`prayer-service:deny-install-apk`
+
+</td>
+<td>
+
+Denies the install_apk command without any pre-configured scope.
 
 </td>
 </tr>

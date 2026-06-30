@@ -343,6 +343,18 @@
           "markdownDescription": "Denies the get_mock_time_offset command without any pre-configured scope."
         },
         {
+          "description": "Enables the install_apk command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-apk",
+          "markdownDescription": "Enables the install_apk command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install_apk command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-apk",
+          "markdownDescription": "Denies the install_apk command without any pre-configured scope."
+        },
+        {
           "description": "Enables the is_service_running command without any pre-configured scope.",
           "type": "string",
           "const": "allow-is-service-running",
@@ -439,10 +451,10 @@
           "markdownDescription": "Denies the update_prayer_times command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`",
+          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`\n- `allow-install-apk`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`"
+          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`\n- `allow-install-apk`"
         }
       ]
     }
