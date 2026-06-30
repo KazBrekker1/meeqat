@@ -39,18 +39,11 @@
             {{ c.label }}
           </div>
 
-          <!-- Qibla (Kaaba) marker at the bearing -->
+          <!-- Qibla (Kaaba) marker at the bearing, out on the rim -->
           <div
-            class="absolute left-1/2 top-1/2 origin-top"
-            :style="{ transform: `translate(-50%, 0) rotate(${bearing}deg)` }"
-          >
-            <div
-              class="-translate-y-1 flex flex-col items-center"
-              :style="counterRotateMarker"
-            >
-              <span class="text-2xl leading-none drop-shadow">🕋</span>
-            </div>
-          </div>
+            class="absolute left-1/2 top-1/2 text-2xl leading-none drop-shadow"
+            :style="markerStyle"
+          >🕋</div>
         </div>
 
         <!-- Fixed center hub -->
@@ -174,10 +167,17 @@ function cardinalStyle(angle: number) {
   };
 }
 
-// Keep the Kaaba glyph upright regardless of dial + marker rotation.
-const counterRotateMarker = computed(() => ({
-  transform: `rotate(${-(bearing.value ?? 0) - dialRotation.value}deg)`,
-}));
+const markerRadius = 114; // px from center — out near the rim, just past the letters
+
+// Place the Kaaba glyph at the Qibla bearing on the rim, kept upright via
+// counter-rotation (against its own placement AND the dial's rotation), mirroring
+// cardinalStyle so it tracks live compass rotation.
+const markerStyle = computed(() => {
+  const b = bearing.value ?? 0;
+  return {
+    transform: `translate(-50%, -50%) rotate(${b}deg) translateY(-${markerRadius}px) rotate(${-b - dialRotation.value}deg)`,
+  };
+});
 
 async function enableCompass() {
   starting.value = true;
