@@ -23,12 +23,8 @@
           />
           <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
 
-          <p v-if="nextPrayerLabel" class="text-[10px] uppercase tracking-[0.18em] text-white/55 -mt-1">Until {{ nextPrayerLabel }}</p>
-          <p v-if="countdown" class="text-2xl font-mono font-bold tabular-nums text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">{{ countdown }}</p>
-          <p v-if="hijriDate" class="text-[10px] text-white/50">{{ hijriDate }}</p>
-          <p v-if="sincePrayerLabel && sinceTime" class="text-[10px] text-white/50">
-            <UIcon name="lucide:moon" class="size-2.5 inline -mt-0.5" /> {{ sinceTime }} since {{ sincePrayerLabel }}
-          </p>
+          <!-- Date only; countdown/since now read from the orbit's since/until pills. -->
+          <p v-if="hijriDate" class="text-[10px] text-white/50 -mt-1">{{ hijriDate }}</p>
         </div>
 
         <!-- Prayer list -->
@@ -132,43 +128,8 @@ const orbitPrayers = computed(() =>
 // "Now" position for the orbit, from the local clock.
 const nowHHMM = computed(() => hhmm(Math.floor(nowSec.value / 60)));
 
+// Active/next prayer — drives re-centering the list when it changes.
 const nextPrayer = computed(() => decoratedPrayers.value.find((p) => p.isNext) ?? null);
-const nextPrayerLabel = computed(() => nextPrayer.value?.label ?? "");
-
-const countdown = computed(() => {
-  const next = nextPrayer.value;
-  if (!next || typeof next.minutes !== "number") return "";
-  let diff = next.minutes * 60 - nowSec.value;
-  if (diff <= 0) diff += 86400; // next prayer is tomorrow's first
-  const h = Math.floor(diff / 3600);
-  const m = Math.floor((diff % 3600) / 60);
-  const s = diff % 60;
-  return h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${m}:${pad2(s)}`;
-});
-
-// Most recent prayer that has passed today (else yesterday's last prayer).
-const sinceInfo = computed(() => {
-  const list = decoratedPrayers.value;
-  const ns = nowSec.value;
-  let prev: (typeof list)[number] | null = null;
-  for (const p of list) {
-    if ((p.minutes as number) * 60 <= ns) prev = p;
-  }
-  let elapsed: number;
-  if (prev) {
-    elapsed = ns - (prev.minutes as number) * 60;
-  } else if (list.length) {
-    prev = list[list.length - 1]!; // yesterday's last (e.g. Isha)
-    elapsed = ns + (86400 - (prev.minutes as number) * 60);
-  } else {
-    return null;
-  }
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  return { label: prev.label, time: h > 0 ? `${h}h ${m}m` : `${m}m` };
-});
-const sincePrayerLabel = computed(() => sinceInfo.value?.label ?? "");
-const sinceTime = computed(() => sinceInfo.value?.time ?? "");
 
 // Centre the prayer list on the active/next prayer when the popover opens.
 const listEl = ref<HTMLElement | null>(null);

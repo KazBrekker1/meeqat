@@ -14,6 +14,12 @@ import {
 } from "@/utils/api";
 import { PrayerTimingsResponseSchema } from "@/utils/schemas";
 import { getCityCoordinates } from "@/constants/cities";
+import { MAIN_PRAYER_KEYS } from "@/constants/prayers";
+
+/** A single prayer for scheduling: key, label, and minutes-after-midnight. */
+export type UpcomingPrayer = { key: string; label: string; minutes: number };
+/** One calendar day of main prayers, resolved from the per-day cache. */
+export type UpcomingDay = { dateKey: string; date: Date; prayers: UpcomingPrayer[] };
 
 export type FetchParams = {
   city: string;
@@ -292,10 +298,51 @@ export function usePrayerFetch() {
     }
   }
 
+  /**
+   * Resolve the next `days` calendar days of main prayers (starting today) from
+   * the per-day cache, at their ACTUAL computed times. Prayer times drift a
+   * minute or two daily, so notifications must be scheduled from real per-day
+   * data — not today's times repeated. Days missing from the cache are skipped
+   * (the month is prefetched, so misses are rare and self-heal on next fetch).
+   * Uses the active fetch context's options key so results match the displayed
+   * location. Returns [] before any fetch has established a context.
+   */
+  async function getUpcomingDays(days: number): Promise<UpcomingDay[]> {
+    if (!currentOptionsKey) return [];
+    const now = getNow();
+    const result: UpcomingDay[] = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + i,
+      );
+      const dateKey = getDateKey(date);
+      const cached = await cache.getCachedDay(currentOptionsKey, dateKey);
+      if (!cached?.timings) continue;
+
+      const prayers: UpcomingPrayer[] = [];
+      for (const key of MAIN_PRAYER_KEYS) {
+        const raw = cached.timings[key];
+        if (!raw) continue;
+        const m = String(raw).match(/(\d{1,2}):(\d{2})/);
+        if (!m) continue;
+        prayers.push({
+          key,
+          label: key,
+          minutes: Number(m[1]) * 60 + Number(m[2]),
+        });
+      }
+      if (prayers.length) result.push({ dateKey, date, prayers });
+    }
+    return result;
+  }
+
   return {
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
     refreshInBackground,
     getNextDayFirstPrayer,
+    getUpcomingDays,
   };
 }

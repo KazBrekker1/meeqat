@@ -15,6 +15,7 @@
               <UIcon name="lucide:chevron-down" class="size-3.5 text-white/45 shrink-0" />
             </button>
             <span class="text-sm tabular-nums font-mono text-white/55 shrink-0">{{ currentTimeString }}</span>
+            <UButton icon="lucide:compass" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Show Qibla direction" @click="showQiblaModal = true" />
             <UButton icon="heroicons:cog-6-tooth-20-solid" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Open settings" @click="showSettingsModal = true" />
           </div>
         </header>
@@ -34,16 +35,11 @@
             />
             <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
 
-            <div v-if="nextPrayerLabel" class="text-center mt-1">
-              <p class="uppercase tracking-[0.2em] text-white/55 text-[11px] md:text-xs">Until {{ nextPrayerLabel }}</p>
-              <p class="font-mono font-bold tabular-nums mt-1 text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)] text-[2.4rem] leading-none md:text-6xl">
-                {{ countdownToNext }}
-              </p>
-              <p v-if="hijriDateVerbose || gregorianDateVerbose" class="text-white/55 mt-2 text-[11px] md:text-sm">
+            <!-- Date under the orbit; the countdown/since timers now live as the
+                 orbit's since/until pills. -->
+            <div v-if="hijriDateVerbose || gregorianDateVerbose" class="text-center mt-1">
+              <p class="text-white/55 text-[11px] md:text-sm">
                 {{ hijriDateVerbose }}<span v-if="hijriDateVerbose && gregorianDateVerbose"> · </span>{{ gregorianDateVerbose }}
-              </p>
-              <p v-if="previousPrayerLabel && timeSincePrevious" class="text-white/60 mt-1 text-xs md:text-sm">
-                <UIcon name="lucide:moon" class="size-3 inline -mt-0.5" /> {{ timeSincePrevious }} since {{ previousPrayerLabel }}
               </p>
             </div>
           </section>
@@ -222,11 +218,19 @@
         </div>
       </template>
     </UModal>
+
+    <!-- Qibla Modal (opened from the header) -->
+    <UModal v-model:open="showQiblaModal" title="Qibla" description="Direction to the Kaaba in Makkah">
+      <template #body>
+        <PrayerQiblaCompass :lat="activeCoords?.lat ?? null" :lng="activeCoords?.lng ?? null" />
+      </template>
+    </UModal>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { getCountryByCode } from "@/constants/countries";
+import { getCityCoordinates } from "@/constants/cities";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { pad2, getSecondsOfDay } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
@@ -255,6 +259,7 @@ const {
 const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
 const showLocationModal = shallowRef(false);
+const showQiblaModal = shallowRef(false);
 
 const { confirm } = useConfirm();
 
@@ -288,7 +293,22 @@ const {
   gpsCity,
   fetchByCoordinates,
   getNextDayFirstPrayer,
+  getUpcomingDays,
 } = usePrayerTimes();
+
+// Active coordinates for the Qibla compass: GPS position in GPS mode, otherwise
+// the selected city's coordinates from the curated list.
+const activeCoords = computed<{ lat: number; lng: number } | null>(() => {
+  if (locationMode.value === "gps") {
+    return gpsLat.value != null && gpsLng.value != null
+      ? { lat: gpsLat.value, lng: gpsLng.value }
+      : null;
+  }
+  if (selectedCity.value && selectedCountry.value) {
+    return getCityCoordinates(selectedCountry.value, selectedCity.value) ?? null;
+  }
+  return null;
+});
 
 const { reverseGeocode } = useGeolocation();
 
@@ -348,6 +368,7 @@ const shortCountdown = computed(() => (countdownToNext.value || "").split(":").s
 const { startPrayerNotifications, stopPrayerNotifications, send, settings: notificationSettings } =
   useNotifications({
     timingsList,
+    getUpcomingDays,
   });
 
 // Update Android home screen widgets

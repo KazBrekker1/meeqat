@@ -72,15 +72,15 @@
       </div>
     </Transition>
 
-    <!-- since / until caption pills -->
+    <!-- since / until caption pills (collision-aware: stacked when they converge) -->
     <template v-if="cue && showLabels">
       <div
-        class="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums backdrop-blur-sm border text-amber-200 bg-amber-400/10 border-amber-300/25"
-        :style="{ left: sinceLblPt.x + 'px', top: sinceLblPt.y + 'px' }"
+        class="absolute z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums backdrop-blur-md border shadow-[0_1px_6px_rgba(0,0,0,0.45)] text-amber-100 bg-amber-500/20 border-amber-300/40"
+        :style="{ left: labelPositions.since.x + 'px', top: labelPositions.since.y + 'px' }"
       >{{ sinceText }}</div>
       <div
-        class="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium tabular-nums backdrop-blur-sm border text-sky-200 bg-sky-400/10 border-sky-300/25"
-        :style="{ left: untilLblPt.x + 'px', top: untilLblPt.y + 'px' }"
+        class="absolute z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums backdrop-blur-md border shadow-[0_1px_6px_rgba(0,0,0,0.45)] text-sky-100 bg-sky-500/20 border-sky-300/40"
+        :style="{ left: labelPositions.until.x + 'px', top: labelPositions.until.y + 'px' }"
       >{{ untilText }}</div>
     </template>
   </div>
@@ -241,7 +241,50 @@ const showLabels = computed(() => props.cueLabels && props.size >= 140);
 const sinceLblPt = computed(() => ptAt(nowFrac.value, Ro + props.size * 0.085, C, C));
 const untilLblPt = computed(() => ptAt(br.value.nextMin / 1440, Ro + props.size * 0.085, C, C));
 const sinceText = computed(() => `${fmtDur(br.value.sinceMin)} since ${labelFor(br.value.prevKey)}`);
-const untilText = computed(() => `${labelFor(br.value.nextKey)} · ${fmtDur(br.value.untilMin)}`);
+
+// Within the final hour, the "until" pill ticks live as M:SS (untilMin is
+// fractional thanks to nowSeconds, so this updates every second); beyond an hour
+// it stays a coarse "1h 30m". Restores the second-by-second precision that the
+// removed big countdown used to give, only as the prayer approaches.
+const UNTIL_LIVE_MIN = 60;
+const untilText = computed(() => {
+  const label = labelFor(br.value.nextKey);
+  const u = br.value.untilMin;
+  if (u >= 0 && u < UNTIL_LIVE_MIN) {
+    const total = Math.max(0, Math.round(u * 60));
+    const mm = Math.floor(total / 60);
+    const ss = total % 60;
+    return `${label} · ${mm}:${ss.toString().padStart(2, "0")}`;
+  }
+  return `${label} · ${fmtDur(u)}`;
+});
+
+// The "since" pill rides the now-position and "until" rides the next-prayer
+// position, so as the countdown nears zero — and whenever the two are close on
+// the ring — they overlap. The pills are wide ("1h 23m since Fajr"), so we test
+// actual box overlap (AABB) rather than just center distance. The text is a
+// fixed 11px, so widths are estimated in constant px (size-independent); only
+// the anchor points scale with the orbit. On overlap, stack them vertically at
+// their midpoint — "until" (the next prayer, the priority) on top.
+const PILL_CHAR_PX = 6.2;
+const PILL_PAD_PX = 24;
+const PILL_H_PX = 20;
+const labelPositions = computed(() => {
+  const a = sinceLblPt.value;
+  const b = untilLblPt.value;
+  const wSince = sinceText.value.length * PILL_CHAR_PX + PILL_PAD_PX;
+  const wUntil = untilText.value.length * PILL_CHAR_PX + PILL_PAD_PX;
+  const overlap =
+    Math.abs(a.x - b.x) < (wSince + wUntil) / 2 &&
+    Math.abs(a.y - b.y) < PILL_H_PX;
+  if (!overlap) return { since: a, until: b };
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  return {
+    until: { x: mx, y: my - PILL_H_PX * 0.6 },
+    since: { x: mx, y: my + PILL_H_PX * 0.6 },
+  };
+});
 
 const minByKey = (k: string) => {
   const p = props.prayers.find((x) => x.key === k);

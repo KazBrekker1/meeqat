@@ -24,6 +24,7 @@ export function usePrayerTimes() {
     fetchByCoordinates,
     refreshInBackground,
     getNextDayFirstPrayer,
+    getUpcomingDays,
   } = usePrayerFetch();
   const { clearAllCache } = usePrayerCache();
 
@@ -211,6 +212,7 @@ export function usePrayerTimes() {
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
     getNextDayFirstPrayer,
+    getUpcomingDays,
     loadPreferences,
     savePreferences,
     clearTimings,

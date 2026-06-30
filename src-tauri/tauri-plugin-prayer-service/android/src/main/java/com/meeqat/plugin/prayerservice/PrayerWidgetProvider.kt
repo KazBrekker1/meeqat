@@ -77,9 +77,13 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 minHeight >= 250 -> R.layout.widget_prayer_4x4
                 minHeight >= 160 -> R.layout.widget_prayer_4x3
                 minHeight >= 110 -> R.layout.widget_prayer_compact
-                else -> R.layout.widget_prayer_4x2
+                minHeight >= 72 -> R.layout.widget_prayer_4x2
+                // One-row "glance": just the next prayer + live countdown.
+                else -> R.layout.widget_prayer_glance
             }
         }
+
+        private fun isGlance(layoutId: Int) = layoutId == R.layout.widget_prayer_glance
 
         /** Orbit/moon image: (viewId, drawOrbit, renderPx). 4×2 is moon-only. */
         private fun bitmapSpec(layoutId: Int): Triple<Int, Boolean, Int> = when (layoutId) {
@@ -179,11 +183,14 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             if (pi != null) views.setOnClickPendingIntent(R.id.widget_root, pi)
 
             val (imageId, drawOrbitBase, px) = bitmapSpec(layoutId)
+            val glance = isGlance(layoutId)
 
             if (prayers.isEmpty()) {
                 showMessage(views, "Open Meeqat")
-                views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, 0, DebugTimeProvider.currentTimeMillis(context), false))
-                setHeaderData(context, views, prefs)
+                if (!glance) {
+                    views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, 0, DebugTimeProvider.currentTimeMillis(context), false))
+                    setHeaderData(context, views, prefs)
+                }
                 mgr.updateAppWidget(appWidgetId, views)
                 return
             }
@@ -199,16 +206,22 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 showMessage(views, "Tap to refresh")
             } else {
                 val state = computeState(context, prayers, nextIndex, nextDayPrayer)
-                applyState(views, state)
-                populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1)
+                if (glance) {
+                    applyGlance(views, state)
+                } else {
+                    applyState(views, state)
+                    populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1)
+                }
             }
 
-            // orbit/moon bitmap
-            val now = DebugTimeProvider.currentTimeMillis(context)
-            val drawOrbit = drawOrbitBase && prayers.isNotEmpty()
-            views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, nextIndex, now, drawOrbit))
+            // The glance layout has no orbit/strip/header — skip the bitmap + header.
+            if (!glance) {
+                val now = DebugTimeProvider.currentTimeMillis(context)
+                val drawOrbit = drawOrbitBase && prayers.isNotEmpty()
+                views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, nextIndex, now, drawOrbit))
+                setHeaderData(context, views, prefs)
+            }
 
-            setHeaderData(context, views, prefs)
             mgr.updateAppWidget(appWidgetId, views)
         }
 
@@ -228,7 +241,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
             val state = computeState(context, prayers, nextIndex, nextDayPrayer)
             val views = RemoteViews(context.packageName, layoutId)
-            applyState(views, state)
+            if (isGlance(layoutId)) applyGlance(views, state) else applyState(views, state)
             try { mgr.partiallyUpdateAppWidget(appWidgetId, views) } catch (e: Exception) {
                 Log.w(TAG, "partial update failed: ${e.message}")
             }
@@ -245,6 +258,13 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.since_line, View.INVISIBLE)
             }
             try { views.setTextViewText(R.id.now_clock, s.nowClock) } catch (_: Exception) {}
+        }
+
+        /** Minimal apply path for the one-row glance layout: until + countdown only. */
+        private fun applyGlance(views: RemoteViews, s: WidgetState) {
+            views.setTextViewText(R.id.until_label, s.untilText)
+            views.setTextViewText(R.id.countdown, s.countdown)
+            try { views.setProgressBar(R.id.next_progress, 100, s.progressPct, false) } catch (_: Exception) {}
         }
 
         private fun populateStrip(context: Context, views: RemoteViews, prayers: List<PrayerTimeData>, nextIndex: Int) {

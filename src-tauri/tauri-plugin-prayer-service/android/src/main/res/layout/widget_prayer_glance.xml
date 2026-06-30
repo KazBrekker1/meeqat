@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One-row "glance" — next prayer label + live countdown + a thin progress bar.
+     Smallest footprint; the provider skips the orbit/strip/header for this size. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/until_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="UNTIL ASR · 3:42"
+        android:textColor="#8CFFFFFF"
+        android:textSize="9sp"
+        android:textAllCaps="true"
+        android:letterSpacing="0.08"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <TextView
+        android:id="@+id/countdown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="1:12:40"
+        android:textColor="#FFFFFFFF"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:fontFamily="monospace"
+        android:maxLines="1" />
+
+    <ProgressBar
+        android:id="@+id/next_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="4dp"
+        android:max="100"
+        android:progress="62"
+        android:progressDrawable="@drawable/widget_progress" />
+
+</LinearLayout>

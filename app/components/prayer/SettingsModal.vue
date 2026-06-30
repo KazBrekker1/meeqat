@@ -137,6 +137,13 @@
                 <p class="text-sm">Iqama reminder after</p>
                 <USelect v-model="minutesAfter" :items="timingOptions" size="sm" class="w-24" />
               </div>
+              <div class="flex items-center justify-between gap-4 px-4 py-3">
+                <div>
+                  <p class="text-sm">Discreet mode</p>
+                  <p class="text-[11px] text-muted">Silent — no sound or vibration</p>
+                </div>
+                <USwitch :model-value="notificationSettings?.silent" @update:model-value="toggleSilent" />
+              </div>
             </div>
           </Transition>
         </section>
@@ -520,6 +527,15 @@ function toggleAtPrayerTime() {
     emit('update:notificationSettings', {
       ...props.notificationSettings,
       atPrayerTime: !props.notificationSettings.atPrayerTime,
+    });
+  }
+}
+
+function toggleSilent() {
+  if (props.notificationSettings) {
+    emit('update:notificationSettings', {
+      ...props.notificationSettings,
+      silent: !props.notificationSettings.silent,
     });
   }
 }
