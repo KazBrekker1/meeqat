@@ -19,7 +19,8 @@
             :time="nowHHMM"
             :now-seconds="nowSec"
             :moon-phase="moonPhase"
-            :size="150"
+            :size="180"
+            :sonar-intensity="0.25"
           />
           <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
 

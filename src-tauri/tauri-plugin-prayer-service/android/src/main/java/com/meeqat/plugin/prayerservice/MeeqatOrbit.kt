@@ -5,14 +5,17 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathMeasure
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
+import android.graphics.Typeface
 import java.util.Calendar
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -85,7 +88,89 @@ object MeeqatOrbit {
             drawNowMarker(c, cx, cy, r, nowMs)
         }
         drawMoon(c, cx, cy, if (drawOrbit) r * 0.58f else r * 0.80f, phase)
+        if (drawOrbit && prayers.isNotEmpty()) {
+            drawCurvedLabels(c, cx, cy, r, prayers, nextIndex, nowMs)
+        }
         return bmp
+    }
+
+    // Pretty prayer names to match the web orbit (ʿAṣr, ʿIshāʾ, …).
+    private val PRETTY = mapOf(
+        "fajr" to "Fajr", "sunrise" to "Sunrise", "dhuhr" to "Dhuhr",
+        "asr" to "ʿAṣr", "maghrib" to "Maghrib", "isha" to "ʿIshāʾ"
+    )
+    private fun pretty(name: String) = PRETTY[name.lowercase()] ?: name
+
+    private fun fmtDur(min: Int): String {
+        val m = if (min < 0) 0 else min
+        val h = m / 60
+        val r = m % 60
+        return if (h > 0) "${h}h ${r}m" else "${r}m"
+    }
+
+    /**
+     * since / until labels, curved along a slice of the orbit between the previous
+     * and next prayer. Mirrors the web OrbitBumps. On the widget the ring nearly
+     * fills the bitmap, so labels sit just INSIDE the ring (over the sky, with a
+     * soft dark band for legibility) rather than outside it.
+     */
+    private fun drawCurvedLabels(
+        c: Canvas, cx: Float, cy: Float, r: Float,
+        prayers: List<PrayerTimeData>, nextIndex: Int, nowMs: Long
+    ) {
+        val nowM = minutesOfDay(nowMs)
+        val nextIdx = nextIndex.coerceIn(0, prayers.size - 1)
+        val prevIdx = if (nextIdx - 1 < 0) prayers.size - 1 else nextIdx - 1
+        val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
+        val prevM = minutesOfDay(prayers[prevIdx].prayerTime)
+        var sinceMin = nowM - prevM; if (sinceMin < 0) sinceMin += 1440
+        var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
+
+        val labelR = r * 0.70f // between the moon (0.58r) and the ring inner edge
+        val font = (r * 0.084f).coerceAtLeast(11f)
+
+        drawArcText(c, cx, cy, labelR, prevM / 1440f, "${pretty(prayers[prevIdx].prayerName)} ${fmtDur(sinceMin)}", font, 0x8CFFFFFF.toInt())
+        drawArcText(c, cx, cy, labelR, nextM / 1440f, "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}", font, 0xEBFFFFFF.toInt())
+    }
+
+    private fun drawArcText(
+        c: Canvas, cx: Float, cy: Float, radius: Float, fc: Float,
+        text: String, font: Float, color: Int
+    ) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = font
+            this.color = color
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT
+        }
+        // fraction of the full circle the text needs (with a little padding)
+        val approxW = paint.measureText(text)
+        val span = min(0.5f, (approxW * 1.15f) / (2f * PI.toFloat() * radius))
+        // On the lower half the path is reversed so glyphs stay upright.
+        val bottom = sin(fc * 2.0 * PI - PI / 2.0) > 0
+        val dir = if (bottom) -1f else 1f
+
+        val n = 24
+        val path = Path()
+        for (i in 0..n) {
+            val f = fc - dir * span / 2f + dir * span * (i.toFloat() / n)
+            val a = f * 2.0 * PI - PI / 2.0
+            val x = cx + radius * cos(a).toFloat()
+            val y = cy + radius * sin(a).toFloat()
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        // soft dark band behind the text (curved analog of the web scrim)
+        c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = font + font * 0.5f
+            strokeCap = Paint.Cap.ROUND
+            this.color = 0x9E05070F.toInt()
+        })
+
+        val hOffset = PathMeasure(path, false).length / 2f // centre the text on the arc
+        val vOffset = font * 0.35f
+        c.drawTextOnPath(text, path, hOffset, vOffset, paint)
     }
 
     private const val RING_MID = 0.86f

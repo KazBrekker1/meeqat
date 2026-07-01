@@ -32,6 +32,7 @@
               :now-seconds="nowSecondsLive"
               :moon-phase="moonPhase"
               :size="orbitSize"
+              :sonar-intensity="0.25"
             />
             <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
 
@@ -375,7 +376,7 @@ const orbitPrayers = computed(() =>
 // Orbit grows on wide (desktop two-pane) windows. useMediaQuery only reacts
 // when the breakpoint is crossed (cheaper than per-pixel useWindowSize).
 const isWide = useMediaQuery("(min-width: 768px)");
-const orbitSize = computed(() => (isWide.value ? 300 : 230));
+const orbitSize = computed(() => (isWide.value ? 400 : 300));
 
 // Short "in MM:SS"/"in HH:MM" badge next to the next prayer in the list.
 const shortCountdown = computed(() => (countdownToNext.value || "").split(":").slice(0, 2).join(":"));

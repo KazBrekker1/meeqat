@@ -34,6 +34,54 @@
         <circle :cx="headPt.x" :cy="headPt.y" :r="headR" fill="#fcd34d" stroke="rgba(8,6,2,0.6)" stroke-width="2" />
         <circle :cx="headPt.x" :cy="headPt.y" :r="headR * 0.5" fill="#fff" />
       </g>
+
+      <!-- since / until labels, curved along a slice of the orbit between the
+           previous and next prayer. Text auto-flips to stay upright anywhere on
+           the dial; a soft band behind it keeps it legible over the ring. The two
+           states crossfade so the collapse into a merged label reads as a clean
+           morph rather than a hard swap. -->
+      <template v-if="cue && showLabels">
+        <!-- two separate labels, each riding its own prayer dot -->
+        <Transition name="orbit-label">
+          <g v-if="!merged" key="sep">
+            <path :id="`${uid}-since`" :d="sinceArcD" fill="none" stroke="none" />
+            <path :id="`${uid}-until`" :d="untilArcD" fill="none" stroke="none" />
+            <path :d="sinceArcD" fill="none" stroke="rgba(4,6,15,0.72)" :stroke-width="labelFont + 7" stroke-linecap="round" />
+            <path :d="untilArcD" fill="none" stroke="rgba(4,6,15,0.72)" :stroke-width="labelFont + 7" stroke-linecap="round" />
+            <text :font-size="labelFont" fill="rgba(255,255,255,0.6)" style="font-variant-numeric: tabular-nums; letter-spacing: 0.02em;">
+              <textPath :href="`#${uid}-since`" startOffset="50%" text-anchor="middle">{{ sinceLabelText }}</textPath>
+            </text>
+            <text :font-size="labelFont" fill="rgba(255,255,255,0.98)" style="font-variant-numeric: tabular-nums; letter-spacing: 0.02em;">
+              <textPath :href="`#${uid}-until`" startOffset="50%" text-anchor="middle">{{ untilLabelText }}</textPath>
+            </text>
+          </g>
+        </Transition>
+        <!-- merged. Large orbs: two stacked lines — "in" (bright) above "ago"
+             (muted). Small orbs (tray): one line, to stay clear of the edge. -->
+        <Transition name="orbit-label">
+          <g v-if="merged" key="mg">
+            <template v-if="twoLineMerged">
+              <path :id="`${uid}-mu`" :d="mergedUntilArcD" fill="none" stroke="none" />
+              <path :id="`${uid}-ms`" :d="mergedSinceArcD" fill="none" stroke="none" />
+              <path :d="mergedSinceArcD" fill="none" stroke="rgba(4,6,15,0.74)" :stroke-width="labelFont + 7" stroke-linecap="round" />
+              <path :d="mergedUntilArcD" fill="none" stroke="rgba(4,6,15,0.74)" :stroke-width="labelFont + 7" stroke-linecap="round" />
+              <text :font-size="labelFont" fill="rgba(255,255,255,0.45)" style="font-variant-numeric: tabular-nums; letter-spacing: 0.02em;">
+                <textPath :href="`#${uid}-ms`" startOffset="50%" text-anchor="middle">{{ mergedSinceText }}</textPath>
+              </text>
+              <text :font-size="labelFont" fill="rgba(255,255,255,0.98)" style="font-variant-numeric: tabular-nums; letter-spacing: 0.02em;">
+                <textPath :href="`#${uid}-mu`" startOffset="50%" text-anchor="middle">{{ mergedUntilText }}</textPath>
+              </text>
+            </template>
+            <template v-else>
+              <path :id="`${uid}-m1`" :d="mergedArcD" fill="none" stroke="none" />
+              <path :d="mergedArcD" fill="none" stroke="rgba(4,6,15,0.74)" :stroke-width="labelFont + 7" stroke-linecap="round" />
+              <text :font-size="labelFont" fill="rgba(255,255,255,0.85)" style="font-variant-numeric: tabular-nums; letter-spacing: 0.02em;">
+                <textPath :href="`#${uid}-m1`" startOffset="50%" text-anchor="middle">{{ mergedOneLineText }}</textPath>
+              </text>
+            </template>
+          </g>
+        </Transition>
+      </template>
     </svg>
 
     <!-- centre (overridable) -->
@@ -72,22 +120,11 @@
       </div>
     </Transition>
 
-    <!-- since / until caption pills (collision-aware: stacked when they converge) -->
-    <template v-if="cue && showLabels">
-      <div
-        class="absolute z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums backdrop-blur-md border shadow-[0_1px_6px_rgba(0,0,0,0.45)] text-amber-100 bg-amber-500/20 border-amber-300/40"
-        :style="{ left: labelPositions.since.x + 'px', top: labelPositions.since.y + 'px' }"
-      >{{ sinceText }}</div>
-      <div
-        class="absolute z-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums backdrop-blur-md border shadow-[0_1px_6px_rgba(0,0,0,0.45)] text-sky-100 bg-sky-500/20 border-sky-300/40"
-        :style="{ left: labelPositions.until.x + 'px', top: labelPositions.until.y + 'px' }"
-      >{{ untilText }}</div>
-    </template>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, computed, onBeforeUnmount } from "vue";
+import { ref, reactive, computed, onBeforeUnmount, useId } from "vue";
 import { contourPath, ptAt, frac, toMin, bracket, tailRibbon, urgencyColor, fmtDur, type BumpPrayer } from "./bump";
 
 const props = withDefaults(
@@ -107,8 +144,11 @@ const props = withDefaults(
      *  advances smoothly each tick instead of stepping once a minute (which looks
      *  frozen next to a ticking countdown). Falls back to `time` when omitted. */
     nowSeconds?: number;
+    /** Scales the sonar ping opacity (0 = off, 1 = full). Lower it to keep the
+     *  pings from competing with nearby labels. */
+    sonarIntensity?: number;
   }>(),
-  { size: 320, baseAmp: 0.022, hoverAmp: 0.07, sigma: 0.022, cue: true, cueLabels: true }
+  { size: 320, baseAmp: 0.022, hoverAmp: 0.07, sigma: 0.022, cue: true, cueLabels: true, sonarIntensity: 1 }
 );
 
 const LABELS: Record<string, string> = {
@@ -230,60 +270,100 @@ const beaconColor = computed(() => urgencyColor(urgency.value));
 // does, so it must change rarely or the rings visibly jump every minute.
 const SONAR_PERIODS = [2.4, 1.7, 1.1, 0.6];
 const sonarPeriod = computed(() => SONAR_PERIODS[Math.min(3, Math.floor(urgency.value * 4))]!);
-const sonarPeak = computed(() => (0.12 + urgency.value * 0.6).toFixed(2));
+const sonarPeak = computed(() => ((0.12 + urgency.value * 0.6) * props.sonarIntensity).toFixed(2));
 const sonarRings = computed(() =>
   Array.from({ length: SONAR_RINGS }, (_, k) => ({ delay: -(k * sonarPeriod.value) / SONAR_RINGS }))
 );
 
-// Caption pills (since / until). Shown down to the tray's 150px orbit; hidden only
-// on the tiny home-screen-widget sizes where they can't fit.
+// since / until labels curve along a slice of the orbit between the previous and
+// next prayer. Shown down to the tray's 150px orbit; hidden on tiny widget sizes.
 const showLabels = computed(() => props.cueLabels && props.size >= 140);
-const sinceLblPt = computed(() => ptAt(nowFrac.value, Ro + props.size * 0.085, C, C));
-const untilLblPt = computed(() => ptAt(br.value.nextMin / 1440, Ro + props.size * 0.085, C, C));
-const sinceText = computed(() => `${fmtDur(br.value.sinceMin)} since ${labelFor(br.value.prevKey)}`);
+const uid = useId();
+// Scales with the orbit; floor keeps it readable at the small tray size. There's
+// ample dark space outside the ring, so the type can breathe.
+const labelFont = Math.max(11, Math.round(props.size * 0.042));
+// Pushed out far enough to clear the now-comet AND the maximum hover-bump/sonar,
+// so nothing dynamic is needed — a modest static gap covers the worst case.
+const labelR = props.size * 0.475;
+// Two stacked lines need vertical room; on the tiny tray orbit fall back to one.
+const twoLineMerged = props.size >= 220;
 
-// Within the final hour, the "until" pill ticks live as M:SS (untilMin is
-// fractional thanks to nowSeconds, so this updates every second); beyond an hour
-// it stays a coarse "1h 30m". Restores the second-by-second precision that the
-// removed big countdown used to give, only as the prayer approaches.
+// Within the final hour the "until" label ticks live as M:SS (untilMin is
+// fractional thanks to nowSeconds); beyond an hour it stays a coarse "1h 30m".
 const UNTIL_LIVE_MIN = 60;
-const untilText = computed(() => {
-  const label = labelFor(br.value.nextKey);
+const untilDur = computed(() => {
   const u = br.value.untilMin;
   if (u >= 0 && u < UNTIL_LIVE_MIN) {
     const total = Math.max(0, Math.round(u * 60));
-    const mm = Math.floor(total / 60);
-    const ss = total % 60;
-    return `${label} · ${mm}:${ss.toString().padStart(2, "0")}`;
+    return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
   }
-  return `${label} · ${fmtDur(u)}`;
+  return fmtDur(u);
 });
+const sinceLabelText = computed(() => `${labelFor(br.value.prevKey)} ${fmtDur(br.value.sinceMin)}`);
+const untilLabelText = computed(() => `${labelFor(br.value.nextKey)} ${untilDur.value}`);
+// When merged, the single position loses the since/until cue, so the two halves
+// are qualified with "ago"/"in" and stacked ("in" above "ago").
+const mergedUntilText = computed(() => `${labelFor(br.value.nextKey)} in ${fmtDur(br.value.untilMin)}`);
+const mergedSinceText = computed(() => `${labelFor(br.value.prevKey)} ${fmtDur(br.value.sinceMin)} ago`);
+// Single-line merged for the small tray orbit (can't fit two stacked lines).
+const mergedOneLineText = computed(() => `${mergedSinceText.value} · ${mergedUntilText.value}`);
 
-// The "since" pill rides the now-position and "until" rides the next-prayer
-// position, so as the countdown nears zero — and whenever the two are close on
-// the ring — they overlap. The pills are wide ("1h 23m since Fajr"), so we test
-// actual box overlap (AABB) rather than just center distance. The text is a
-// fixed 11px, so widths are estimated in constant px (size-independent); only
-// the anchor points scale with the orbit. On overlap, stack them vertically at
-// their midpoint — "until" (the next prayer, the priority) on top.
-const PILL_CHAR_PX = 6.2;
-const PILL_PAD_PX = 24;
-const PILL_H_PX = 20;
-const labelPositions = computed(() => {
-  const a = sinceLblPt.value;
-  const b = untilLblPt.value;
-  const wSince = sinceText.value.length * PILL_CHAR_PX + PILL_PAD_PX;
-  const wUntil = untilText.value.length * PILL_CHAR_PX + PILL_PAD_PX;
-  const overlap =
-    Math.abs(a.x - b.x) < (wSince + wUntil) / 2 &&
-    Math.abs(a.y - b.y) < PILL_H_PX;
-  if (!overlap) return { since: a, until: b };
-  const mx = (a.x + b.x) / 2;
-  const my = (a.y + b.y) / 2;
-  return {
-    until: { x: mx, y: my - PILL_H_PX * 0.6 },
-    since: { x: mx, y: my + PILL_H_PX * 0.6 },
-  };
+// The frac of the full circle a label's text needs at radius `r` (with padding).
+function spanFor(text: string, r = labelR) {
+  const approxW = text.length * labelFont * 0.6;
+  return Math.min(0.5, (approxW * 1.15) / (2 * Math.PI * r));
+}
+// Text-arc path centred on `fc` spanning `span` at radius `r`. On the bottom half
+// the path is reversed so glyphs stay upright (textPath flips text on a lower arc).
+function arcD(fc: number, span: number, r = labelR) {
+  const bottom = Math.sin(fc * 2 * Math.PI - Math.PI / 2) > 0;
+  const dir = bottom ? -1 : 1;
+  const n = 18;
+  const pts = Array.from({ length: n + 1 }, (_, i) =>
+    ptAt(fc - (dir * span) / 2 + dir * span * (i / n), r, C, C)
+  );
+  return pts.map((p, i) => `${i ? "L" : "M"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+}
+
+const prevFrac = computed(() => br.value.prevMin / 1440);
+const nextFrac = computed(() => br.value.nextMin / 1440);
+const midFrac = computed(() => (prevFrac.value + nextFrac.value) / 2);
+
+// Label radius rides just outside the (bump-swollen) ring, so a label shifts out
+// on hover to stay clear of the swell it sits on — capped so it never leaves the
+// box on small screens (no runaway outward push).
+const LABEL_GAP = props.size * 0.06;
+const LABEL_CAP = props.size * 0.48;
+function rAt(fc: number) {
+  const t = ((fc % 1) + 1) % 1;
+  return Math.min(LABEL_CAP, outerR(t) + LABEL_GAP);
+}
+
+const sinceSpan = computed(() => spanFor(sinceLabelText.value, rAt(prevFrac.value)));
+const untilSpan = computed(() => spanFor(untilLabelText.value, rAt(nextFrac.value)));
+// Merge only when the two arcs' half-spans genuinely (nearly) overlap the gap
+// between the prayers — a small pad so they don't render uncomfortably close.
+const MERGE_PAD = 0.006;
+const merged = computed(
+  () => (sinceSpan.value + untilSpan.value) / 2 + MERGE_PAD >= nextFrac.value - prevFrac.value
+);
+
+const sinceArcD = computed(() => arcD(prevFrac.value, sinceSpan.value, rAt(prevFrac.value)));
+const untilArcD = computed(() => arcD(nextFrac.value, untilSpan.value, rAt(nextFrac.value)));
+// Merged stack: "in" at the base radius (clears the comet), "ago" one line further
+// out — so at the dial's bottom "in" reads above "ago".
+const LINE_OFF = labelFont + 2;
+const mergedUntilArcD = computed(() => {
+  const r = rAt(midFrac.value);
+  return arcD(midFrac.value, spanFor(mergedUntilText.value, r), r);
+});
+const mergedSinceArcD = computed(() => {
+  const r = rAt(midFrac.value) + LINE_OFF;
+  return arcD(midFrac.value, spanFor(mergedSinceText.value, r), r);
+});
+const mergedArcD = computed(() => {
+  const r = rAt(midFrac.value);
+  return arcD(midFrac.value, spanFor(mergedOneLineText.value, r), r);
 });
 
 const minByKey = (k: string) => {
@@ -316,6 +396,22 @@ const conic = computed(() => {
 </script>
 
 <style scoped>
+/* since/until ↔ merged crossfade — a clean morph instead of a hard swap. */
+.orbit-label-enter-active,
+.orbit-label-leave-active {
+  transition: opacity 0.3s ease;
+}
+.orbit-label-enter-from,
+.orbit-label-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-label-enter-active,
+  .orbit-label-leave-active {
+    transition: none;
+  }
+}
+
 /* Sonar pings + head glow run on the compositor (transform/opacity only) — no JS
    rAF loop, so it stays cheap on mobile. transform-box/origin scale each ring
    around its own centre (the next-prayer dot). */
