@@ -303,13 +303,14 @@
               v{{ latestVersion }} is available.
             </p>
 
-            <!-- Download progress -->
+            <!-- Download progress. Indeterminate bar when the total size is
+                 unknown, so it never sits frozen at 0%. -->
             <div v-if="updateStatus === 'downloading'" class="space-y-1">
               <div class="flex items-center justify-between text-xs text-muted">
                 <span>Downloading…</span>
-                <span>{{ downloadProgress }}%</span>
+                <span v-if="progressKnown">{{ downloadProgress }}%</span>
               </div>
-              <UProgress :model-value="downloadProgress" :max="100" size="sm" />
+              <UProgress :model-value="progressKnown ? downloadProgress : null" :max="100" size="sm" />
             </div>
 
             <!-- Installing -->
@@ -446,6 +447,7 @@ const {
   status: updateStatus,
   latestVersion,
   downloadProgress,
+  progressKnown,
   errorMessage: updateError,
   isUpdateAvailable,
   checkForUpdate,

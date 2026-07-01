@@ -35,6 +35,10 @@ const status = ref<UpdateStatus>("idle");
 const latestVersion = ref<string | null>(null);
 const releaseNotes = ref<string | null>(null);
 const downloadProgress = ref(0); // 0..100, desktop only (Android install is handed off to the OS)
+// True once we know the download's total size, so the UI can show a real % bar;
+// while false (server sent no Content-Length) the UI shows an indeterminate bar
+// instead of a bar pinned at 0% that looks frozen.
+const progressKnown = ref(false);
 const errorMessage = ref<string | null>(null);
 
 // Desktop: hold the resolved Update handle between check and install.
@@ -163,6 +167,7 @@ async function downloadAndInstall(): Promise<void> {
     if (!pendingUpdate) throw new Error("No pending update to install");
     status.value = "downloading";
     downloadProgress.value = 0;
+    progressKnown.value = false;
 
     let downloaded = 0;
     let contentLength = 0;
@@ -170,21 +175,29 @@ async function downloadAndInstall(): Promise<void> {
       switch (event.event) {
         case "Started":
           contentLength = event.data.contentLength ?? 0;
+          progressKnown.value = contentLength > 0;
           break;
         case "Progress":
           downloaded += event.data.chunkLength;
-          downloadProgress.value = contentLength
-            ? Math.round((downloaded / contentLength) * 100)
-            : 0;
+          if (contentLength) {
+            downloadProgress.value = Math.round((downloaded / contentLength) * 100);
+          }
           break;
         case "Finished":
           downloadProgress.value = 100;
+          progressKnown.value = true;
           status.value = "installing";
           break;
       }
     });
 
-    // Installed; relaunch into the new version.
+    // Installed. A very fast download can reach here in well under a frame, so
+    // hold the "installing / restarting" state briefly — otherwise the whole
+    // flow flashes past and the user sees no feedback before the relaunch.
+    status.value = "installing";
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    // Relaunch into the new version.
     await relaunch();
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : String(e);
@@ -199,6 +212,7 @@ export function useAppUpdate() {
     latestVersion: readonly(latestVersion),
     releaseNotes: readonly(releaseNotes),
     downloadProgress: readonly(downloadProgress),
+    progressKnown: readonly(progressKnown),
     errorMessage: readonly(errorMessage),
     isUpdateAvailable,
     checkForUpdate,

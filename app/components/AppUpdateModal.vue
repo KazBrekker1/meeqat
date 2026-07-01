@@ -9,6 +9,7 @@ const {
   latestVersion,
   releaseNotes,
   downloadProgress,
+  progressKnown,
   errorMessage,
   downloadAndInstall,
 } = useAppUpdate();
@@ -54,13 +55,14 @@ function later() {
           {{ releaseNotes }}
         </div>
 
-        <!-- Download progress (desktop) -->
+        <!-- Download progress (desktop). Falls back to an indeterminate bar when
+             the server didn't report a total size, so it never looks frozen. -->
         <div v-if="status === 'downloading'" class="space-y-2">
           <div class="flex items-center justify-between text-sm text-white/70">
             <span>Downloading…</span>
-            <span>{{ downloadProgress }}%</span>
+            <span v-if="progressKnown">{{ downloadProgress }}%</span>
           </div>
-          <UProgress :model-value="downloadProgress" :max="100" />
+          <UProgress :model-value="progressKnown ? downloadProgress : null" :max="100" />
         </div>
 
         <!-- Installing -->
