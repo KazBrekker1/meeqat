@@ -37,7 +37,7 @@
             <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
 
             <!-- Date under the orbit; the countdown/since timers now live as the
-                 orbit's since/until pills. -->
+                 orbit's since/until banner. -->
             <div v-if="hijriDateVerbose || gregorianDateVerbose" class="text-center mt-1">
               <p class="text-white/55 text-[11px] md:text-sm">
                 {{ hijriDateVerbose }}<span v-if="hijriDateVerbose && gregorianDateVerbose"> · </span>{{ gregorianDateVerbose }}

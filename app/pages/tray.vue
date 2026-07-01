@@ -24,7 +24,7 @@
           />
           <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
 
-          <!-- Date only; countdown/since now read from the orbit's since/until pills. -->
+          <!-- Date only; countdown/since now read from the orbit's since/until banner. -->
           <p v-if="hijriDate" class="text-[10px] text-white/50 -mt-1">{{ hijriDate }}</p>
         </div>
 
