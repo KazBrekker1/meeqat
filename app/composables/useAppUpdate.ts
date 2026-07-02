@@ -157,10 +157,17 @@ async function downloadAndInstall(): Promise<void> {
     if (os === "ios") return; // unreachable in practice — iOS never reaches "available"
     if (os === "android") {
       if (!pendingApkUrl) throw new Error("No pending APK to install");
-      status.value = "installing";
-      // Native command downloads the APK and launches Android's install intent.
+      // The native command downloads the APK off the main thread, then fires the OS
+      // install intent. There's no byte-progress callback, so show an indeterminate
+      // "Downloading…" bar for the whole native download — far more visible than the
+      // near-instant "installing" spinner it showed before.
+      status.value = "downloading";
+      progressKnown.value = false;
+      downloadProgress.value = 0;
       await invoke("plugin:prayer-service|install_apk", { url: pendingApkUrl });
-      // Control returns to the OS installer; nothing more to do in-app.
+      // The OS installer is now in charge; drop back to the install affordance so a
+      // cancelled install leaves a retryable button rather than a stuck spinner.
+      status.value = "available";
       return;
     }
 

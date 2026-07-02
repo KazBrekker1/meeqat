@@ -104,7 +104,7 @@ function later() {
           icon="lucide:download"
           :label="installLabel"
           :loading="busy"
-          :disabled="busy || status === 'error'"
+          :disabled="busy"
           @click="downloadAndInstall"
         />
       </div>
