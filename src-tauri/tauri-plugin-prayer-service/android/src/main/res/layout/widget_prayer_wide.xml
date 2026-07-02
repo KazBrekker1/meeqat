@@ -1,54 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- wide — orbit left, info right, times strip across the bottom. -->
+<!-- wide · Schedule — orbit left (its pill carries since/until), the day's clock
+     times as a list on the right. No countdown text (the pill already shows it). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:orientation="vertical"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
     android:padding="14dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+    <ImageView
+        android:id="@+id/orbit_image"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="0.44"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
 
-        <ImageView
-            android:id="@+id/orbit_image"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="0.42"
-            android:adjustViewBounds="true"
-            android:scaleType="fitCenter"
-            android:contentDescription="@null" />
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="0.56"
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="0.58"
-            android:layout_marginStart="12dp"
-            android:orientation="vertical">
-            <TextView android:id="@+id/location_text" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Doha, QA" android:textColor="#8CFFFFFF" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" />
-            <TextView android:id="@+id/until_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="UNTIL ASR" android:textColor="#8CFFFFFF" android:textSize="10sp" android:textAllCaps="true" android:letterSpacing="0.12" android:maxLines="1" android:layout_marginTop="2dp" />
-            <TextView android:id="@+id/countdown" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1:12:40" android:textColor="#FFFFFFFF" android:textSize="26sp" android:textStyle="bold" android:fontFamily="monospace" android:maxLines="1" />
-            <ProgressBar
-                android:id="@+id/next_progress"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="5dp"
-                android:layout_marginTop="6dp"
-                android:max="100"
-                android:progress="62"
-                android:progressDrawable="@drawable/widget_progress" />
-            <TextView android:id="@+id/since_line" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Dhuhr · 47m ago" android:textColor="#73FFFFFF" android:textSize="10sp" android:layout_marginTop="5dp" android:maxLines="1" />
-            <TextView android:id="@+id/hijri_date" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
-            <TextView android:id="@+id/now_clock" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
-            <TextView android:id="@+id/gregorian_date" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+            <TextView android:id="@+id/location_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Doha, QA" android:textColor="#8CFFFFFF" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/hijri_date" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="16 Muharram 1448" android:textColor="#66FFFFFF" android:textSize="11sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
-    </LinearLayout>
 
-    <include layout="@layout/widget_times_strip" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" />
+        <include layout="@layout/widget_times_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="4dp" />
+
+        <TextView android:id="@+id/now_clock" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+        <TextView android:id="@+id/gregorian_date" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    </LinearLayout>
 
 </LinearLayout>

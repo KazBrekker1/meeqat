@@ -210,7 +210,10 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     applyGlance(views, state)
                 } else {
                     applyState(views, state)
-                    populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1)
+                    // wide/4×4 render a vertical times LIST → slim accent-bar highlight;
+                    // the other layouts use the horizontal strip → the chip highlight.
+                    val listStyle = layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x4
+                    populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1, listStyle)
                 }
             }
 
@@ -267,7 +270,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             try { views.setProgressBar(R.id.next_progress, 100, s.progressPct, false) } catch (_: Exception) {}
         }
 
-        private fun populateStrip(context: Context, views: RemoteViews, prayers: List<PrayerTimeData>, nextIndex: Int) {
+        private fun populateStrip(context: Context, views: RemoteViews, prayers: List<PrayerTimeData>, nextIndex: Int, listStyle: Boolean) {
+            val highlightBg = if (listStyle) R.drawable.widget_current_row_bg else R.drawable.widget_highlight_bg
             for (i in 0 until 6) {
                 if (i < prayers.size) {
                     val p = prayers[i]
@@ -276,7 +280,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(stripColIds[i], View.VISIBLE)
                     when {
                         i == nextIndex -> {
-                            views.setInt(stripColIds[i], "setBackgroundResource", R.drawable.widget_highlight_bg)
+                            views.setInt(stripColIds[i], "setBackgroundResource", highlightBg)
                             views.setTextColor(stripLabelIds[i], 0xFFFDE68A.toInt())
                             views.setTextColor(stripTimeIds[i], 0xFFFDE68A.toInt())
                         }

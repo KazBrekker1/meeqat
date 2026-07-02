@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- compact — orbit hero (smaller). Header · orbit · until/countdown/progress · since · times strip. -->
+<!-- compact · orbit hero — header, the orbit (its pill carries since/until), and the
+     day's clock-time strip. No countdown text: the pill already carries it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -25,26 +26,11 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="4dp"
-        android:layout_marginBottom="4dp"
+        android:layout_marginBottom="6dp"
         android:adjustViewBounds="true"
         android:scaleType="fitCenter"
         android:contentDescription="@null" />
 
-    <TextView android:id="@+id/until_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="UNTIL ASR · 3:42" android:textColor="#8CFFFFFF" android:textSize="10sp" android:textAllCaps="true" android:letterSpacing="0.12" android:maxLines="1" />
-    <TextView android:id="@+id/countdown" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="1:12:40" android:textColor="#FFFFFFFF" android:textSize="22sp" android:textStyle="bold" android:fontFamily="monospace" android:maxLines="1" />
-
-    <ProgressBar
-        android:id="@+id/next_progress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="5dp"
-        android:layout_marginTop="6dp"
-        android:max="100"
-        android:progress="62"
-        android:progressDrawable="@drawable/widget_progress" />
-
-    <TextView android:id="@+id/since_line" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="Dhuhr · 47m ago" android:textColor="#73FFFFFF" android:textSize="10sp" android:layout_marginTop="4dp" android:maxLines="1" />
-
-    <include layout="@layout/widget_times_strip" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" />
+    <include layout="@layout/widget_times_strip" android:layout_width="match_parent" android:layout_height="wrap_content" />
 
 </LinearLayout>

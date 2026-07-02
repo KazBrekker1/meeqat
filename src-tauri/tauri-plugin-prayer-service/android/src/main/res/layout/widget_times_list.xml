@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vertical daily times list (6 rows: name + clock time). Reuses the strip_* ids
+     so the provider's populateStrip fills + highlights it; the current row gets the
+     accent-bar background. Used by the Schedule (wide) + Dashboard (4×4) layouts. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/times_list"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:baselineAligned="false">
+
+    <LinearLayout android:id="@+id/strip_col_1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Fajr" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5:12" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/strip_col_2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Sunrise" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5:41" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/strip_col_3" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Dhuhr" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="12:07" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/strip_col_4" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Asr" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="15:33" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/strip_col_5" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_5" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Maghrib" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="18:49" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/strip_col_6" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+        <TextView android:id="@+id/strip_label_6" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Isha" android:textColor="#EAFFFFFF" android:textSize="14sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/strip_time_6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="20:15" android:textColor="#B3FFFFFF" android:textSize="14sp" android:fontFamily="monospace" android:maxLines="1" />
+    </LinearLayout>
+
+</LinearLayout>
