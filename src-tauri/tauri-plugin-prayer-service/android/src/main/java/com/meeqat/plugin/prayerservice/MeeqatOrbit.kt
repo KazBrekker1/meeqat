@@ -85,11 +85,11 @@ object MeeqatOrbit {
         if (drawOrbit && prayers.isNotEmpty()) {
             drawRing(c, cx, cy, r, prayers)
             drawDots(c, cx, cy, r, prayers, nextIndex)
-            drawNowMarker(c, cx, cy, r, nowMs)
+            drawComet(c, cx, cy, r, prayers, nextIndex, nowMs)
         }
-        drawMoon(c, cx, cy, if (drawOrbit) r * 0.58f else r * 0.80f, phase)
+        drawMoon(c, cx, cy, if (drawOrbit) r * 0.52f else r * 0.80f, phase)
         if (drawOrbit && prayers.isNotEmpty()) {
-            drawCurvedLabels(c, cx, cy, r, prayers, nextIndex, nowMs)
+            drawBottomBanner(c, cx, cy, r, prayers, nextIndex, nowMs)
         }
         return bmp
     }
@@ -108,13 +108,24 @@ object MeeqatOrbit {
         return if (h > 0) "${h}h ${r}m" else "${r}m"
     }
 
+    /** A point on the dial at fraction `fc` (0 = top / midnight, clockwise). */
+    private fun onCircle(cx: Float, cy: Float, radius: Float, fc: Float): FloatArray {
+        val a = fc * 2.0 * PI - PI / 2.0
+        return floatArrayOf(cx + radius * cos(a).toFloat(), cy + radius * sin(a).toFloat())
+    }
+
     /**
-     * since / until labels, curved along a slice of the orbit between the previous
-     * and next prayer. Mirrors the web OrbitBumps. On the widget the ring nearly
-     * fills the bitmap, so labels sit just INSIDE the ring (over the sky, with a
-     * soft dark band for legibility) rather than outside it.
+     * since / until read out as a caption banner anchored at the dial's bottom
+     * (6 o'clock), mirroring the web OrbitBumps. Fixing the position there keeps
+     * the curved text upright — it never twists — and the span is capped (font
+     * shrinks to fit) so a long caption can't wrap round into the vertical zones.
+     * On the widget the ring nearly fills the bitmap, so it rides just INSIDE the
+     * ring (over the sky, with a soft dark band for legibility). One packed line,
+     * like the tray.
      */
-    private fun drawCurvedLabels(
+    private const val SPAN_CAP = 0.42f
+
+    private fun drawBottomBanner(
         c: Canvas, cx: Float, cy: Float, r: Float,
         prayers: List<PrayerTimeData>, nextIndex: Int, nowMs: Long
     ) {
@@ -126,51 +137,60 @@ object MeeqatOrbit {
         var sinceMin = nowM - prevM; if (sinceMin < 0) sinceMin += 1440
         var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
 
-        val labelR = r * 0.70f // between the moon (0.58r) and the ring inner edge
-        val font = (r * 0.084f).coerceAtLeast(11f)
+        val text = "${pretty(prayers[prevIdx].prayerName)} ${fmtDur(sinceMin)} · " +
+            "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}"
 
-        drawArcText(c, cx, cy, labelR, prevM / 1440f, "${pretty(prayers[prevIdx].prayerName)} ${fmtDur(sinceMin)}", font, 0x8CFFFFFF.toInt())
-        drawArcText(c, cx, cy, labelR, nextM / 1440f, "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}", font, 0xEBFFFFFF.toInt())
-    }
-
-    private fun drawArcText(
-        c: Canvas, cx: Float, cy: Float, radius: Float, fc: Float,
-        text: String, font: Float, color: Int
-    ) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = font
-            this.color = color
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT
         }
-        // fraction of the full circle the text needs (with a little padding)
-        val approxW = paint.measureText(text)
-        val span = min(0.5f, (approxW * 1.15f) / (2f * PI.toFloat() * radius))
-        // On the lower half the path is reversed so glyphs stay upright.
-        val bottom = sin(fc * 2.0 * PI - PI / 2.0) > 0
-        val dir = if (bottom) -1f else 1f
+        var font = (r * 0.17f).coerceAtLeast(12f)
+        // Pull the label radius inward as the font grows so the dark band always
+        // clears the ring (outer edge) and the moon (inner edge).
+        val ringInner = (RING_MID - RING_THICK / 2f) * r
+        val labelR = min(r * 0.70f, ringInner - font * 0.8f - r * 0.02f)
+        // Shrink the font until the caption fits inside SPAN_CAP, rather than
+        // letting it wrap round and twist.
+        paint.textSize = font
+        var span = (paint.measureText(text) * 1.15f) / (2f * PI.toFloat() * labelR)
+        if (span > SPAN_CAP) {
+            font = (font * SPAN_CAP / span).coerceAtLeast(11f)
+            paint.textSize = font
+            span = min(SPAN_CAP, (paint.measureText(text) * 1.15f) / (2f * PI.toFloat() * labelR))
+        }
 
+        // Arc centred on the bottom (frac 0.5), swept right→left so glyphs read
+        // left→right upright.
         val n = 24
         val path = Path()
         for (i in 0..n) {
-            val f = fc - dir * span / 2f + dir * span * (i.toFloat() / n)
-            val a = f * 2.0 * PI - PI / 2.0
-            val x = cx + radius * cos(a).toFloat()
-            val y = cy + radius * sin(a).toFloat()
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            val f = 0.5f + span / 2f - span * (i.toFloat() / n)
+            val p = onCircle(cx, cy, labelR, f)
+            if (i == 0) path.moveTo(p[0], p[1]) else path.lineTo(p[0], p[1])
         }
 
         // soft dark band behind the text (curved analog of the web scrim)
         c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = font + font * 0.5f
+            strokeWidth = font + font * 0.6f
             strokeCap = Paint.Cap.ROUND
-            this.color = 0x9E05070F.toInt()
+            this.color = 0xBD05070F.toInt()
         })
-
+        paint.color = 0xF2FFFFFF.toInt()
         val hOffset = PathMeasure(path, false).length / 2f // centre the text on the arc
-        val vOffset = font * 0.35f
-        c.drawTextOnPath(text, path, hOffset, vOffset, paint)
+        c.drawTextOnPath(text, path, hOffset, font * 0.35f, paint)
+    }
+
+    // Beacon colour as the next prayer nears: cool blue → amber → hot coral.
+    private fun urgencyColor(u: Float): Int =
+        if (u < 0.5f) mixColor(0xFF7DB0FF.toInt(), 0xFFFCD34D.toInt(), u / 0.5f)
+        else mixColor(0xFFFCD34D.toInt(), 0xFFFF6B4A.toInt(), (u - 0.5f) / 0.5f)
+
+    private fun mixColor(c1: Int, c2: Int, t: Float): Int {
+        val r = ((c1 shr 16 and 0xFF) + ((c2 shr 16 and 0xFF) - (c1 shr 16 and 0xFF)) * t).toInt()
+        val g = ((c1 shr 8 and 0xFF) + ((c2 shr 8 and 0xFF) - (c1 shr 8 and 0xFF)) * t).toInt()
+        val b = ((c1 and 0xFF) + ((c2 and 0xFF) - (c1 and 0xFF)) * t).toInt()
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private const val RING_MID = 0.86f
@@ -257,25 +277,75 @@ object MeeqatOrbit {
         }
     }
 
-    private fun drawNowMarker(c: Canvas, cx: Float, cy: Float, r: Float, nowMs: Long) {
-        val frac = minutesOfDay(nowMs) / 1440f
-        val a = frac * 2f * PI.toFloat() - PI.toFloat() / 2f
-        val rad = r * RING_MID
-        val x = cx + rad * cos(a)
-        val y = cy + rad * sin(a)
-        // tether to centre
-        c.drawLine(x, y, cx, cy, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            strokeWidth = r * 0.006f
-            color = 0x4DFFF7E0
+    private const val TAIL_CAP = 150f   // minutes the tail spans before it saturates
+    private const val BEACON_RANGE = 100f // minutes out at which the beacon reacts
+
+    /**
+     * Comet · beacon now-cue, mirroring the web OrbitBumps. A gold head sits at the
+     * current time on the ring; a tapered gold tail trails behind it toward the
+     * previous prayer (= time since). The next-prayer dot carries a beacon that
+     * warms from blue → coral as the prayer nears (= time until). The web version's
+     * animated sonar pings can't run in a per-minute static bitmap, so the beacon
+     * is a single static ring instead.
+     */
+    private fun drawComet(
+        c: Canvas, cx: Float, cy: Float, r: Float,
+        prayers: List<PrayerTimeData>, nextIndex: Int, nowMs: Long
+    ) {
+        val ringR = r * RING_MID
+        val nowM = minutesOfDay(nowMs)
+        val nowFrac = nowM / 1440f
+        val nextIdx = nextIndex.coerceIn(0, prayers.size - 1)
+        val prevIdx = if (nextIdx - 1 < 0) prayers.size - 1 else nextIdx - 1
+        val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
+        val prevM = minutesOfDay(prayers[prevIdx].prayerTime)
+        var sinceMin = nowM - prevM; if (sinceMin < 0) sinceMin += 1440
+        var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
+
+        // ── tail: gold, tapered, riding the ring from now back over `since` ──
+        val covered = min(sinceMin.toFloat(), TAIL_CAP)
+        val segs = 28
+        val halfW = r * 0.02f
+        for (i in 1..segs) {
+            val fa = (i - 1f) / segs
+            val fb = i.toFloat() / segs
+            val ta = (nowM - fa * covered) / 1440f
+            val tb = (nowM - fb * covered) / 1440f
+            val hwa = halfW * Math.pow((1f - fa).toDouble(), 0.7).toFloat()
+            val hwb = halfW * Math.pow((1f - fb).toDouble(), 0.7).toFloat()
+            val oa = onCircle(cx, cy, ringR + hwa, ta)
+            val ob = onCircle(cx, cy, ringR + hwb, tb)
+            val ib = onCircle(cx, cy, ringR - hwb, tb)
+            val ia = onCircle(cx, cy, ringR - hwa, ta)
+            val o = Math.pow((1f - fa).toDouble(), 1.3).toFloat()
+            val alpha = (o * 255f).toInt().coerceIn(0, 255)
+            val quad = Path().apply {
+                moveTo(oa[0], oa[1]); lineTo(ob[0], ob[1]); lineTo(ib[0], ib[1]); lineTo(ia[0], ia[1]); close()
+            }
+            c.drawPath(quad, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (alpha shl 24) or 0xFCD34D })
+        }
+
+        // ── beacon on the next prayer dot (static; web pulses a sonar here) ──
+        val urgency = (1f - untilMin / BEACON_RANGE).coerceIn(0f, 1f)
+        val beacon = urgencyColor(urgency)
+        val np = onCircle(cx, cy, ringR, nextM / 1440f)
+        c.drawCircle(np[0], np[1], r * 0.085f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = r * 0.013f
+            color = (0x55 shl 24) or (beacon and 0xFFFFFF)
         })
-        c.drawCircle(x, y, r * 0.05f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = r * 0.022f; color = 0x8C06091A.toInt()
+        c.drawCircle(np[0], np[1], r * 0.028f + urgency * r * 0.02f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = beacon
         })
-        c.drawCircle(x, y, r * 0.046f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = r * 0.011f; color = 0xE6FFFFFF.toInt()
+
+        // ── head at now ──
+        val hp = onCircle(cx, cy, ringR, nowFrac)
+        val headR = r * 0.032f
+        c.drawCircle(hp[0], hp[1], headR * 1.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x40FFF7D6 }) // glow
+        c.drawCircle(hp[0], hp[1], headR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFCD34D.toInt() })
+        c.drawCircle(hp[0], hp[1], headR, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = headR * 0.4f; color = 0x9908060A.toInt()
         })
-        c.drawCircle(x, y, r * 0.031f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF05070F.toInt() })
-        c.drawCircle(x, y, r * 0.021f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFF7E0.toInt() })
+        c.drawCircle(hp[0], hp[1], headR * 0.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
     }
 
     private fun drawMoon(c: Canvas, cx: Float, cy: Float, moonR: Float, phase: Float) {
