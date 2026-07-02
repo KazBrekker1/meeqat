@@ -123,7 +123,7 @@ object MeeqatOrbit {
      * ring (over the sky, with a soft dark band for legibility). One packed line,
      * like the tray.
      */
-    private const val SPAN_CAP = 0.42f
+    private const val SPAN_CAP = 0.30f
 
     private fun drawBottomBanner(
         c: Canvas, cx: Float, cy: Float, r: Float,
@@ -131,20 +131,19 @@ object MeeqatOrbit {
     ) {
         val nowM = minutesOfDay(nowMs)
         val nextIdx = nextIndex.coerceIn(0, prayers.size - 1)
-        val prevIdx = if (nextIdx - 1 < 0) prayers.size - 1 else nextIdx - 1
         val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
-        val prevM = minutesOfDay(prayers[prevIdx].prayerTime)
-        var sinceMin = nowM - prevM; if (sinceMin < 0) sinceMin += 1440
         var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
 
-        val text = "${pretty(prayers[prevIdx].prayerName)} ${fmtDur(sinceMin)} · " +
-            "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}"
+        // Next prayer only ("Asr 3h 08m"): short enough to stay large AND gently
+        // curved. The comet tail already conveys "time since" the previous prayer,
+        // and the widget's list/strip shows every prayer's clock time.
+        val text = "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}"
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT
         }
-        var font = (r * 0.17f).coerceAtLeast(12f)
+        var font = (r * 0.15f).coerceAtLeast(12f)
         // Pull the label radius inward as the font grows so the dark band always
         // clears the ring (outer edge) and the moon (inner edge).
         val ringInner = (RING_MID - RING_THICK / 2f) * r
