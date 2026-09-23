@@ -1,104 +1,84 @@
 <template>
-  <div class="space-y-3">
-    <!-- Actions -->
-    <div class="flex items-center gap-2">
-      <UButton
-        size="xs"
-        variant="soft"
-        icon="lucide:locate"
-        :loading="isLocating"
-        @click="onUseMyLocation"
+  <div class="space-y-2">
+    <UButton
+      v-if="showLocate"
+      block
+      size="md"
+      color="primary"
+      icon="lucide:locate-fixed"
+      :loading="isLocating"
+      :label="isLocating ? 'Finding you…' : 'Use my location'"
+      @click="onUseMyLocation"
+    />
+    <div class="relative h-56 overflow-hidden rounded-xl border border-default bg-[#0e0e10]">
+      <ClientOnly>
+        <MapView :center="center" :zoom="zoom" @click="onMapClick" @load="onLoad">
+          <MapMarker v-if="lat != null && lng != null" :coordinates="[lng, lat]" />
+          <MapControls position="bottom-right" />
+        </MapView>
+        <template #fallback>
+          <div class="grid h-full place-items-center text-xs text-muted">Loading map…</div>
+        </template>
+      </ClientOnly>
+      <p
+        v-if="lat == null || lng == null"
+        class="pointer-events-none absolute inset-x-0 top-2 mx-auto w-fit rounded-full bg-black/60 px-3 py-1 text-xs text-white/80"
       >
-        Use My Location
-      </UButton>
-      <UButton
-        v-if="lat != null && lng != null"
-        size="xs"
-        variant="ghost"
-        color="neutral"
-        icon="lucide:x"
-        @click="$emit('update:location', null)"
-      >
-        Clear
-      </UButton>
+        {{ showLocate ? 'Or tap the map to pick a spot' : 'Tap the map to set your location' }}
+      </p>
     </div>
 
-    <!-- Error message -->
-    <p v-if="geoError" class="text-xs text-[var(--ui-color-error-500)]">
-      {{ geoError }}
-    </p>
-
-    <!-- Map -->
-    <ClientOnly>
-      <div class="rounded-lg overflow-hidden border border-[var(--ui-border)]">
-        <LMap
-          ref="mapRef"
-          :zoom="mapZoom"
-          :center="mapCenter"
-          style="height: 200px; z-index: 0;"
-          :use-global-leaflet="false"
-          @click="onMapClick"
-        >
-          <LTileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap"
-            layer-type="base"
-          />
-          <LMarker
-            v-if="lat != null && lng != null"
-            :lat-lng="[lat, lng]"
-            draggable
-            @moveend="onMarkerMove"
-          />
-        </LMap>
-      </div>
-    </ClientOnly>
-
-    <!-- Coordinates display -->
-    <p v-if="lat != null && lng != null" class="text-xs text-muted tabular-nums">
-      {{ Math.abs(lat).toFixed(4) }}{{ lat >= 0 ? 'N' : 'S' }}, {{ Math.abs(lng).toFixed(4) }}{{ lng >= 0 ? 'E' : 'W' }}
-    </p>
-    <p v-else class="text-xs text-muted">
-      Use GPS or click the map to set your location
+    <p v-if="geoError" class="text-xs text-error">{{ geoError }}</p>
+    <p v-else-if="lat != null && lng != null" class="text-xs text-muted tabular-nums">
+      {{ Math.abs(lat).toFixed(4) }}°{{ lat >= 0 ? 'N' : 'S' }}, {{ Math.abs(lng).toFixed(4) }}°{{ lng >= 0 ? 'E' : 'W' }}
     </p>
   </div>
 </template>
 
 <script lang="ts" setup>
-import "leaflet/dist/leaflet.css";
-import { LMap, LTileLayer, LMarker } from "@vue-leaflet/vue-leaflet";
+import type { Map as MaplibreMap, MapMouseEvent } from "maplibre-gl";
 
-const props = defineProps<{
-  lat?: number | null;
-  lng?: number | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    lat?: number | null;
+    lng?: number | null;
+    /** Overlay a "Use my location" button (off when the host already has one). */
+    showLocate?: boolean;
+  }>(),
+  { showLocate: true }
+);
 
 const emit = defineEmits<{
-  (e: 'update:location', value: { lat: number; lng: number } | null): void;
+  (e: "update:location", value: { lat: number; lng: number } | null): void;
 }>();
 
+let map: MaplibreMap | null = null;
 const { getCurrentPosition, isLocating, error: geoError } = useGeolocation();
-
-const mapZoom = computed(() => (props.lat != null ? 13 : 2));
-const mapCenter = computed<[number, number]>(() =>
-  props.lat != null && props.lng != null
-    ? [props.lat, props.lng]
-    : [25, 45]
-);
 
 async function onUseMyLocation() {
   const pos = await getCurrentPosition();
-  if (pos) {
-    emit('update:location', pos);
+  if (pos) emit("update:location", { lat: pos.lat, lng: pos.lng });
+}
+
+// MapLibre takes [lng, lat]. Start on the chosen point, else over the Middle East.
+const center = computed<[number, number]>(() =>
+  props.lat != null && props.lng != null ? [props.lng, props.lat] : [45, 25]
+);
+const zoom = computed(() => (props.lat != null ? 9 : 2));
+
+function onLoad(m: MaplibreMap) {
+  map = m;
+}
+
+// Follow outside changes (search result, "Use my location") without re-creating the map.
+watch(
+  () => [props.lat, props.lng] as const,
+  ([lat, lng]) => {
+    if (map && lat != null && lng != null) map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 9) });
   }
-}
+);
 
-function onMapClick(e: { latlng: { lat: number; lng: number } }) {
-  emit('update:location', { lat: e.latlng.lat, lng: e.latlng.lng });
-}
-
-function onMarkerMove(e: { target: { getLatLng: () => { lat: number; lng: number } } }) {
-  const latlng = e.target.getLatLng();
-  emit('update:location', { lat: latlng.lat, lng: latlng.lng });
+function onMapClick(e: MapMouseEvent) {
+  emit("update:location", { lat: e.lngLat.lat, lng: e.lngLat.lng });
 }
 </script>

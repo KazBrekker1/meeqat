@@ -1,74 +1,79 @@
+import { platform } from "@tauri-apps/plugin-os";
+import { isTauriAvailable } from "@/utils/store";
+
+export interface LocatedPosition {
+  lat: number;
+  lng: number;
+  /** "Doha, Qatar" when the source already knows it (IP lookup), else resolve later. */
+  label?: string;
+}
+
 /**
- * Cross-platform geolocation composable.
+ * Cross-platform "where am I".
  *
- * Strategy (in order):
- * 1. navigator.geolocation (Web API) — works on Android via wry's WebChromeClient,
- *    and in browser dev mode. Fails on macOS/Windows WKWebView (no delegate).
- * 2. IP-based geolocation via ip-api.com — works everywhere with internet access,
- *    gives city-level accuracy (~1-5km). User can fine-tune on the map.
+ * City-level accuracy is all prayer times need, so this favours fast over precise:
+ * - Desktop Tauri (macOS/Windows/Linux): the webview has no geolocation delegate,
+ *   so navigator.geolocation only ever times out. Go straight to an IP lookup.
+ * - Android / browser: coarse web geolocation (no high-accuracy GPS fix, which can
+ *   take many seconds indoors), with the IP lookup already in flight as fallback.
+ *
+ * The IP lookup must be HTTPS: Android blocks cleartext and the desktop app runs on
+ * a secure origin (the old http://ip-api.com fallback failed on both).
  */
 export function useGeolocation() {
   const isLocating = ref(false);
   const error = ref<string | null>(null);
 
-  async function getCurrentPosition(): Promise<{ lat: number; lng: number } | null> {
-    if (!import.meta.client) {
-      error.value = 'Geolocation not supported';
-      return null;
-    }
+  async function getCurrentPosition(): Promise<LocatedPosition | null> {
+    if (!import.meta.client) return null;
     isLocating.value = true;
     error.value = null;
-
-    // Strategy 1: Web Geolocation API (works on Android WebView + browser)
-    const webResult = await tryWebGeolocation();
-    if (webResult) {
+    try {
+      const ip = tryIpGeolocation(); // start now; it's the fallback either way
+      const web = hasWebGeolocation() ? await tryWebGeolocation() : null;
+      const result = web ?? (await ip);
+      if (!result) error.value = "Couldn't find your location. Check your connection, or pick it on the map.";
+      return result;
+    } finally {
       isLocating.value = false;
-      return webResult;
     }
-
-    // Strategy 2: IP-based geolocation (works everywhere, approximate)
-    const ipResult = await tryIpGeolocation();
-    if (ipResult) {
-      isLocating.value = false;
-      return ipResult;
-    }
-
-    if (!error.value) {
-      error.value = 'Could not determine location';
-    }
-    isLocating.value = false;
-    return null;
   }
 
-  async function tryWebGeolocation(): Promise<{ lat: number; lng: number } | null> {
-    if (!navigator.geolocation) return null;
+  function hasWebGeolocation(): boolean {
+    if (!navigator.geolocation) return false;
+    if (!isTauriAvailable()) return true;
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 8000,
-          maximumAge: 300000,
-        });
-      });
-      if (pos.coords.latitude === 0 && pos.coords.longitude === 0) return null;
-      return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      return platform() === "android";
     } catch {
-      return null;
+      return false;
     }
   }
 
-  async function tryIpGeolocation(): Promise<{ lat: number; lng: number } | null> {
+  function tryWebGeolocation(): Promise<LocatedPosition | null> {
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const { latitude: lat, longitude: lng } = pos.coords;
+          resolve(lat === 0 && lng === 0 ? null : { lat, lng });
+        },
+        () => resolve(null),
+        { enableHighAccuracy: false, timeout: 6000, maximumAge: 30 * 60 * 1000 }
+      );
+    });
+  }
+
+  async function tryIpGeolocation(): Promise<LocatedPosition | null> {
     try {
-      const res = await $fetch<{ status: string; lat: number; lon: number }>(
-        'http://ip-api.com/json/?fields=status,lat,lon',
+      const res = await $fetch<{ latitude?: string; longitude?: string; city?: string; country?: string }>(
+        "https://get.geojs.io/v1/ip/geo.json",
         { timeout: 5000 }
       );
-      if (res.status === 'success' && (res.lat !== 0 || res.lon !== 0)) {
-        return { lat: res.lat, lng: res.lon };
-      }
-      return null;
+      const lat = Number(res.latitude);
+      const lng = Number(res.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+      const label = [res.city, res.country].filter(Boolean).join(", ") || undefined;
+      return { lat, lng, label };
     } catch {
-      error.value = 'Could not determine location from network';
       return null;
     }
   }
@@ -77,8 +82,8 @@ export function useGeolocation() {
     try {
       const res = await $fetch<{
         address?: { city?: string; town?: string; village?: string; state?: string; country?: string };
-      }>('https://nominatim.openstreetmap.org/reverse', {
-        params: { format: 'json', lat, lon: lng, zoom: 10, 'accept-language': 'en' },
+      }>("https://nominatim.openstreetmap.org/reverse", {
+        params: { format: "json", lat, lon: lng, zoom: 10, "accept-language": "en" },
         headers: { "User-Agent": "Meeqat (prayer-times-app)" },
         timeout: 5000,
       });

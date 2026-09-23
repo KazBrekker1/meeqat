@@ -1,288 +1,156 @@
 <template>
   <div class="space-y-3">
-    <!-- Quick Access Favorites -->
-    <div v-if="favorites.length > 0" class="flex flex-wrap gap-2">
-      <TransitionGroup
-        enter-active-class="transition-all duration-200 ease-out"
-        enter-from-class="opacity-0 scale-95"
-        enter-to-class="opacity-100 scale-100"
-        leave-active-class="transition-all duration-150 ease-in"
-        leave-from-class="opacity-100 scale-100"
-        leave-to-class="opacity-0 scale-95"
-      >
-        <UButton
-          v-for="fav in displayedFavorites"
-          :key="fav.id"
-          :variant="isCurrentLocation(fav) ? 'solid' : 'soft'"
-          :color="isCurrentLocation(fav) ? 'primary' : 'neutral'"
-          size="sm"
-          class="group transition-all duration-200"
-          @click="selectFavorite(fav)"
-        >
-          <template #leading>
-            <span class="text-base leading-none">{{ getFlagByCode(fav.countryCode) }}</span>
-          </template>
-          {{ fav.label || fav.city }}
-          <template #trailing>
-            <UIcon
-              name="i-lucide-x"
-              class="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-red-500"
-              @click.stop="$emit('remove-favorite', fav.id)"
-            />
-          </template>
-        </UButton>
-      </TransitionGroup>
+    <!-- Search starts empty (it used to hold "Doha, Qatar", so typing appended to it). -->
+    <UInput
+      v-model="query"
+      dir="auto"
+      icon="i-lucide-search"
+      placeholder="Search any city · ابحث عن مدينة"
+      size="lg"
+      class="w-full"
+      :loading="isSearching"
+      autofocus
+      @keydown.enter.prevent="pickFirst"
+    >
+      <template v-if="query" #trailing>
+        <UButton color="neutral" variant="link" size="sm" icon="i-lucide-x" aria-label="Clear search" @click="clearQuery" />
+      </template>
+    </UInput>
 
+    <!-- Use my location -->
+    <button
+      type="button"
+      class="flex w-full items-center gap-3 rounded-xl border border-default bg-elevated/60 px-3 py-2.5 text-start hover:bg-elevated cursor-pointer disabled:cursor-wait"
+      :disabled="isLocating"
+      @click="useMyLocation"
+    >
+      <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-amber-300/15 text-amber-300">
+        <UIcon :name="isLocating ? 'i-lucide-loader-circle' : 'i-lucide-locate-fixed'" class="size-4" :class="isLocating && 'animate-spin'" />
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block text-sm font-medium">{{ isLocating ? 'Finding you…' : 'Use my location' }}</span>
+        <span class="block truncate text-xs" :class="geoError ? 'text-error' : 'text-muted'">
+          {{ geoError || 'Times follow you when you travel' }}
+        </span>
+      </span>
+    </button>
+
+    <!-- Favourites -->
+    <div v-if="favorites.length && !query" class="flex flex-wrap gap-2">
       <UButton
-        v-if="favorites.length > 3"
-        variant="ghost"
-        size="xs"
-        @click="toggleFavorites"
+        v-for="fav in favorites"
+        :key="fav.id"
+        :variant="isCurrentLocation(fav) ? 'solid' : 'soft'"
+        :color="isCurrentLocation(fav) ? 'primary' : 'neutral'"
+        size="sm"
+        class="group"
+        @click="$emit('select', fav.city, fav.countryCode)"
       >
-        {{ showAllFavorites ? 'Less' : `+${favorites.length - 3}` }}
+        <template #leading><span class="text-base leading-none">{{ getFlagByCode(fav.countryCode) }}</span></template>
+        <span dir="auto">{{ fav.label || fav.city }}</span>
+        <template #trailing>
+          <UIcon
+            name="i-lucide-x"
+            class="size-3 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
+            @click.stop="$emit('remove-favorite', fav.id)"
+          />
+        </template>
+      </UButton>
+      <UButton v-if="canAddFavorite" variant="ghost" color="neutral" size="sm" icon="i-lucide-plus" @click="$emit('add-favorite')">
+        Save {{ currentCity }}
       </UButton>
     </div>
 
-    <!-- Unified Location Search -->
-    <UInputMenu
-      v-model="selectedLocationItem"
-      v-model:query="searchQuery"
-      :items="groupedLocationItems"
-      by="id"
-      placeholder="Search any city..."
-      icon="i-lucide-search"
-      :loading="loading"
-      class="w-full"
-      :ui="{
-        content: 'max-h-72',
-        group: 'p-1',
-        label: 'px-2 py-1.5 text-xs font-semibold text-[var(--ui-text-muted)] uppercase tracking-wider',
-        itemLeadingIcon: 'text-base',
-      }"
-      @update:model-value="onLocationSelected"
-    >
-      <template #leading>
-        <span v-if="selectedFlag" class="text-lg leading-none">{{ selectedFlag }}</span>
-        <UIcon v-else name="i-lucide-map-pin" class="text-[var(--ui-text-muted)]" />
+    <!-- Results -->
+    <div class="max-h-72 overflow-y-auto rounded-xl border border-default divide-y divide-default">
+      <PrayerPlaceRow v-for="p in local" :key="p.id" :place="p" :active="isCurrentPlace(p)" @pick="pick(p)" />
+
+      <template v-if="query.trim().length >= 2">
+        <p class="bg-elevated/40 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">More places</p>
+        <PrayerPlaceRow v-for="p in more" :key="p.id" :place="p" @pick="pick(p)" />
+        <p v-if="!isSearching && !more.length" class="px-3 py-3 text-xs text-muted">
+          {{ remoteFailed ? "Couldn't search online. Check your connection, or pick the spot on the map." : 'No other places match.' }}
+        </p>
       </template>
 
-      <template #item="{ item }">
-        <div class="flex items-center gap-3 w-full py-0.5">
-          <span class="text-lg leading-none shrink-0">{{ item.flag }}</span>
-          <div class="flex-1 min-w-0">
-            <div class="font-medium truncate">{{ item.city }}</div>
-            <div class="text-xs text-[var(--ui-text-muted)] truncate">{{ item.country }}</div>
-          </div>
-          <UBadge
-            variant="subtle"
-            color="neutral"
-            size="xs"
-            class="shrink-0 font-mono"
-          >
-            {{ item.tzShort }}
-          </UBadge>
-        </div>
-      </template>
+      <p v-if="!local.length && query.trim().length < 2" class="px-3 py-4 text-center text-sm text-muted">Keep typing…</p>
+    </div>
 
-      <template #empty>
-        <div class="px-3 py-6 text-center text-[var(--ui-text-muted)]">
-          <UIcon name="i-lucide-map-pin-off" class="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p class="text-sm">No cities found</p>
-          <p class="text-xs mt-1">Try a different search term</p>
-        </div>
-      </template>
-    </UInputMenu>
-
-    <!-- Add to Favorites (when current location not saved) -->
-    <Transition
-      enter-active-class="transition-all duration-200 ease-out"
-      enter-from-class="opacity-0 -translate-y-1"
-      enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition-all duration-150 ease-in"
-      leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 -translate-y-1"
-    >
-      <UButton
-        v-if="canAddFavorite"
-        variant="ghost"
-        size="xs"
-        class="w-full"
-        @click="$emit('add-favorite')"
-      >
-        <template #leading>
-          <UIcon name="i-lucide-heart" class="w-3.5 h-3.5" />
-        </template>
-        Save {{ currentCity }} to favorites
+    <!-- Map (mounted only when opened, so MapLibre loads on demand) -->
+    <UCollapsible v-model:open="showMap">
+      <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-map" :trailing-icon="showMap ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" block>
+        Pick on the map
       </UButton>
-    </Transition>
+      <template #content>
+        <PrayerLocationMapPicker
+          class="mt-2"
+          :lat="currentLat"
+          :lng="currentLng"
+          :show-locate="false"
+          @update:location="(c) => c && $emit('select-place', { ...c })"
+        />
+      </template>
+    </UCollapsible>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { COUNTRY_OPTIONS, getFlagByCode, REGION_LABELS, type CountryOption } from '@/constants/countries';
-import { COUNTRY_TO_CITIES_DATA } from '@/constants/cities';
-import type { FavoriteLocation } from '@/composables/useFavoriteLocations';
-
-interface LocationItem {
-  id: string;
-  city: string;
-  country: string;
-  countryCode: string;
-  flag: string;
-  timezone: string;
-  tzShort: string;
-  region: CountryOption['region'];
-  label: string; // For InputMenu display
-}
+import { getFlagByCode } from "@/constants/countries";
+import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
+import type { PlaceResult } from "@/composables/usePlaceSearch";
 
 const props = defineProps<{
   favorites: FavoriteLocation[];
   currentCity?: string;
   currentCountryCode?: string;
+  /** Coordinates of the active location (city or picked point), to centre the map. */
+  currentLat?: number | null;
+  currentLng?: number | null;
   maxFavorites: number;
   loading?: boolean;
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', city: string, countryCode: string): void;
-  (e: 'add-favorite'): void;
-  (e: 'remove-favorite', id: string): void;
+  (e: "select", city: string, countryCode: string): void;
+  (e: "select-place", place: { lat: number; lng: number; label?: string }): void;
+  (e: "add-favorite"): void;
+  (e: "remove-favorite", id: string): void;
 }>();
 
-const searchQuery = ref('');
-const showAllFavorites = ref(false);
-const selectedLocationItem = ref<LocationItem>();
+const { query, local, more, isSearching, remoteFailed } = usePlaceSearch();
+const { getCurrentPosition, isLocating, error: geoError } = useGeolocation();
+const showMap = ref(false);
 
-// Format timezone to short display (e.g., "GMT+3")
-function formatTimezoneShort(timezone: string): string {
-  try {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'shortOffset',
-    });
-    const parts = formatter.formatToParts(now);
-    const tzPart = parts.find(p => p.type === 'timeZoneName');
-    return tzPart?.value ?? timezone.split('/').pop() ?? '';
-  } catch {
-    return timezone.split('/').pop() ?? '';
-  }
+function clearQuery() {
+  query.value = "";
 }
 
-// Build flat list of all locations
-const allLocations = computed<LocationItem[]>(() => {
-  const items: LocationItem[] = [];
+function pick(p: PlaceResult) {
+  if (p.countryCode) emit("select", p.name, p.countryCode);
+  else emit("select-place", { lat: p.lat, lng: p.lng, label: p.detail ? `${p.name}, ${p.detail.split(", ").pop()}` : p.name });
+}
 
-  for (const country of COUNTRY_OPTIONS) {
-    const cities = COUNTRY_TO_CITIES_DATA[country.code] ?? [];
-    for (const cityData of cities) {
-      const tz = cityData.timezone || country.timezone;
-      items.push({
-        id: `${country.code}-${cityData.name}`,
-        city: cityData.name,
-        country: country.name,
-        countryCode: country.code,
-        flag: country.flag,
-        timezone: tz,
-        tzShort: formatTimezoneShort(tz),
-        region: country.region,
-        label: `${cityData.name}, ${country.name}`,
-      });
-    }
-  }
+function pickFirst() {
+  const first = local.value[0] ?? more.value[0];
+  if (first) pick(first);
+}
 
-  return items;
-});
+async function useMyLocation() {
+  const pos = await getCurrentPosition();
+  if (pos) emit("select-place", pos);
+}
 
-// Locations ordered by region for the dropdown.
-const groupedLocationItems = computed<LocationItem[]>(() => {
-  if (searchQuery.value.trim()) {
-    const query = searchQuery.value.toLowerCase();
-    return allLocations.value.filter(loc =>
-      loc.city.toLowerCase().includes(query) ||
-      loc.country.toLowerCase().includes(query) ||
-      loc.countryCode.toLowerCase().includes(query)
-    );
-  }
+function isCurrentPlace(p: PlaceResult): boolean {
+  return p.countryCode === props.currentCountryCode && p.name.toLowerCase() === props.currentCity?.toLowerCase();
+}
 
-  const regionOrder: CountryOption['region'][] = ['gulf', 'levant', 'maghreb', 'europe', 'americas', 'asia'];
-  const items: LocationItem[] = [];
-
-  for (const region of regionOrder) {
-    const regionLocations = allLocations.value.filter(loc => loc.region === region);
-    items.push(...regionLocations);
-  }
-
-  return items;
-});
-
-// Current selected flag
-const selectedFlag = computed(() => {
-  if (props.currentCountryCode) {
-    return getFlagByCode(props.currentCountryCode);
-  }
-  return null;
-});
-
-// Displayed favorites (limited to 3 unless expanded)
-const displayedFavorites = computed(() => {
-  if (showAllFavorites.value || props.favorites.length <= 3) {
-    return props.favorites;
-  }
-  return props.favorites.slice(0, 3);
-});
-
-// Check if location is current
 function isCurrentLocation(fav: FavoriteLocation): boolean {
-  return (
-    fav.city.toLowerCase() === props.currentCity?.toLowerCase() &&
-    fav.countryCode === props.currentCountryCode
-  );
+  return fav.city.toLowerCase() === props.currentCity?.toLowerCase() && fav.countryCode === props.currentCountryCode;
 }
 
-// Can add current location to favorites
 const canAddFavorite = computed(() => {
   if (!props.currentCity || !props.currentCountryCode) return false;
   if (props.favorites.length >= props.maxFavorites) return false;
-
-  return !props.favorites.some(
-    f => f.city.toLowerCase() === props.currentCity?.toLowerCase() &&
-         f.countryCode === props.currentCountryCode
-  );
+  return !props.favorites.some((f) => isCurrentLocation(f));
 });
-
-// Handle location selection from InputMenu
-function onLocationSelected(item: LocationItem | undefined) {
-  if (item) {
-    emit('select', item.city, item.countryCode);
-    searchQuery.value = '';
-  }
-}
-
-function toggleFavorites() {
-  showAllFavorites.value = !showAllFavorites.value;
-}
-
-// Handle favorite selection
-function selectFavorite(fav: FavoriteLocation) {
-  emit('select', fav.city, fav.countryCode);
-}
-
-// Sync selected item when current city/country changes
-watch(
-  [() => props.currentCity, () => props.currentCountryCode],
-  ([city, countryCode]) => {
-    if (city && countryCode) {
-      const found = allLocations.value.find(
-        loc => loc.city.toLowerCase() === city.toLowerCase() &&
-               loc.countryCode === countryCode
-      );
-      selectedLocationItem.value = found;
-    } else {
-      selectedLocationItem.value = undefined;
-    }
-  },
-  { immediate: true }
-);
-
 </script>

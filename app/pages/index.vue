@@ -212,27 +212,21 @@
     />
 
     <!-- Location Modal (opened from the header) -->
-    <UModal v-model:open="showLocationModal" title="Location" description="Choose your city or use GPS">
+    <UModal v-model:open="showLocationModal" title="Location" description="Search a city, use where you are, or pick a spot on the map">
       <template #body>
-        <div class="space-y-3">
-          <div v-if="locationMode === 'gps'" class="flex items-center gap-2 text-sm text-muted">
-            <UIcon name="lucide:satellite" class="size-4 shrink-0" />
-            <span v-if="gpsCity">{{ gpsCity }}</span>
-            <span v-else-if="gpsLat != null && gpsLng != null" class="tabular-nums">{{ gpsLat.toFixed(4) }}, {{ gpsLng.toFixed(4) }}</span>
-            <span v-else class="text-dimmed">GPS mode — set coordinates in Settings</span>
-          </div>
-          <PrayerLocationSelector
-            v-else
-            :favorites="favorites"
-            :current-city="selectedCity"
-            :current-country-code="selectedCountry"
-            :max-favorites="MAX_FAVORITES"
-            :loading="isLoading"
-            @select="(c: string, cc: string) => { onLocationSelect(c, cc); showLocationModal = false; }"
-            @add-favorite="onAddCurrentToFavorites"
-            @remove-favorite="onRemoveFavorite"
-          />
-        </div>
+        <PrayerLocationSelector
+          :favorites="favorites"
+          :current-city="locationMode === 'gps' ? undefined : selectedCity"
+          :current-country-code="locationMode === 'gps' ? undefined : selectedCountry"
+          :current-lat="activeCoords?.lat ?? null"
+          :current-lng="activeCoords?.lng ?? null"
+          :max-favorites="MAX_FAVORITES"
+          :loading="isLoading"
+          @select="(c: string, cc: string) => { locationMode = 'city'; onLocationSelect(c, cc); showLocationModal = false; }"
+          @select-place="onPlaceSelect"
+          @add-favorite="onAddCurrentToFavorites"
+          @remove-favorite="onRemoveFavorite"
+        />
       </template>
     </UModal>
 
@@ -460,17 +454,28 @@ function onLocationModeChange(mode: 'city' | 'gps') {
   }
 }
 
-function onGpsLocationUpdate(coords: { lat: number; lng: number } | null) {
+// A place picked from search, "Use my location", or the map: coordinates mode.
+function onPlaceSelect(place: { lat: number; lng: number; label?: string }) {
+  showLocationModal.value = false;
+  locationMode.value = "gps";
+  onGpsLocationUpdate(place);
+  if (place.label) gpsCity.value = place.label;
+}
+
+function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string } | null) {
   if (coords) {
     gpsLat.value = coords.lat;
     gpsLng.value = coords.lng;
     if (locationMode.value === 'gps') {
       fetchByCoordinates(coords.lat, coords.lng);
     }
-    // Resolve city name in background (non-blocking)
-    reverseGeocode(coords.lat, coords.lng).then((name) => {
-      gpsCity.value = name;
-    });
+    // Resolve the place name in the background unless the source already knew it.
+    gpsCity.value = coords.label ?? null;
+    if (!coords.label) {
+      reverseGeocode(coords.lat, coords.lng).then((name) => {
+        gpsCity.value = name;
+      });
+    }
   } else {
     gpsLat.value = null;
     gpsLng.value = null;
