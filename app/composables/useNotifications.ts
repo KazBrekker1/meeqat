@@ -14,6 +14,26 @@ import {
   Importance,
   Visibility,
 } from "@tauri-apps/plugin-notification";
+import { invoke } from "@tauri-apps/api/core";
+import { platform } from "@tauri-apps/plugin-os";
+import { isTauriAvailable } from "@/utils/store";
+
+/**
+ * Desktop can't schedule through the notification plugin: it ignores `schedule`
+ * and shows the notification immediately, which fired a whole week of reminders
+ * at once whenever the window was re-laid (e.g. at midnight). On desktop the
+ * window is handed to Rust (src-tauri/src/notify.rs), which delivers each one on
+ * time; Android/iOS keep native OS scheduling.
+ */
+function usesRustScheduler(): boolean {
+  if (!isTauriAvailable()) return false;
+  try {
+    const os = platform();
+    return os !== "android" && os !== "ios";
+  } catch {
+    return false;
+  }
+}
 
 // Audible channel (sound + vibration + heads-up) and a parallel silent channel
 // for discreet mode. Android bakes sound/importance into the channel at creation
@@ -282,7 +302,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
     }
 
     if (!settings.value.enabled) {
-      isRunning.value = false;
+      // Turning reminders off must also clear the ones already scheduled.
+      await stopPrayerNotifications();
       return;
     }
 
@@ -301,14 +322,18 @@ export function useNotifications(options?: UseNotificationsOptions) {
     try {
       await ensureNotificationChannels();
 
-      // Clear the existing window before re-laying it.
-      try {
-        const pendingNotifications = await pending();
-        if (pendingNotifications.length > 0) {
-          await cancel(pendingNotifications.map((n) => n.id));
+      const desktop = usesRustScheduler();
+
+      // Clear the existing window before re-laying it (desktop: replaced wholesale below).
+      if (!desktop) {
+        try {
+          const pendingNotifications = await pending();
+          if (pendingNotifications.length > 0) {
+            await cancel(pendingNotifications.map((n) => n.id));
+          }
+        } catch {
+          // ignore on platforms without pending()
         }
-      } catch {
-        // ignore on platforms without pending()
       }
 
       const scheduled = await buildScheduledNotifications(now);
@@ -319,10 +344,21 @@ export function useNotifications(options?: UseNotificationsOptions) {
         return;
       }
 
+      if (desktop) {
+        await invoke("schedule_notifications", {
+          items: scheduled.map((n) => ({
+            atMs: n.time.getTime(),
+            title: n.title,
+            body: n.body,
+            silent: settings.value.silent,
+          })),
+        });
+      }
+
       const channelId = deliveryChannel();
       const sound = deliverySound();
 
-      scheduled.forEach((n, i) => {
+      if (!desktop) scheduled.forEach((n, i) => {
         try {
           sendNotification({
             id: i + 1, // unique within this batch (all prior pending cleared)
@@ -353,6 +389,10 @@ export function useNotifications(options?: UseNotificationsOptions) {
 
   async function startPrayerNotifications(): Promise<void> {
     // First, cancel any stale notifications from previous sessions
+    if (usesRustScheduler()) {
+      void schedulePrayerNotifications();
+      return;
+    }
     try {
       const pendingNotifications = await pending();
       if (pendingNotifications.length > 0) {
@@ -366,6 +406,16 @@ export function useNotifications(options?: UseNotificationsOptions) {
   }
 
   async function stopPrayerNotifications(): Promise<void> {
+    if (usesRustScheduler()) {
+      try {
+        await invoke("cancel_notifications");
+      } catch {
+        // ignore
+      }
+      lastScheduledDateKey = "";
+      isRunning.value = false;
+      return;
+    }
     try {
       const pendingNotifications = await pending();
       if (pendingNotifications.length > 0) {

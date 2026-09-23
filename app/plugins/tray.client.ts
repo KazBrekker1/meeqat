@@ -1,161 +1,34 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
-import { Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
-import { WebviewWindow, getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import { resolveResource } from "@tauri-apps/api/path";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { listen } from "@tauri-apps/api/event";
 import { platform } from "@tauri-apps/plugin-os";
-import { handleIconState } from "@tauri-apps/plugin-positioner";
-import { togglePopover } from "@/composables/useTrayPopover";
 import { isTauriAvailable } from "@/utils/store";
 import type { TrayUpdatePayload } from "@/utils/types";
 
-declare global {
-  interface Window {
-    __MEEQAT_TRAY__?: {
-      tray: TrayIcon | null;
-      unlisten?: UnlistenFn | null;
-      initialized: boolean;
-    };
-  }
-}
-
-async function openMainWindow() {
-  const main =
-    (await WebviewWindow.getByLabel("main")) || WebviewWindow.getCurrent();
-  await main.show();
-  await main.setFocus();
-}
-
+/**
+ * The tray icon, its menu and the popover are created and driven in Rust
+ * (src-tauri/src/tray.rs). This plugin only keeps the menu-bar title ("Asr in 2:14")
+ * in sync with the main window's countdown.
+ */
 export default defineNuxtPlugin(async () => {
-  if (import.meta.server) return;
-  if (!isTauriAvailable()) return;
-  // The Tray API is not available on mobile (Android/iOS). Bail out early.
-  const currentPlatform = platform();
-  if (currentPlatform === "android" || currentPlatform === "ios") {
-    return;
-  }
+  if (import.meta.server || !isTauriAvailable()) return;
+  const os = platform();
+  if (os === "android" || os === "ios") return;
+  if (getCurrentWebviewWindow().label !== "main") return;
 
-  // Only initialize tray from the main window to prevent duplicate tray icons
-  // when both main and tray windows load the Nuxt app simultaneously
-  const currentWindow = getCurrentWebviewWindow();
-  if (currentWindow.label !== "main") {
-    console.log("[Tray] Skipping initialization - not main window");
-    return;
-  }
+  const tray = await TrayIcon.getById("meeqat-tray");
+  if (!tray) return;
 
-  // Check if tray already exists using Tauri API to prevent HMR duplication
-  const existingTray = await TrayIcon.getById("meeqat-tray");
-  if (existingTray) {
-    console.log("[Tray] Skipping initialization - tray already exists");
-    if (!window.__MEEQAT_TRAY__) {
-      window.__MEEQAT_TRAY__ = {
-        tray: existingTray,
-        unlisten: null,
-        initialized: true,
-      };
-    }
-    return;
-  }
-
-  // Initialize the global tracker
-  if (!window.__MEEQAT_TRAY__) {
-    window.__MEEQAT_TRAY__ = { tray: null, unlisten: null, initialized: false };
-  }
-
-  // Build right-click menu with only Open and Quit items
-  const openItem = await MenuItem.new({
-    id: "meeqat-open",
-    text: "Open Meeqat",
-    action: async () => {
-      try {
-        await openMainWindow();
-      } catch (error) {
-        console.error(error);
-        console.error("Failed to open Meeqat");
-      }
-    },
-  });
-
-  const quitItem = await MenuItem.new({
-    id: "meeqat-quit",
-    text: "Quit Meeqat",
-    action: async () => {
-      try {
-        await invoke("quit_app");
-      } catch (error) {
-        console.error(error);
-        console.error("Failed to quit Meeqat");
-      }
-    },
-  });
-
-  const separatorItem = await PredefinedMenuItem.new({
-    text: "separator",
-    item: "Separator",
-  });
-
-  const menu = await Menu.new({
-    items: [openItem, separatorItem, quitItem],
-  });
-
-  const isMac = currentPlatform === "macos";
-  const isWindows = currentPlatform === "windows";
-  // Get icon path for non-macOS platforms (macOS uses text-only menu bar item)
-  const iconPath = !isMac
-    ? await resolveResource(
-        isWindows ? "icons/icon.ico" : "icons/icon.png"
-      ).catch(() => null)
-    : null;
-
-  const tray = await TrayIcon.new({
-    id: "meeqat-tray",
-    menu,
-    menuOnLeftClick: false, // Disable menu on left click - we'll show popover instead
-    tooltip: "Meeqat",
-    ...(isMac ? { title: "Meeqat" } : {}),
-    ...(iconPath ? { icon: iconPath } : {}),
-    action: async (event) => {
-      console.log("[Tray] Action event:", JSON.stringify(event));
-      // Track tray icon state for Position.TrayCenter fallback
-      try {
-        await handleIconState(event);
-      } catch (e) {
-        console.warn("[Tray] handleIconState failed:", e);
-      }
-      // Handle left-click only to toggle popover (right-click shows context menu)
-      if (event.type === "Click" && event.button === "Left" && event.buttonState === "Up") {
-        console.log("[Tray] Left click detected - toggling popover");
-        try {
-          await togglePopover(event.rect);
-        } catch (e) {
-          console.error("[Tray] Failed to toggle popover:", e);
-          // Fallback: show main window if popover fails
-          await openMainWindow();
-        }
-      }
-    },
-  });
-  window.__MEEQAT_TRAY__!.tray = tray;
-
-  // Listen for events from the UI to update the tray title
-  const unlisten = await listen<TrayUpdatePayload>("meeqat:tray:update", async (evt) => {
+  let lastTitle = "";
+  await listen<TrayUpdatePayload>("meeqat:tray:update", async ({ payload }) => {
+    if (!payload || !("title" in payload)) return;
+    const title = payload.title || "Meeqat";
+    if (title === lastTitle) return;
+    lastTitle = title;
     try {
-      const payload = evt.payload || {};
-      // Update tray title (shown in menu bar on macOS)
-      if (window.__MEEQAT_TRAY__?.tray && "title" in payload) {
-        await window.__MEEQAT_TRAY__!.tray!.setTitle(
-          payload.title == null || payload.title === ""
-            ? "Meeqat"
-            : payload.title
-        );
-      }
+      await tray.setTitle(title);
     } catch {
-      // ignore update errors
+      // ignore
     }
   });
-  window.__MEEQAT_TRAY__!.unlisten = unlisten;
-
-  // Mark as initialized to prevent HMR from reinitializing
-  window.__MEEQAT_TRAY__!.initialized = true;
 });

@@ -20,6 +20,7 @@
     "core:window:allow-maximize",
     "core:window:allow-start-dragging",
     "core:window:allow-set-position",
+    "core:window:allow-set-size",
     "core:window:allow-set-focus",
     "core:window:allow-set-visible-on-all-workspaces",
     "core:window:allow-cursor-position",

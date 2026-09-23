@@ -249,7 +249,8 @@ import { iconFor } from "@/components/prototypes/celestial/prayerIcons";
 import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
 import { GregorianCalendar, toCalendar } from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
-import { watchThrottled } from "@vueuse/core";
+import { invoke } from "@tauri-apps/api/core";
+import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
@@ -642,8 +643,9 @@ watchThrottled(
   { throttle: 1000 },
 );
 
-// Tray full data update — throttle 30s (data changes at most a few times per day)
-watchThrottled(
+// Tray full data update. Debounced, not throttled: a 30s throttle held back the
+// snapshot with the prayer times, leaving the tray on a bare moon for up to 30s.
+watchDebounced(
   [
     gregorianDateVerbose,
     hijriDateVerbose,
@@ -666,6 +668,8 @@ watchThrottled(
             typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key),
         )
         .sort((a, b) => a.minutes! - b.minutes!);
+      // Times not loaded yet: wait for them rather than sending the tray an empty list.
+      if (!list.length) return;
 
       let nextLine = "Next: --";
       if (nextPrayerLabel.value && countdownToNext.value) {
@@ -677,7 +681,9 @@ watchThrottled(
         sinceLine = `${previousPrayerLabel.value} since \t ${timeSincePrevious.value}`;
       }
 
-      await emit("meeqat:tray:update", {
+      // Rust keeps this snapshot and hands it to the tray popover on load, so the
+      // popover never depends on having caught a one-off event.
+      await invoke("set_tray_snapshot", { payload: {
         dateLine,
         nextLine,
         sinceLine,
@@ -694,12 +700,12 @@ watchThrottled(
             : selectedCity.value,
         countryCode:
           locationMode.value === "gps" ? "" : selectedCountry.value,
-      } satisfies TrayUpdatePayload);
+      } satisfies TrayUpdatePayload });
     } catch {
       // ignore emit errors in non-tauri/web
     }
   },
-  { throttle: 30000 },
+  { debounce: 250 },
 );
 
 onBeforeUnmount(() => {
