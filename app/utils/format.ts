@@ -54,3 +54,8 @@ export function formatMinutesLocal(
   base.setMinutes(minutes);
   return formatTime(base, is24Hour);
 }
+
+/** "12.4 MB" — download sizes for the updater. */
+export function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1_000_000).toFixed(bytes >= 10_000_000 ? 0 : 1)} MB`;
+}

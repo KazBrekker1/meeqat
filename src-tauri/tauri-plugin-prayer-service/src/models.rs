@@ -61,8 +61,12 @@ pub struct MockTimeOffsetResult {
     pub offset_ms: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Forwarded to Kotlin as-is. `on_progress` serialises to the `__CHANNEL__:id` form
+/// the Kotlin side deserialises back into a Channel, so it can stream download
+/// progress straight to JS. Serialize-only: a Channel is built from the IPC call.
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallApkArgs {
     pub url: String,
+    pub on_progress: tauri::ipc::Channel,
 }

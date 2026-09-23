@@ -89,8 +89,14 @@ pub fn clear_mock_time_offset<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.prayer_service().clear_mock_time_offset()
 }
 
-#[command]
-pub fn install_apk<R: Runtime>(app: AppHandle<R>, url: String) -> Result<()> {
-    let args = InstallApkArgs { url };
+// async: the Kotlin side resolves only once the APK is downloaded, and a sync
+// command would hold the main thread (and the progress channel) for the whole download.
+#[command(async)]
+pub fn install_apk<R: Runtime>(
+    app: AppHandle<R>,
+    url: String,
+    on_progress: tauri::ipc::Channel,
+) -> Result<()> {
+    let args = InstallApkArgs { url, on_progress };
     app.prayer_service().install_apk(args)
 }

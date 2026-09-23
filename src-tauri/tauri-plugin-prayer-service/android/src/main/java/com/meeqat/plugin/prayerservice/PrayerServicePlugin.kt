@@ -8,12 +8,14 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
+import app.tauri.plugin.Channel
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
@@ -64,6 +66,8 @@ class PrayerArg {
 @InvokeArg
 class InstallApkArgs {
     lateinit var url: String
+    // Receives {downloaded, total} in bytes while the APK downloads (total = -1 if unknown).
+    lateinit var onProgress: Channel
 }
 
 @TauriPlugin
@@ -73,6 +77,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
     companion object {
         private const val TAG = "PrayerServicePlugin"
+        private const val KEY_UPDATE_APK_URL = "update_apk_url"
+        private const val PROGRESS_INTERVAL_MS = 150L
+        // useAppUpdate.ts matches this marker to show "allow installs" rather than a failure.
+        private const val ERR_INSTALL_PERMISSION = "[install-permission]"
     }
 
     /**
@@ -401,6 +409,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * Telegram-style in-app update for Android: download the release APK and hand
      * it to the system package installer, which shows its own confirm dialog.
+     * Resolves once the installer is on screen; download progress streams over
+     * [InstallApkArgs.onProgress].
      *
      * On Android 8+ the app must hold the "install unknown apps" grant; if it
      * doesn't, we route the user to that settings screen and ask them to retry.
@@ -419,19 +429,19 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                     Uri.parse("package:${appContext.packageName}")
                 ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 appContext.startActivity(settingsIntent)
-                invoke.reject("Allow installing apps from Meeqat, then tap update again.")
+                invoke.reject("$ERR_INSTALL_PERMISSION Allow Meeqat to install apps, then tap Install again.")
                 return
             }
 
             // Download off the main thread, then launch the installer.
             Thread {
                 try {
-                    val apkFile = downloadApk(args.url)
+                    val apkFile = downloadApk(args.url, args.onProgress)
                     launchInstaller(apkFile)
                     invoke.resolve()
                 } catch (e: Exception) {
                     Log.e(TAG, "APK download/install failed: ${e.message}", e)
-                    invoke.reject("Update failed: ${e.message}")
+                    invoke.reject("Download failed: ${e.message}")
                 }
             }.start()
         } catch (e: Exception) {
@@ -440,7 +450,25 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    private fun downloadApk(url: String): java.io.File {
+    private fun sendProgress(channel: Channel, downloaded: Long, total: Long) {
+        channel.send(JSObject().apply {
+            put("downloaded", downloaded)
+            put("total", total)
+        })
+    }
+
+    private fun downloadApk(url: String, progress: Channel): java.io.File {
+        val outFile = java.io.File(appContext.cacheDir, "meeqat-update.apk")
+        val prefs = appContext.getSharedPreferences(PrayerWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
+
+        // A finished download of this same release is still here (the user backed out
+        // of the system install dialog and tapped Install again) — don't fetch it twice.
+        if (outFile.exists() && prefs.getString(KEY_UPDATE_APK_URL, null) == url) {
+            sendProgress(progress, outFile.length(), outFile.length())
+            return outFile
+        }
+        prefs.edit().remove(KEY_UPDATE_APK_URL).apply()
+
         val connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
             instanceFollowRedirects = true
             connectTimeout = 30_000
@@ -451,11 +479,37 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             if (connection.responseCode !in 200..299) {
                 throw java.io.IOException("HTTP ${connection.responseCode}")
             }
-            val outFile = java.io.File(appContext.cacheDir, "meeqat-update.apk")
-            if (outFile.exists()) outFile.delete()
+            val total = connection.contentLengthLong // -1 when the server doesn't say
+            // Write to .part and rename at the end, so an interrupted download can
+            // never be mistaken for a complete APK.
+            val partFile = java.io.File(appContext.cacheDir, "meeqat-update.apk.part")
+            var downloaded = 0L
+            var lastSent = 0L
+            sendProgress(progress, 0, total)
             connection.inputStream.use { input ->
-                outFile.outputStream().use { output -> input.copyTo(output) }
+                partFile.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        output.write(buffer, 0, n)
+                        downloaded += n
+                        val now = SystemClock.uptimeMillis()
+                        if (now - lastSent >= PROGRESS_INTERVAL_MS) {
+                            lastSent = now
+                            sendProgress(progress, downloaded, total)
+                        }
+                    }
+                }
             }
+            if (total > 0 && downloaded != total) {
+                partFile.delete()
+                throw java.io.IOException("connection dropped ($downloaded of $total bytes)")
+            }
+            sendProgress(progress, downloaded, downloaded)
+            outFile.delete()
+            if (!partFile.renameTo(outFile)) throw java.io.IOException("couldn't save the update")
+            prefs.edit().putString(KEY_UPDATE_APK_URL, url).apply()
             return outFile
         } finally {
             connection.disconnect()

@@ -259,35 +259,34 @@
               </div>
 
               <!-- iOS updates are App Store-managed; everywhere else, offer a check/install action. -->
-              <span v-if="isIos" class="text-xs text-muted text-right max-w-[55%]">
+              <span v-if="updatePlatform === 'ios'" class="text-xs text-muted text-right max-w-[55%]">
                 Updates are delivered through the App Store.
               </span>
               <UButton
-                v-else-if="canInstall"
+                v-else-if="isUpdateAvailable && updateStatus !== 'installing'"
                 size="sm"
                 color="primary"
-                icon="i-lucide-download"
-                :loading="updateStatus === 'downloading' || updateStatus === 'installing'"
+                :icon="updateStatus === 'error' && updateErrorKind !== 'permission' ? 'i-lucide-rotate-cw' : 'i-lucide-download'"
+                :loading="updateStatus === 'downloading'"
                 :disabled="updateBusy"
                 @click="downloadAndInstall"
               >
                 {{ updateActionLabel }}
               </UButton>
               <UButton
-                v-else
+                v-else-if="updateStatus !== 'installing'"
                 size="sm"
                 variant="soft"
                 color="neutral"
                 icon="i-lucide-refresh-cw"
                 :loading="updateStatus === 'checking'"
                 :disabled="updateBusy"
-                @click="checkForUpdate"
+                @click="checkForUpdate()"
               >
-                {{ updateStatus === 'checking' ? 'Checking…' : 'Check for updates' }}
+                {{ updateStatus === 'checking' ? 'Checking…' : updateStatus === 'error' ? 'Try again' : 'Check for updates' }}
               </UButton>
             </div>
 
-            <!-- Status line -->
             <p
               v-if="updateStatus === 'uptodate'"
               class="flex items-center gap-1.5 text-xs text-success"
@@ -296,40 +295,12 @@
               You're on the latest version.
             </p>
             <p
-              v-else-if="isUpdateAvailable && latestVersion"
+              v-else-if="updateStatus === 'available' && latestVersion"
               class="text-xs text-primary"
             >
               v{{ latestVersion }} is available.
             </p>
-
-            <!-- Download progress. Indeterminate bar when the total size is
-                 unknown, so it never sits frozen at 0%. -->
-            <div v-if="updateStatus === 'downloading'" class="space-y-1">
-              <div class="flex items-center justify-between text-xs text-muted">
-                <span>Downloading…</span>
-                <span v-if="progressKnown">{{ downloadProgress }}%</span>
-              </div>
-              <UProgress :model-value="progressKnown ? downloadProgress : null" :max="100" size="sm" />
-            </div>
-
-            <!-- Installing -->
-            <p
-              v-else-if="updateStatus === 'installing'"
-              class="flex items-center gap-1.5 text-xs text-muted"
-            >
-              <UIcon name="i-lucide-loader-circle" class="size-3.5 animate-spin" />
-              <span v-if="isAndroid">Opening the installer…</span>
-              <span v-else>Installing — the app will restart shortly.</span>
-            </p>
-
-            <!-- Error -->
-            <p
-              v-else-if="updateStatus === 'error'"
-              class="flex items-start gap-1.5 text-xs text-error"
-            >
-              <UIcon name="i-lucide-triangle-alert" class="mt-0.5 size-3.5 shrink-0" />
-              <span>{{ updateError || 'Update check failed. Please try again.' }}</span>
-            </p>
+            <UpdateStatus size="sm" />
           </div>
         </section>
 
@@ -444,29 +415,23 @@ function closeModal() {
 const { mockTimeOffsetMs, jumpTime, clearOffset, loadOffset, formatOffset } = useMockTime();
 
 // In-app updates — shares the singleton state with the footer pill + auto-prompt modal.
-const isIos = ref(false);
 const appVersion = useRuntimeConfig().public.version as string;
 const {
   status: updateStatus,
   latestVersion,
-  downloadProgress,
-  progressKnown,
-  errorMessage: updateError,
+  errorKind: updateErrorKind,
+  updatePlatform,
   isUpdateAvailable,
+  isBusy: updateBusy,
   checkForUpdate,
   downloadAndInstall,
 } = useAppUpdate();
 
-// "available" / "downloading" / "installing" all mean: show the install action.
-const canInstall = computed(() =>
-  ['available', 'downloading', 'installing'].includes(updateStatus.value)
-);
-const updateBusy = computed(() =>
-  ['checking', 'downloading', 'installing'].includes(updateStatus.value)
-);
-const updateActionLabel = computed(() =>
-  isAndroid.value ? 'Download & install' : 'Update & restart'
-);
+const updateActionLabel = computed(() => {
+  if (updateStatus.value === 'error' && updateErrorKind.value !== 'permission') return 'Try again';
+  if (updatePlatform.value === 'android') return updateStatus.value === 'available' ? 'Download & install' : 'Install';
+  return 'Update & restart';
+});
 
 // Helper to get invoke function
 async function getInvoke() {
@@ -481,7 +446,6 @@ onMounted(async () => {
       const { platform } = await import('@tauri-apps/plugin-os');
       const os = await platform();
       isAndroid.value = os === 'android';
-      isIos.value = os === 'ios';
       if (isAndroid.value) {
         await checkPermissions();
         await loadOffset();

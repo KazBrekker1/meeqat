@@ -1,20 +1,33 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { platform } from "@tauri-apps/plugin-os";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { isTauriAvailable } from "@/utils/store";
 
 const REPO = "KazBrekker1/meeqat";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+// Re-check this often while the app stays open (the desktop tray app can run for days).
+const RECHECK_MS = 6 * 60 * 60 * 1000;
+// Kotlin prefixes the "install unknown apps" rejection with this (PrayerServicePlugin.kt).
+const ERR_INSTALL_PERMISSION = "[install-permission]";
+const PROMPTED_KEY = "meeqat:update-prompted";
 
 export type UpdateStatus =
   | "idle"
   | "checking"
+  | "uptodate"
   | "available"
   | "downloading"
+  /** Desktop: installing, then relaunching into the new version. */
   | "installing"
-  | "uptodate"
+  /** Android: the APK is downloaded and the system install dialog is open. */
+  | "ready"
   | "error";
+
+/** What failed, so the UI can offer the right next step. */
+export type UpdateErrorKind = "check" | "download" | "permission";
+
+export type UpdatePlatform = "desktop" | "android" | "ios" | "web";
 
 /**
  * Cross-platform in-app updater.
@@ -24,29 +37,54 @@ export type UpdateStatus =
  * signature, installs, and relaunches.
  *
  * Android: the Tauri updater plugin does not support mobile. Instead we do a
- * Telegram-style flow — detect a newer release via the GitHub API, then hand the
- * signed APK to the OS package installer via the prayer-service plugin's
- * `install_apk` native command (which fires Android's install intent).
+ * Telegram-style flow — detect a newer release via the GitHub API, then the
+ * prayer-service plugin's `install_apk` downloads the APK (streaming progress over
+ * a Channel) and fires the system install dialog.
  *
- * Module-level singleton state so the footer badge and the settings modal share
- * one source of truth.
+ * Module-level singleton state so the footer pill, the update modal and the
+ * settings section share one source of truth.
  */
 const status = ref<UpdateStatus>("idle");
 const latestVersion = ref<string | null>(null);
 const releaseNotes = ref<string | null>(null);
-const downloadProgress = ref(0); // 0..100, desktop only (Android install is handed off to the OS)
-// True once we know the download's total size, so the UI can show a real % bar;
-// while false (server sent no Content-Length) the UI shows an indeterminate bar
-// instead of a bar pinned at 0% that looks frozen.
-const progressKnown = ref(false);
+const downloadedBytes = ref(0);
+// null while the size is unknown (no Content-Length) → the UI shows an indeterminate bar.
+const totalBytes = ref<number | null>(null);
 const errorMessage = ref<string | null>(null);
+const errorKind = ref<UpdateErrorKind | null>(null);
+const lastCheckedAt = ref<number | null>(null);
 
 // Desktop: hold the resolved Update handle between check and install.
 let pendingUpdate: Update | null = null;
 // Android: the APK asset URL to install.
 let pendingApkUrl: string | null = null;
 
-const isUpdateAvailable = computed(() => status.value === "available");
+const updatePlatform = computed<UpdatePlatform>(() => {
+  if (simScenario()) return simScenario() === "android" || simScenario() === "permission" ? "android" : "desktop";
+  if (!isTauriAvailable()) return "web";
+  try {
+    const os = platform();
+    return os === "android" ? "android" : os === "ios" ? "ios" : "desktop";
+  } catch {
+    return "web";
+  }
+});
+
+/** An update exists and hasn't been installed yet (includes a failed install, for retry). */
+const hasUpdate = computed(
+  () =>
+    latestVersion.value !== null &&
+    (["available", "downloading", "installing", "ready"].includes(status.value) ||
+      (status.value === "error" && errorKind.value !== "check"))
+);
+const isUpdateAvailable = hasUpdate;
+const isBusy = computed(() =>
+  ["checking", "downloading", "installing"].includes(status.value)
+);
+const downloadProgress = computed(() =>
+  totalBytes.value ? Math.min(100, Math.round((downloadedBytes.value / totalBytes.value) * 100)) : 0
+);
+const progressKnown = computed(() => totalBytes.value !== null);
 
 function normalizeVersion(v: string): string {
   // Strip a leading "meeqat-v" / "v" so "meeqat-v3.2.0" -> "3.2.0".
@@ -67,10 +105,47 @@ function isNewer(candidate: string, current: string): boolean {
   return false;
 }
 
+/** Turn plugin/network errors into a sentence a person can act on. */
+function describeError(e: unknown, kind: UpdateErrorKind): { kind: UpdateErrorKind; message: string } {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (raw.includes(ERR_INSTALL_PERMISSION)) {
+    return {
+      kind: "permission",
+      message: raw.slice(raw.indexOf(ERR_INSTALL_PERMISSION) + ERR_INSTALL_PERMISSION.length).trim(),
+    };
+  }
+  if (/failed to fetch|networkerror|load failed|error sending request|unable to resolve host|timed? ?out|abort|dns|connect/i.test(raw)) {
+    return {
+      kind,
+      message: kind === "check"
+        ? "Couldn't reach GitHub to check for updates. Check your connection and try again."
+        : "The download was interrupted. Check your connection and try again.",
+    };
+  }
+  if (/GitHub API 403|rate limit/i.test(raw)) {
+    return { kind, message: "GitHub is limiting update checks right now. Try again in an hour." };
+  }
+  if (/signature/i.test(raw)) {
+    return { kind, message: "The download didn't pass its signature check, so it wasn't installed." };
+  }
+  // Drop Rust/plugin wrapper prefixes ("Plugin invoke error: …").
+  const message = raw.replace(/^(plugin invoke error|invoke rejected|error):\s*/gi, "").trim();
+  return { kind, message: message || "Something went wrong. Try again." };
+}
+
+function fail(e: unknown, kind: UpdateErrorKind) {
+  const d = describeError(e, kind);
+  errorKind.value = d.kind;
+  errorMessage.value = d.message;
+  status.value = "error";
+  console.error(`[update] ${kind} failed`, e);
+}
+
 async function checkAndroid(): Promise<void> {
   const currentVersion = useRuntimeConfig().public.version as string;
   const res = await fetch(LATEST_RELEASE_API, {
     headers: { Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout?.(15_000),
   });
   if (!res.ok) throw new Error(`GitHub API ${res.status}`);
   const data = (await res.json()) as {
@@ -90,7 +165,9 @@ async function checkAndroid(): Promise<void> {
     data.assets.find((a) => /\.apk$/i.test(a.name) && !/unsigned/i.test(a.name)) ??
     data.assets.find((a) => /\.apk$/i.test(a.name));
   if (!apk) {
-    throw new Error("No APK asset on the latest release");
+    // Release published but the APK isn't attached yet (CI still uploading) — not an error.
+    status.value = "uptodate";
+    return;
   }
 
   pendingApkUrl = apk.browser_download_url;
@@ -100,7 +177,7 @@ async function checkAndroid(): Promise<void> {
 }
 
 async function checkDesktop(): Promise<void> {
-  const update = await check();
+  const update = await check({ timeout: 15_000 });
   if (!update) {
     status.value = "uptodate";
     return;
@@ -112,105 +189,201 @@ async function checkDesktop(): Promise<void> {
 }
 
 /**
- * Check for an available update. Safe to call on launch (silent) or from a
- * "Check for updates" button. Never throws — failures land in `errorMessage`.
+ * Check for an available update. Never throws.
+ *
+ * `silent` (launch / background re-checks): a failure — usually just being
+ * offline — leaves the previous state alone instead of showing an error.
  */
-async function checkForUpdate(): Promise<void> {
-  if (!isTauriAvailable()) return; // browser / prototype context: nothing to update
-  if (status.value === "checking" || status.value === "downloading") return;
+async function checkForUpdate({ silent = false }: { silent?: boolean } = {}): Promise<void> {
+  const sim = simScenario();
+  if (!sim && !isTauriAvailable()) return; // browser context: nothing to update
+  // Don't re-check over an update the user is already acting on.
+  if (isBusy.value || status.value === "ready" || (silent && hasUpdate.value)) return;
+  if (updatePlatform.value === "ios") return; // App Store only — nothing to offer in-app
 
+  const before = status.value;
   status.value = "checking";
   errorMessage.value = null;
+  errorKind.value = null;
   try {
-    const os = platform();
-    if (os === "ios") {
-      // iOS forbids self-install/sideload; updates only via App Store/TestFlight.
-      // Nothing we can offer in-app — stay silent.
-      status.value = "idle";
-      return;
-    }
-    if (os === "android") {
-      await checkAndroid();
-    } else {
-      await checkDesktop();
-    }
+    if (sim) await simCheck(sim);
+    else if (updatePlatform.value === "android") await checkAndroid();
+    else await checkDesktop();
+    lastCheckedAt.value = Date.now();
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : String(e);
-    status.value = "error";
-    console.error("[update] check failed", e);
+    if (silent) {
+      status.value = before === "checking" ? "idle" : before;
+      console.warn("[update] background check failed", e);
+    } else {
+      fail(e, "check");
+    }
   }
+}
+
+function resetProgress() {
+  downloadedBytes.value = 0;
+  totalBytes.value = null;
 }
 
 /**
  * Download + install the pending update.
  *
  * Desktop: downloads, verifies the signature, installs, then relaunches.
- * Android: hands the APK URL to the native installer, which downloads it and
- * fires the system install prompt (the user confirms in the OS dialog).
+ * Android: downloads the APK with progress, then opens the system install dialog.
  */
 async function downloadAndInstall(): Promise<void> {
-  if (!isTauriAvailable()) return;
+  const sim = simScenario();
+  if ((!sim && !isTauriAvailable()) || isBusy.value) return;
   errorMessage.value = null;
+  errorKind.value = null;
+
+  if (sim) return simInstall(sim);
+
+  if (updatePlatform.value === "android") {
+    try {
+      if (!pendingApkUrl) throw new Error("No update to install. Check for updates again.");
+      status.value = "downloading";
+      resetProgress();
+      const onProgress = new Channel<{ downloaded: number; total: number }>();
+      onProgress.onmessage = ({ downloaded, total }) => {
+        downloadedBytes.value = downloaded;
+        totalBytes.value = total > 0 ? total : null;
+      };
+      await invoke("plugin:prayer-service|install_apk", { url: pendingApkUrl, onProgress });
+      // The system dialog is up. If the user backs out, "ready" keeps an Install
+      // button that reopens it from the already-downloaded file.
+      status.value = "ready";
+    } catch (e) {
+      fail(e, "download");
+    }
+    return;
+  }
 
   try {
-    const os = platform();
-    if (os === "ios") return; // unreachable in practice — iOS never reaches "available"
-    if (os === "android") {
-      if (!pendingApkUrl) throw new Error("No pending APK to install");
-      // The native command downloads the APK off the main thread, then fires the OS
-      // install intent. There's no byte-progress callback, so show an indeterminate
-      // "Downloading…" bar for the whole native download — far more visible than the
-      // near-instant "installing" spinner it showed before.
-      status.value = "downloading";
-      progressKnown.value = false;
-      downloadProgress.value = 0;
-      await invoke("plugin:prayer-service|install_apk", { url: pendingApkUrl });
-      // The OS installer is now in charge; drop back to the install affordance so a
-      // cancelled install leaves a retryable button rather than a stuck spinner.
-      status.value = "available";
-      return;
-    }
-
-    if (!pendingUpdate) throw new Error("No pending update to install");
+    if (!pendingUpdate) throw new Error("No update to install. Check for updates again.");
     status.value = "downloading";
-    downloadProgress.value = 0;
-    progressKnown.value = false;
-
-    let downloaded = 0;
-    let contentLength = 0;
+    resetProgress();
     await pendingUpdate.downloadAndInstall((event) => {
       switch (event.event) {
         case "Started":
-          contentLength = event.data.contentLength ?? 0;
-          progressKnown.value = contentLength > 0;
+          totalBytes.value = event.data.contentLength || null;
           break;
         case "Progress":
-          downloaded += event.data.chunkLength;
-          if (contentLength) {
-            downloadProgress.value = Math.round((downloaded / contentLength) * 100);
-          }
+          downloadedBytes.value += event.data.chunkLength;
           break;
         case "Finished":
-          downloadProgress.value = 100;
-          progressKnown.value = true;
+          if (totalBytes.value) downloadedBytes.value = totalBytes.value;
           status.value = "installing";
           break;
       }
     });
+  } catch (e) {
+    fail(e, "download");
+    return;
+  }
 
-    // Installed. A very fast download can reach here in well under a frame, so
-    // hold the "installing / restarting" state briefly — otherwise the whole
-    // flow flashes past and the user sees no feedback before the relaunch.
-    status.value = "installing";
-    await new Promise((resolve) => setTimeout(resolve, 700));
-
-    // Relaunch into the new version.
+  // Installed. A very fast download can reach here in well under a frame, so hold
+  // the "installing / restarting" state briefly so the user sees it happen.
+  status.value = "installing";
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  try {
     await relaunch();
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : String(e);
+    // The new version is installed; only the automatic restart failed.
+    errorKind.value = "download";
+    errorMessage.value = "The update is installed. Quit and reopen Meeqat to finish.";
     status.value = "error";
-    console.error("[update] install failed", e);
+    console.error("[update] relaunch failed", e);
   }
+}
+
+/**
+ * Check on launch, then again every few hours and whenever the app comes back to
+ * the foreground after that long (Android resumes, the desktop window reopens).
+ * Idempotent — call it from the root page.
+ */
+let scheduled = false;
+function startUpdateChecks(): void {
+  if (scheduled || typeof window === "undefined") return;
+  scheduled = true;
+  checkForUpdate({ silent: true });
+  const due = () => !lastCheckedAt.value || Date.now() - lastCheckedAt.value >= RECHECK_MS;
+  setInterval(() => due() && checkForUpdate({ silent: true }), 30 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && due()) checkForUpdate({ silent: true });
+  });
+}
+
+/**
+ * True the first time it's asked about a given version, so the update modal
+ * opens by itself once per release; afterwards the footer pill is the reminder.
+ */
+function shouldPromptFor(version: string): boolean {
+  try {
+    if (localStorage.getItem(PROMPTED_KEY) === version) return false;
+    localStorage.setItem(PROMPTED_KEY, version);
+  } catch {
+    // storage unavailable — prompting again is harmless
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Dev-only simulator: `bun dev`, then open /?update-sim=<scenario> in a browser
+// to walk the whole UI flow without a release. Stripped from production builds.
+//   desktop     · update found, download with a known size, install + restart
+//   nosize      · update found, download with no size (indeterminate bar)
+//   android     · update found, APK download, system installer opens
+//   permission  · Android without the "install unknown apps" grant
+//   fail        · download drops at 40%, then a retry succeeds
+//   offline     · the check can't reach GitHub
+//   uptodate    · already on the latest version
+// ---------------------------------------------------------------------------
+type SimScenario = "desktop" | "nosize" | "android" | "permission" | "fail" | "offline" | "uptodate";
+let simFailedOnce = false;
+
+function simScenario(): SimScenario | null {
+  if (!import.meta.dev || typeof window === "undefined" || isTauriAvailable()) return null;
+  return (new URLSearchParams(window.location.search).get("update-sim") as SimScenario) || null;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function simCheck(s: SimScenario) {
+  await sleep(900);
+  if (s === "offline") throw new TypeError("Failed to fetch");
+  if (s === "uptodate") {
+    status.value = "uptodate";
+    return;
+  }
+  latestVersion.value = "3.4.0";
+  releaseNotes.value = "• Widget caption no longer overlaps\n• Download progress on Android\n• Clearer update errors";
+  status.value = "available";
+}
+
+async function simInstall(s: SimScenario) {
+  if (s === "permission" && !simFailedOnce) {
+    simFailedOnce = true;
+    return fail(`Plugin invoke error: ${ERR_INSTALL_PERMISSION} Allow Meeqat to install apps, then tap Install again.`, "download");
+  }
+  status.value = "downloading";
+  resetProgress();
+  const total = 31_400_000;
+  totalBytes.value = s === "nosize" ? null : total;
+  for (let d = 0; d <= total; d += 1_300_000) {
+    await sleep(120);
+    downloadedBytes.value = d;
+    if (s === "fail" && !simFailedOnce && d > total * 0.4) {
+      simFailedOnce = true;
+      return fail(new Error("error sending request for url"), "download");
+    }
+  }
+  downloadedBytes.value = total;
+  if (s === "android" || s === "permission") {
+    status.value = "ready";
+    return;
+  }
+  status.value = "installing"; // a real build relaunches here
 }
 
 export function useAppUpdate() {
@@ -218,11 +391,18 @@ export function useAppUpdate() {
     status: readonly(status),
     latestVersion: readonly(latestVersion),
     releaseNotes: readonly(releaseNotes),
-    downloadProgress: readonly(downloadProgress),
-    progressKnown: readonly(progressKnown),
+    downloadProgress,
+    progressKnown,
+    downloadedBytes: readonly(downloadedBytes),
+    totalBytes: readonly(totalBytes),
     errorMessage: readonly(errorMessage),
+    errorKind: readonly(errorKind),
+    updatePlatform,
     isUpdateAvailable,
+    isBusy,
     checkForUpdate,
     downloadAndInstall,
+    startUpdateChecks,
+    shouldPromptFor,
   };
 }

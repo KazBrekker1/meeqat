@@ -160,8 +160,12 @@
             class="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-primary hover:bg-primary/25 transition-colors"
             @click="showUpdateModal = true"
           >
-            <UIcon name="lucide:arrow-up-circle" class="size-3" />
-            <span>Update to v{{ latestVersion }}</span>
+            <UIcon
+              :name="updateStatus === 'downloading' ? 'lucide:loader-circle' : updateStatus === 'error' ? 'lucide:triangle-alert' : 'lucide:arrow-up-circle'"
+              class="size-3"
+              :class="updateStatus === 'downloading' && 'animate-spin'"
+            />
+            <span>{{ updatePillLabel }}</span>
           </button>
         </footer>
       </div>
@@ -340,9 +344,26 @@ const moonPhase = computed(() => {
 // App version for the footer (from package.json via runtimeConfig).
 const appVersion = useRuntimeConfig().public.version;
 
-// In-app updater: silently check on launch; surface a pill in the footer.
-const { isUpdateAvailable, latestVersion, checkForUpdate } = useAppUpdate();
+// In-app updater: checks quietly on launch and every few hours; surfaces a pill in the footer.
+const {
+  status: updateStatus,
+  isUpdateAvailable,
+  latestVersion,
+  downloadProgress,
+  progressKnown,
+  startUpdateChecks,
+  shouldPromptFor,
+} = useAppUpdate();
 const showUpdateModal = shallowRef(false);
+const updatePillLabel = computed(() => {
+  switch (updateStatus.value) {
+    case "downloading": return progressKnown.value ? `Downloading ${downloadProgress.value}%` : "Downloading…";
+    case "installing": return "Installing…";
+    case "ready": return "Finish installing";
+    case "error": return "Update failed";
+    default: return `Update to v${latestVersion.value}`;
+  }
+});
 
 const nowHHMM = computed(() => {
   void countdownToNext.value;
@@ -553,13 +574,15 @@ onMounted(async () => {
   }
   startPrayerNotifications();
   // Quietly check for a newer release; the footer pill appears only if one exists.
-  checkForUpdate();
+  startUpdateChecks();
 });
 
-// Prompt once, automatically, the first time an update is detected. The footer
-// pill stays as a persistent reminder if the user dismisses with "Later".
+// Open the update dialog by itself once per release. The footer pill stays as the
+// reminder if the user picks "Later" — re-checks never re-open it.
 watch(isUpdateAvailable, (available) => {
-  if (available) showUpdateModal.value = true;
+  if (available && latestVersion.value && shouldPromptFor(latestVersion.value)) {
+    showUpdateModal.value = true;
+  }
 });
 
 watch(selectedMethodId, () => {
