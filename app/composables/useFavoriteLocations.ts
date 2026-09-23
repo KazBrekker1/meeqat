@@ -115,6 +115,7 @@ export function useFavoriteLocations() {
   // Reorder favorites
   async function reorderFavorites(fromIndex: number, toIndex: number): Promise<void> {
     const [removed] = favorites.value.splice(fromIndex, 1);
+    if (!removed) return;
     favorites.value.splice(toIndex, 0, removed);
     await saveFavorites();
   }

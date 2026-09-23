@@ -19,30 +19,31 @@
 	},
 	"dependencies": {
 		"@iconify-json/heroicons": "^1.2.3",
-		"@iconify-json/lucide": "^1.2.86",
-		"@nuxt/ui": "^4.3.0",
-		"@tauri-apps/api": "^2.9.1",
+		"@iconify-json/lucide": "^1.2.116",
+		"@nuxt/ui": "^4.9.0",
+		"@tauri-apps/api": "^2.11.1",
 		"@tauri-apps/plugin-notification": "^2.3.3",
-		"@tauri-apps/plugin-os": "~2.3.2",
-		"@tauri-apps/plugin-positioner": "^2.3.1",
+		"@tauri-apps/plugin-os": "^2.3.2",
+		"@tauri-apps/plugin-positioner": "^2.3.2",
 		"@tauri-apps/plugin-process": "^2.3.1",
-		"@tauri-apps/plugin-store": "^2.4.2",
-		"@tauri-apps/plugin-updater": "2.9.0",
+		"@tauri-apps/plugin-store": "^2.4.3",
+		"@tauri-apps/plugin-updater": "^2.10.1",
 		"@types/leaflet": "^1.9.21",
 		"@vue-leaflet/vue-leaflet": "^0.10.1",
 		"animejs": "^4.5.0",
 		"leaflet": "^1.9.4",
-		"nuxt": "^4.2.2",
-		"vue": "^3.5.27",
-		"vue-router": "^4.6.4",
-		"zod": "^4.3.6"
+		"nuxt": "^4.4.8",
+		"vue": "^3.5.39",
+		"vue-router": "^5.1.0",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@tauri-apps/cli": "^2.9.6",
-		"@vueuse/core": "^14.1.0",
-		"@vueuse/nuxt": "^14.1.0",
-		"bumpp": "^10.4.0",
+		"@tauri-apps/cli": "^2.11.4",
+		"@vueuse/core": "^14.3.0",
+		"@vueuse/nuxt": "^14.3.0",
+		"bumpp": "^10.4.1",
 		"nuxt-svgo": "^4.2.6",
-		"typescript": "^5.9.3"
+		"typescript": "^5.9.3",
+		"vue-tsc": "^3.2.2"
 	}
 }

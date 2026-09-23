@@ -7,7 +7,7 @@ interface PrayerTimeData {
   label: string;
 }
 
-interface UpdatePrayerTimesOptions {
+interface UpdatePrayerTimesOptions extends Record<string, unknown> {
   prayers: PrayerTimeData[];
   nextPrayerIndex: number;
   hijriDate?: string;

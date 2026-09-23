@@ -4,8 +4,7 @@
     title="Settings"
     description="Customize your prayer times experience"
     :ui="{
-      width: 'sm:max-w-lg',
-      content: 'max-h-[85vh]',
+      content: 'max-h-[85vh] sm:max-w-lg',
     }"
   >
     <template #body>
@@ -418,7 +417,7 @@
         <UButton
           variant="soft"
           color="neutral"
-          @click="isOpen = false"
+          @click="closeModal"
         >
           Done
         </UButton>
@@ -436,6 +435,10 @@ const isAndroid = ref(false);
 const notificationPermissionGranted = ref(false);
 const batteryOptimizationDisabled = ref(false);
 const isCheckingPermissions = ref(false);
+
+function closeModal() {
+  isOpen.value = false;
+}
 
 // Mock time (for developer tools)
 const { mockTimeOffsetMs, jumpTime, clearOffset, loadOffset, formatOffset } = useMockTime();

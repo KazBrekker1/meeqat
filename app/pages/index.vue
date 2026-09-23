@@ -15,8 +15,8 @@
               <UIcon name="lucide:chevron-down" class="size-3.5 text-white/45 shrink-0" />
             </button>
             <span class="text-sm tabular-nums font-mono text-white/55 shrink-0">{{ currentTimeString }}</span>
-            <UButton icon="lucide:compass" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Show Qibla direction" @click="showQiblaModal = true" />
-            <UButton icon="heroicons:cog-6-tooth-20-solid" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Open settings" @click="showSettingsModal = true" />
+            <UButton icon="lucide:compass" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Show Qibla direction" @click="openQiblaModal" />
+            <UButton icon="heroicons:cog-6-tooth-20-solid" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Open settings" @click="openSettingsModal" />
           </div>
         </header>
 
@@ -145,7 +145,7 @@
               color="neutral"
               icon="lucide:calendar"
               label="Open calendar"
-              @click="showCalendarDrawer = true"
+              @click="openCalendarDrawer"
             />
           </aside>
         </div>
@@ -497,8 +497,8 @@ const timezoneSelectOptions = computed(() => {
   }
   const items = zones.map((z) => ({ label: z, value: z }));
   items.unshift({
-    label: `Use my timezone (${userTimezone.value})`,
-    value: userTimezone.value,
+    label: `Use my timezone (${userTimezone})`,
+    value: userTimezone,
   });
   return items;
 });
@@ -508,6 +508,18 @@ function onFetchByCity() {
   fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
     methodId: selectedMethodId.value,
   });
+}
+
+function openQiblaModal() {
+  showQiblaModal.value = true;
+}
+
+function openSettingsModal() {
+  showSettingsModal.value = true;
+}
+
+function openCalendarDrawer() {
+  showCalendarDrawer.value = true;
 }
 
 const toast = useToast();

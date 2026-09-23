@@ -37,7 +37,7 @@
         v-if="favorites.length > 3"
         variant="ghost"
         size="xs"
-        @click="showAllFavorites = !showAllFavorites"
+        @click="toggleFavorites"
       >
         {{ showAllFavorites ? 'Less' : `+${favorites.length - 3}` }}
       </UButton>
@@ -151,7 +151,7 @@ const emit = defineEmits<{
 
 const searchQuery = ref('');
 const showAllFavorites = ref(false);
-const selectedLocationItem = ref<LocationItem | null>(null);
+const selectedLocationItem = ref<LocationItem>();
 
 // Format timezone to short display (e.g., "GMT+3")
 function formatTimezoneShort(timezone: string): string {
@@ -194,35 +194,23 @@ const allLocations = computed<LocationItem[]>(() => {
   return items;
 });
 
-// Group locations by region for the dropdown with label headers
-const groupedLocationItems = computed(() => {
-  // If searching, show flat filtered results
+// Locations ordered by region for the dropdown.
+const groupedLocationItems = computed<LocationItem[]>(() => {
   if (searchQuery.value.trim()) {
     const query = searchQuery.value.toLowerCase();
-    const filtered = allLocations.value.filter(loc =>
+    return allLocations.value.filter(loc =>
       loc.city.toLowerCase().includes(query) ||
       loc.country.toLowerCase().includes(query) ||
       loc.countryCode.toLowerCase().includes(query)
     );
-    return filtered;
   }
 
-  // Build flat list with region labels
   const regionOrder: CountryOption['region'][] = ['gulf', 'levant', 'maghreb', 'europe', 'americas', 'asia'];
-  const items: (LocationItem | { type: 'label' | 'separator'; label?: string })[] = [];
+  const items: LocationItem[] = [];
 
   for (const region of regionOrder) {
     const regionLocations = allLocations.value.filter(loc => loc.region === region);
-    if (regionLocations.length > 0) {
-      // Add separator before each group (except first)
-      if (items.length > 0) {
-        items.push({ type: 'separator' });
-      }
-      // Add region label
-      items.push({ type: 'label', label: REGION_LABELS[region] });
-      // Add all locations for this region
-      items.push(...regionLocations);
-    }
+    items.push(...regionLocations);
   }
 
   return items;
@@ -264,12 +252,15 @@ const canAddFavorite = computed(() => {
 });
 
 // Handle location selection from InputMenu
-function onLocationSelected(item: LocationItem | null) {
+function onLocationSelected(item: LocationItem | undefined) {
   if (item) {
     emit('select', item.city, item.countryCode);
-    // Clear search after selection
     searchQuery.value = '';
   }
+}
+
+function toggleFavorites() {
+  showAllFavorites.value = !showAllFavorites.value;
 }
 
 // Handle favorite selection
@@ -286,9 +277,9 @@ watch(
         loc => loc.city.toLowerCase() === city.toLowerCase() &&
                loc.countryCode === countryCode
       );
-      selectedLocationItem.value = found ?? null;
+      selectedLocationItem.value = found;
     } else {
-      selectedLocationItem.value = null;
+      selectedLocationItem.value = undefined;
     }
   },
   { immediate: true }

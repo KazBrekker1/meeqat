@@ -196,6 +196,7 @@ onMounted(() => {
   // Only animate while on screen — keeps the gallery (many canvases) light.
   io = new IntersectionObserver(
     ([e]) => {
+      if (!e) return;
       visible = e.isIntersecting;
       if (visible) play();
       else cancelAnimationFrame(raf);
