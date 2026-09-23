@@ -351,8 +351,7 @@ jobs:
             if ! printf '%s\n' "$ASSETS" | grep -qxF "$SIG_NAME"; then
               echo "WARN: missing signature $SIG_NAME for $TARGET"; continue
             fi
-            gh release download "$TAG" --repo "$REPO" --pattern "$SIG_NAME" --dir . --clobber
-            SIG="$(cat "$SIG_NAME")"
+            SIG="$(curl -fsSL --retry 3 "$BASE_URL/$SIG_NAME")"
             URL="$BASE_URL/$ART"
             PLATFORMS="$(printf '%s' "$PLATFORMS" | jq \
               --arg t "$TARGET" --arg s "$SIG" --arg u "$URL" \
@@ -373,7 +372,10 @@ jobs:
 
           echo "=== latest.json ($COUNT platforms) ==="
           cat latest.json
-          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+          # --clobber finds the old asset through the same lagging list, so delete by id.
+          OLD_ID="$(gh api --paginate "repos/$REPO/releases/$RELEASE_ID/assets" --jq '.[] | select(.name=="latest.json") | .id')"
+          [ -n "$OLD_ID" ] && gh api -X DELETE "repos/$REPO/releases/assets/$OLD_ID"
+          gh release upload "$TAG" latest.json --repo "$REPO"
 
   # Optional: Build iOS (requires macOS runner and Apple Developer account)
   # publish-ios:
