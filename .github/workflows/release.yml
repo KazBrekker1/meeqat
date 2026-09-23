@@ -219,6 +219,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        # v3 defaults to the legacy 'tools' package, which newer sdkmanager
+        # builds no longer ship (install fails) — ask for platform-tools only.
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK components
         run: |
@@ -321,7 +325,10 @@ jobs:
           WORK="$(mktemp -d)"
           cd "$WORK"
 
-          ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
+          # Read the assets endpoint, not `gh release view`: the release object's
+          # embedded asset list lags behind uploads and came back empty for v3.4.0.
+          RELEASE_ID="$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)"
+          ASSETS="$(gh api --paginate "repos/$REPO/releases/$RELEASE_ID/assets" --jq '.[].name')"
           BASE_URL="https://github.com/$REPO/releases/download/$TAG"
 
           # Tauri updater target -> filename suffix of its updater artifact.
