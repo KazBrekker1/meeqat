@@ -200,6 +200,11 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
             val allPassed = PrayerTimeUtils.allPrayersPassed(context, prayers)
             val nextDayPrayer = if (allPassed) PrayerTimeUtils.loadNextDayPrayer(context) else null
+            // Once every stored timestamp has passed (after Isha, or next morning before the
+            // app refreshes the list) nextIndex sits on Isha — point the dial and the list
+            // highlight at the next prayer by clock time instead.
+            val now = DebugTimeProvider.currentTimeMillis(context)
+            val clockNext = if (allPassed) MeeqatOrbit.nextByClock(prayers, now) else nextIndex
 
             val dataAge = System.currentTimeMillis() - prefs.getLong("data_timestamp", 0L)
             if (dataAge > DATA_STALENESS_THRESHOLD_MS && allPassed && nextDayPrayer == null) {
@@ -213,15 +218,14 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     // wide/4×4 render a vertical times LIST → slim accent-bar highlight;
                     // the other layouts use the horizontal strip → the chip highlight.
                     val listStyle = layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x4
-                    populateStrip(context, views, prayers, if (nextDayPrayer == null) nextIndex else -1, listStyle)
+                    populateStrip(context, views, prayers, clockNext, listStyle)
                 }
             }
 
             // The glance layout has no orbit/strip/header — skip the bitmap + header.
             if (!glance) {
-                val now = DebugTimeProvider.currentTimeMillis(context)
                 val drawOrbit = drawOrbitBase && prayers.isNotEmpty()
-                views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, nextIndex, now, drawOrbit))
+                views.setImageViewBitmap(imageId, MeeqatOrbit.bitmap(px, prayers, clockNext, now, drawOrbit))
                 setHeaderData(context, views, prefs)
             }
 

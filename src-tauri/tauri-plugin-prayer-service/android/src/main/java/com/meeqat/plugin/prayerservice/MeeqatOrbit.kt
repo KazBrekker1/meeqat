@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PathMeasure
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -48,6 +47,17 @@ object MeeqatOrbit {
         val cal = Calendar.getInstance()
         cal.timeInMillis = ms
         return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    }
+
+    /**
+     * Index of the next prayer by clock time alone: the first one later today, else
+     * the first of the list (tomorrow's Fajr). The dial is a 24h clock face, so this
+     * stays right after Isha and on a morning when yesterday's list is still loaded —
+     * cases where the timestamp-based next index is stuck on the last prayer.
+     */
+    fun nextByClock(prayers: List<PrayerTimeData>, nowMs: Long): Int {
+        val nowM = minutesOfDay(nowMs)
+        return prayers.indexOfFirst { minutesOfDay(it.prayerTime) > nowM }.coerceAtLeast(0)
     }
 
     /** Cached orbit (drawOrbit=true) or moon-only (false) bitmap, sized sizePx². */
@@ -176,8 +186,10 @@ object MeeqatOrbit {
             this.color = 0xBD05070F.toInt()
         })
         paint.color = 0xF2FFFFFF.toInt()
-        val hOffset = PathMeasure(path, false).length / 2f // centre the text on the arc
-        c.drawTextOnPath(text, path, hOffset, font * 0.35f, paint)
+        // Align.CENTER already centres the text on the path, so hOffset must stay 0.
+        // Adding length/2 pushed the second half past the path's end, where Android
+        // piles the overflowing glyphs on top of each other.
+        c.drawTextOnPath(text, path, 0f, font * 0.35f, paint)
     }
 
     // Beacon colour as the next prayer nears: cool blue → amber → hot coral.

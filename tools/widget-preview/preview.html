@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meeqat widget — layoutlib renders</title>
+<style>
+  body { margin: 0; padding: 32px; background: #0d0f16; color: #e8e6df; font: 14px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: #8c93b8; margin: 0 0 20px; max-width: 80ch; }
+  .shot { margin-bottom: 36px; }
+  .shot h2 { font: 600 13px ui-monospace, monospace; color: #f5c46b; margin: 0 0 10px; }
+  .sets { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  figure { margin: 0; }
+  figcaption { font-size: 12px; color: #8c93b8; margin-top: 6px; }
+  img { display: block; border-radius: 10px; max-width: 560px; height: auto; image-rendering: auto; }
+  img.zoom { max-width: none; width: 820px; }
+  label { font-size: 12px; color: #8c93b8; }
+</style>
+</head>
+<body>
+<h1>Meeqat widget — rendered by Android's layout engine</h1>
+<p>Each image comes from the real <code>MeeqatOrbit.kt</code> and widget XML layouts, rendered by layoutlib (the engine behind Android Studio's layout preview) through Paparazzi, at Pixel 6 density. Regenerate with <code>./render.sh &lt;label&gt;</code>.</p>
+<label><input type="checkbox" id="zoom"> enlarge</label>
+<div id="out"></div>
+<script src="renders/manifest.js"></script>
+<script>
+  const sets = window.RENDERS || {};
+  const order = Object.keys(sets).sort((a, b) => (a === "before" ? -1 : b === "before" ? 1 : a.localeCompare(b)));
+  const names = [...new Set(order.flatMap(l => sets[l]))].sort();
+  const out = document.getElementById("out");
+  out.innerHTML = names.map(n => `
+    <section class="shot"><h2>${n.replace(".png", "")}</h2><div class="sets">
+      ${order.filter(l => sets[l].includes(n)).map(l => `<figure><img src="renders/${l}/${n}" alt="${l} ${n}"><figcaption>${l}</figcaption></figure>`).join("")}
+    </div></section>`).join("") || "<p>No renders yet. Run ./render.sh</p>";
+  document.getElementById("zoom").onchange = e => document.querySelectorAll("img").forEach(i => i.classList.toggle("zoom", e.target.checked));
+</script>
+</body>
+</html>
