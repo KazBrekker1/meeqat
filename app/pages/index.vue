@@ -154,6 +154,7 @@
         <footer class="shrink-0 flex items-center justify-center gap-2 py-1 text-[10px] text-white/30 border-t border-white/5 pb-safe">
           <MeeqatMark class="size-2.5 opacity-60" />
           <span>Meeqat v{{ appVersion }}</span>
+          <NuxtLink to="/privacy" class="hover:text-white/60">Privacy</NuxtLink>
           <button
             v-if="isUpdateAvailable"
             type="button"
