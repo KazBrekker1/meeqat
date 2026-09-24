@@ -36,6 +36,14 @@
               :sonar-intensity="0.25"
             />
             <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
+            <UButton
+              v-if="!hasLocation"
+              class="mt-4"
+              size="lg"
+              icon="lucide:map-pin"
+              label="Choose location"
+              @click="openLocation"
+            />
 
             <!-- Date under the orbit; the countdown/since timers now live as the
                  orbit's since/until banner. -->
@@ -92,7 +100,8 @@
               </ul>
               <div v-else class="text-center py-8 text-white/55">
                 <UIcon name="lucide:map-pin" class="size-8 mx-auto mb-2 text-white/30" />
-                <p class="text-sm">Select a city to view prayer times</p>
+                <p class="text-sm mb-3">Choose where you are to see prayer times</p>
+                <UButton icon="lucide:map-pin" label="Choose location" @click="openLocation" />
               </div>
             </div>
 
@@ -214,7 +223,11 @@
     />
 
     <!-- Location Modal (opened from the header) -->
-    <UModal v-model:open="showLocationModal" title="Location" description="Search a city, use where you are, or pick a spot on the map">
+    <UModal
+      v-model:open="showLocationModal"
+      :title="hasLocation ? 'Location' : 'Where do you pray?'"
+      :description="hasLocation ? 'Search a city, use where you are, or pick a spot on the map' : 'Choose your city, or use where you are, to see prayer times. You can change it any time.'"
+    >
       <template #body>
         <PrayerLocationSelector
           :favorites="favorites"
@@ -311,6 +324,17 @@ const {
   getNextDayFirstPrayer,
   getUpcomingDays,
 } = usePrayerTimes();
+
+function openLocation() {
+  showLocationModal.value = true;
+}
+
+// A place is chosen (city, or picked coordinates). False on first run.
+const hasLocation = computed(() =>
+  locationMode.value === "gps"
+    ? gpsLat.value != null && gpsLng.value != null
+    : !!selectedCity.value && !!selectedCountry.value
+);
 
 // Active coordinates for the Qibla compass: GPS position in GPS mode, otherwise
 // the selected city's coordinates from the curated list.
@@ -581,6 +605,9 @@ onMounted(async () => {
     fetchByCoordinates(gpsLat.value, gpsLng.value);
   } else if (selectedCity.value && selectedCountry.value) {
     onFetchByCity();
+  } else {
+    // First run (or location cleared): nothing to show until a place is chosen.
+    showLocationModal.value = true;
   }
   startPrayerNotifications();
   // Quietly check for a newer release; the footer pill appears only if one exists.

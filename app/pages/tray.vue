@@ -23,7 +23,10 @@
             :size="180"
             :sonar-intensity="0.25"
           />
-          <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
+          <div v-else class="flex flex-col items-center gap-2 py-2 text-center">
+            <PrototypesCelestialMoonPhase :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
+            <p class="text-xs text-white/60 max-w-[200px]">Choose a location in Meeqat to see prayer times here.</p>
+          </div>
         </div>
 
         <!-- Every prayer at once in one row, instead of a scrolling list -->
@@ -65,6 +68,7 @@ import { currentMonitor } from "@tauri-apps/api/window";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
 import { pad2 } from "@/utils/time";
 import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
@@ -91,13 +95,9 @@ const nowSec = computed(() => {
 
 const hhmm = (min: number) => `${pad2(Math.floor(min / 60))}:${pad2(min % 60)}`;
 
-// Prefer the accurate astronomical phase sent by the main window; fall back to
-// a rough hijri-day estimate only until the first payload arrives.
-const moonPhase = computed(() => {
-  if (receivedMoonPhase.value != null) return receivedMoonPhase.value;
-  const day = parseInt((hijriDate.value || "").trim(), 10) || 1;
-  return ((day - 1) / 29.53) % 1;
-});
+// Prefer the phase sent by the main window; before that arrives (or with no location
+// chosen yet) compute it locally, so the moon is never shown as a blank new moon.
+const moonPhase = computed(() => receivedMoonPhase.value ?? lunarPhase(localNow.value));
 
 // Prayers decorated with LOCAL next/past flags (overriding any stale pushed flags).
 const decoratedPrayers = computed(() => {
