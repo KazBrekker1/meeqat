@@ -20,3 +20,6 @@ keystore.properties
 
 # Plugin build artifacts
 src-tauri/tauri-plugin-*/android/build/
+
+# Together service (PocketBase) local data
+services/together/pb_data/
