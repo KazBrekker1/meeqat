@@ -15,7 +15,16 @@ export default defineNuxtConfig({
       title: "Meeqat",
       charset: "utf-8",
       viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
-      meta: [{ name: "format-detection", content: "no" }],
+      meta: [
+        { name: "format-detection", content: "no" },
+        { name: "theme-color", content: "#0a0e22" },
+      ],
+      // Same artwork as the desktop/Android app icon (src-tauri/icons).
+      link: [
+        { rel: "icon", href: "/favicon.ico", sizes: "any" },
+        { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32.png" },
+        { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      ],
     },
     pageTransition: {
       name: "page",
