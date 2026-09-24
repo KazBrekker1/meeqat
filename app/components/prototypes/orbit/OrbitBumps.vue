@@ -268,7 +268,8 @@ const bannerFont = Math.max(11, Math.round(props.size * 0.05));
 // dot sitting at the 6-o'clock bottom, close enough that the outer line stays
 // within the box (so it never collides with the date beneath the orbit).
 const Rbanner = props.size * 0.42;
-const LINE_OFF = bannerFont + 2;
+// Gap between the "until" and "since" lines; 1.3× the font keeps them from crowding.
+const LINE_OFF = Math.round(bannerFont * 1.3);
 // Two stacked lines need vertical room; on the tiny tray orbit fall back to one.
 const twoLine = props.size >= 220;
 
