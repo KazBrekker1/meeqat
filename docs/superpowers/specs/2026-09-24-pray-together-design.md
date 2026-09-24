@@ -25,7 +25,9 @@ working signed out and offline, exactly as today.
 - Roles: **owner** (rename, edit default place, rotate code, remove members, choose
   callers, make discoverable), **caller** (can start calls), **member** (join, vote, chat).
   The owner is always a caller.
-- Each member can **subscribe/unsubscribe** (unsubscribed = still a member, not notified).
+- Each member can **subscribe/unsubscribe**. Unsubscribed members stay in the room
+  (they can still see its name, place and history, and resubscribe), but they **do not
+  receive or see calls** — no notifications, no call list, no chat, no votes.
 - **Discoverable** (owner opt-in, default off): the room stores a location rounded to
   3 decimal places (~110 m). Anyone signed in can list discoverable rooms within ~1 km
   of a position they send with the query (never stored) and subscribe without a code,
@@ -34,6 +36,9 @@ working signed out and offline, exactly as today.
 **Calls**
 - One **active** call per room per prayer per day (active = `open` or `finalized`).
   A second caller trying to start one is shown the existing call instead.
+- **Jumu'ah is its own prayer type.** On Fridays a room can have both a Jumu'ah call
+  and a Dhuhr call (for people who can't attend Jumu'ah); each follows the one-active
+  rule separately. Jumu'ah is only offered on Fridays (in the room's time zone).
 - Started by a caller with a place (defaults to the room's) and an optional poll.
 - The place is editable by the organizer while the call is active; members see a
   "place changed" marker.
@@ -132,8 +137,11 @@ PocketBase imported as a Go library (`pocketbase.New()`), still one binary.
 | `room_history` | `room`, `prayer`, `day`, `place`, `joined` | written on call end |
 
 **Access rules** (PocketBase rule syntax, abridged):
-- `calls` list/view: `@request.auth.id != "" && room.memberships_via_room.user ?= @request.auth.id`
-- `calls` create: members with role owner/caller (enforced in a hook; see below)
+- `calls` list/view (and `participants`, `poll_*`, `messages` via their call):
+  subscribed members only —
+  `@request.auth.id != "" && @collection.memberships.room ?= room && @collection.memberships.user ?= @request.auth.id && @collection.memberships.subscribed ?= true`
+  (the service tests assert an unsubscribed member gets an empty list and no realtime events)
+- `calls` create: subscribed members with role owner/caller (enforced in a hook; see below)
 - `messages` create: sender is a participant-or-member of the call's room and `user = @request.auth.id`
 - `rooms` view: members, or `discoverable = true` (limited fields via a custom
   `/api/rooms/nearby` route that never returns member lists)
@@ -145,7 +153,8 @@ PocketBase imported as a Go library (`pocketbase.New()`), still one binary.
   `sub` → `sanad_id`, refreshes name/avatar from claims, returns a PocketBase auth
   token (7-day expiry; clients re-exchange on expiry or 401).
 - `OnRecordCreateRequest(calls)` — in the request transaction: requester is a caller of
-  the room; compute `day` in the room's tz; if an active call exists return it with 409.
+  the room; compute `day` in the room's tz; reject `jumuah` unless `day` is a Friday;
+  if an active call exists for that (room, prayer, day) return it with 409.
   The partial unique index is the backstop against races.
 - `OnRecordUpdateRequest(calls)` — organizer-only for place/poll/finalize/cancel;
   finalize validates the chosen option belongs to the call.
@@ -218,7 +227,8 @@ paste-the-code fallback.
 
 - **Service (Go)**: PocketBase `tests.ApiScenario` for exchange (valid, wrong `aud`,
   expired, unknown key), call creation (caller/member, duplicate → 409, race via parallel
-  requests), finalize, access rules (non-member cannot list/subscribe), cron (end + delete).
+  requests, Jumu'ah only on Fridays, Jumu'ah + Dhuhr coexisting on a Friday), finalize,
+  access rules (non-member and unsubscribed member cannot list or subscribe), cron (end + delete).
 - **Load**: the existing 2,000-subscriber benchmark script run against the service in CI
   weekly (memory ceiling assertion).
 - **App**: unit tests for prayer-window computation and the platform adapter; Playwright
@@ -238,8 +248,7 @@ paste-the-code fallback.
 5. **Later** — settings/prayer-log sync, push notifications, Sanad delete webhook if not
    done in 2.
 
-## 8. Open questions (decide before phase 3)
+## 8. Decisions log
 
-- Jumu'ah: separate "prayer" value (as above), or a Dhuhr call on Fridays?
-- Should unsubscribed members still see calls when they open the app? (Proposed: yes,
-  just no notification.)
+- Jumu'ah is its own prayer type; Dhuhr calls are also allowed on Fridays. (2026-09-24)
+- Only subscribed members receive or see calls. (2026-09-24)
