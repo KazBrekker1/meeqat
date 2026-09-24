@@ -59,11 +59,21 @@ const googleUrl = computed(
 );
 
 async function openExternal(url: string): Promise<void> {
-  if (getPlatform() !== "web") {
-    const { openUrl } = await import("@tauri-apps/plugin-opener");
-    await openUrl(url);
-  } else {
-    window.open(url, "_blank");
+  try {
+    if (getPlatform() !== "web") {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(url);
+    } else {
+      window.open(url, "_blank");
+    }
+  } catch {
+    // No app registered for webcal: (common on Android) — hand over the link instead.
+    await navigator.clipboard.writeText(feedUrl.value).catch(() => {});
+    toast.add({
+      title: "Couldn't open a calendar app",
+      description: "Link copied — paste it into your calendar's “subscribe” option.",
+      color: "warning",
+    });
   }
 }
 
