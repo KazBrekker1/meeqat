@@ -1,0 +1,15 @@
+# Meeqat web (meeqat.sanad.ink): the same Nuxt app as the desktop/Android shells,
+# generated as static files and served by Caddy.
+FROM oven/bun:1-slim AS build
+WORKDIR /app
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --ignore-scripts
+COPY . .
+ARG NUXT_PUBLIC_AUTH_URL=https://auth.sanad.ink
+ENV NUXT_PUBLIC_AUTH_URL=$NUXT_PUBLIC_AUTH_URL
+RUN bunx nuxi prepare && bun run generate
+
+FROM caddy:2-alpine
+COPY Caddyfile.web /etc/caddy/Caddyfile
+COPY --from=build /app/.output/public /srv
+EXPOSE 80
