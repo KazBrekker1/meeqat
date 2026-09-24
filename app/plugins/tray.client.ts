@@ -1,8 +1,7 @@
 import { TrayIcon } from "@tauri-apps/api/tray";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
-import { platform } from "@tauri-apps/plugin-os";
-import { isTauriAvailable } from "@/utils/store";
+import { getPlatform } from "@/utils/platform";
 import type { TrayUpdatePayload } from "@/utils/types";
 
 /**
@@ -11,9 +10,7 @@ import type { TrayUpdatePayload } from "@/utils/types";
  * in sync with the main window's countdown.
  */
 export default defineNuxtPlugin(async () => {
-  if (import.meta.server || !isTauriAvailable()) return;
-  const os = platform();
-  if (os === "android" || os === "ios") return;
+  if (import.meta.server || getPlatform() !== "desktop") return;
   if (getCurrentWebviewWindow().label !== "main") return;
 
   const tray = await TrayIcon.getById("meeqat-tray");

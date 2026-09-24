@@ -1,5 +1,6 @@
 import type { PrayerTimingItem } from "@/utils/types";
 import type { Ref } from "vue";
+import { getPlatform } from "@/utils/platform";
 
 interface PrayerTimeData {
   prayerName: string;
@@ -35,13 +36,7 @@ async function getPluginApi() {
 }
 
 async function isAndroidPlatform(): Promise<boolean> {
-  try {
-    const { platform } = await import("@tauri-apps/plugin-os");
-    const p = await platform();
-    return p === "android";
-  } catch {
-    return false;
-  }
+  return getPlatform() === "android";
 }
 
 function convertTimingsToServiceData(

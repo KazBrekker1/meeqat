@@ -400,6 +400,7 @@
 <script lang="ts" setup>
 import { NOTIFICATION_TIMING_OPTIONS, type NotificationSettings } from '@/composables/useNotifications';
 import { useMockTime } from '@/composables/useMockTime';
+import { getPlatform } from '@/utils/platform';
 
 // Check if running on Android
 const isAndroid = ref(false);
@@ -440,19 +441,10 @@ async function getInvoke() {
 }
 
 onMounted(async () => {
-  // Detect Android platform
-  if (import.meta.client) {
-    try {
-      const { platform } = await import('@tauri-apps/plugin-os');
-      const os = await platform();
-      isAndroid.value = os === 'android';
-      if (isAndroid.value) {
-        await checkPermissions();
-        await loadOffset();
-      }
-    } catch {
-      // Not running in Tauri
-    }
+  isAndroid.value = getPlatform() === 'android';
+  if (isAndroid.value) {
+    await checkPermissions();
+    await loadOffset();
   }
 });
 

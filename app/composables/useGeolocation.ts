@@ -1,5 +1,4 @@
-import { platform } from "@tauri-apps/plugin-os";
-import { isTauriAvailable } from "@/utils/store";
+import { getPlatform } from "@/utils/platform";
 
 export interface LocatedPosition {
   lat: number;
@@ -41,12 +40,8 @@ export function useGeolocation() {
 
   function hasWebGeolocation(): boolean {
     if (!navigator.geolocation) return false;
-    if (!isTauriAvailable()) return true;
-    try {
-      return platform() === "android";
-    } catch {
-      return false;
-    }
+    // Desktop webviews have no geolocation delegate (it only times out).
+    return getPlatform() !== "desktop";
   }
 
   function tryWebGeolocation(): Promise<LocatedPosition | null> {

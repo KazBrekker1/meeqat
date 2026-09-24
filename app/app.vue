@@ -12,22 +12,16 @@
 
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { platform } from "@tauri-apps/plugin-os";
-import { isTauriAvailable } from "@/utils/store";
+import { getPlatform } from "@/utils/platform";
 
 const route = useRoute();
 
 onMounted(async () => {
   // Skip close handler for tray window
   if (route.path === '/tray') return;
-  // Browser/prototype context (no Tauri runtime): the OS plugin would throw on
-  // platform(). Nothing to wire up without a native window — bail out.
-  if (!isTauriAvailable()) return;
-  // Desktop only: hide-on-close keeps the app alive in the tray. On mobile this
-  // would trap the user by hiding the sole window on a back/close gesture — let
-  // the OS handle it natively instead.
-  const currentPlatform = platform();
-  if (currentPlatform === 'android' || currentPlatform === 'ios') return;
+  // Desktop only: hide-on-close keeps the app alive in the tray. On the web there's no
+  // native window, and on mobile hiding the sole window would trap the user.
+  if (getPlatform() !== "desktop") return;
 
   try {
     const win = getCurrentWindow();

@@ -15,8 +15,7 @@ import {
   Visibility,
 } from "@tauri-apps/plugin-notification";
 import { invoke } from "@tauri-apps/api/core";
-import { platform } from "@tauri-apps/plugin-os";
-import { isTauriAvailable } from "@/utils/store";
+import { getPlatform } from "@/utils/platform";
 
 /**
  * Desktop can't schedule through the notification plugin: it ignores `schedule`
@@ -26,13 +25,7 @@ import { isTauriAvailable } from "@/utils/store";
  * time; Android/iOS keep native OS scheduling.
  */
 function usesRustScheduler(): boolean {
-  if (!isTauriAvailable()) return false;
-  try {
-    const os = platform();
-    return os !== "android" && os !== "ios";
-  } catch {
-    return false;
-  }
+  return getPlatform() === "desktop";
 }
 
 // Audible channel (sound + vibration + heads-up) and a parallel silent channel

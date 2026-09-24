@@ -1,15 +1,10 @@
 import { load as loadTauriStore } from "@tauri-apps/plugin-store";
 import type { TauriStore } from "@/utils/types";
+import { isNative } from "@/utils/platform";
 
-interface TauriWindow extends Window {
-  __TAURI__?: { core?: { invoke?: unknown } };
-  __TAURI_INTERNALS__?: { invoke?: unknown };
-}
-
+/** Kept for existing imports; prefer getPlatform()/isNative() in new code. */
 export function isTauriAvailable(): boolean {
-  if (typeof window === "undefined") return false;
-  const w = window as TauriWindow;
-  return Boolean(w.__TAURI__?.core?.invoke || w.__TAURI_INTERNALS__?.invoke);
+  return isNative();
 }
 
 export function createWebFallbackStore(localKey = "settings.bin"): TauriStore {

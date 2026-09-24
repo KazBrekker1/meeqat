@@ -1,8 +1,7 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { platform } from "@tauri-apps/plugin-os";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { isTauriAvailable } from "@/utils/store";
+import { getPlatform } from "@/utils/platform";
 
 const REPO = "KazBrekker1/meeqat";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -61,13 +60,7 @@ let pendingApkUrl: string | null = null;
 
 const updatePlatform = computed<UpdatePlatform>(() => {
   if (simScenario()) return simScenario() === "android" || simScenario() === "permission" ? "android" : "desktop";
-  if (!isTauriAvailable()) return "web";
-  try {
-    const os = platform();
-    return os === "android" ? "android" : os === "ios" ? "ios" : "desktop";
-  } catch {
-    return "web";
-  }
+  return getPlatform();
 });
 
 /** An update exists and hasn't been installed yet (includes a failed install, for retry). */
@@ -196,7 +189,7 @@ async function checkDesktop(): Promise<void> {
  */
 async function checkForUpdate({ silent = false }: { silent?: boolean } = {}): Promise<void> {
   const sim = simScenario();
-  if (!sim && !isTauriAvailable()) return; // browser context: nothing to update
+  if (!sim && getPlatform() === "web") return; // browser: updates come from deploys
   // Don't re-check over an update the user is already acting on.
   if (isBusy.value || status.value === "ready" || (silent && hasUpdate.value)) return;
   if (updatePlatform.value === "ios") return; // App Store only — nothing to offer in-app
@@ -233,7 +226,7 @@ function resetProgress() {
  */
 async function downloadAndInstall(): Promise<void> {
   const sim = simScenario();
-  if ((!sim && !isTauriAvailable()) || isBusy.value) return;
+  if ((!sim && getPlatform() === "web") || isBusy.value) return;
   errorMessage.value = null;
   errorKind.value = null;
 
@@ -343,7 +336,7 @@ type SimScenario = "desktop" | "nosize" | "android" | "permission" | "fail" | "o
 let simFailedOnce = false;
 
 function simScenario(): SimScenario | null {
-  if (!import.meta.dev || typeof window === "undefined" || isTauriAvailable()) return null;
+  if (!import.meta.dev || typeof window === "undefined" || getPlatform() !== "web") return null;
   return (new URLSearchParams(window.location.search).get("update-sim") as SimScenario) || null;
 }
 
