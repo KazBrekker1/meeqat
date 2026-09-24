@@ -9,6 +9,7 @@
             <span class="text-sm font-semibold shrink-0">Meeqat</span>
           </div>
           <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
+            <DownloadAppMenu v-if="isWeb" />
             <button class="flex items-center gap-1 text-sm text-white/80 hover:text-white min-w-0 cursor-pointer" @click="showLocationModal = true">
               <UIcon :name="locationMode === 'gps' ? 'lucide:satellite' : 'lucide:map-pin'" class="size-3.5 shrink-0" />
               <span class="truncate">{{ locationMode === 'gps' ? (gpsCity ?? 'GPS Location') : (selectedCity || 'No location') }}</span>
@@ -252,6 +253,7 @@ import { GregorianCalendar, toCalendar } from "@internationalized/date";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { watchDebounced, watchThrottled } from "@vueuse/core";
+import { getPlatform } from "@/utils/platform";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
@@ -269,6 +271,7 @@ const {
   lunarPhaseOf,
 } = useHijriCalendar();
 
+const isWeb = getPlatform() === "web";
 const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
 const showLocationModal = shallowRef(false);
