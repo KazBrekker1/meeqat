@@ -1,12 +1,16 @@
 # Phase 1 — Meeqat on the web + Sanad account (web) Implementation Plan
 
+> **Decisions (owner):** sign-in = Google + passkeys; go live automatically after local checks pass.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Serve the existing Meeqat Nuxt app at https://meeqat.sanad.ink with optional Sanad sign-in (web only) and a privacy page, behind one platform module that replaces the scattered "am I in Tauri?" checks.
 
 **Architecture:** The same Nuxt app (`ssr: false`) gains a third build target: `nuxt generate` → static files in a Caddy container on Coolify. A new `app/utils/platform.ts` decides once whether we run on web/desktop/android/ios; every existing check goes through it. Sign-in uses the better-auth client against auth.sanad.ink with `credentials: "include"` (meeqat.sanad.ink is a `.sanad.ink` subdomain, so the shared session cookie applies); a small token cache hands out short-lived Sanad JWTs for later phases.
 
-**Tech Stack:** Nuxt 4, Vue 3, @nuxt/ui 4, better-auth client 1.x, Vitest, Caddy 2, Docker, Coolify, GitHub Actions.
+**Tech Stack:** Nuxt 4, Vue 3, @nuxt/ui 4, better-auth client 1.7 + passkey plugin, Playwright (one smoke test), Caddy 2, Docker, Coolify, GitHub Actions.
+
+**Testing policy (owner's call):** no unit-test suite; verify with `bunx nuxi typecheck`, a quick manual run, and the single web smoke test (Task 10).
 
 Spec: `docs/superpowers/specs/2026-09-24-pray-together-design.md` (§3.1, §3.2, §3.4 web, §3.5, §5).
 
@@ -16,9 +20,6 @@ Spec: `docs/superpowers/specs/2026-09-24-pray-together-design.md` (§3.1, §3.2,
 
 | File | Status | Responsibility |
 |---|---|---|
-| `vitest.config.ts` | create | unit-test runner config (`@` → `app/`) |
-| `tests/unit/platform.test.ts` | create | tests for platform detection |
-| `tests/unit/sanadToken.test.ts` | create | tests for JWT expiry + token cache |
 | `app/utils/platform.ts` | create | `detectPlatform()` (pure) + `getPlatform()` (cached) |
 | `app/utils/sanadToken.ts` | create | `jwtExpiry()` + `createTokenCache()` (pure) |
 | `app/composables/useAccount.ts` | create | Sanad session, Google sign-in/out, `getToken()` |
@@ -30,58 +31,8 @@ Spec: `docs/superpowers/specs/2026-09-24-pray-together-design.md` (§3.1, §3.2,
 | `Dockerfile.web`, `Caddyfile.web`, `.dockerignore` | create | web image |
 | `tests/e2e/web-smoke.mjs` | create | Playwright smoke test against the web image |
 | `.github/workflows/release.yml` | modify | don't rebuild an existing release on ordinary pushes |
-| `package.json` | modify | `test`, `test:e2e` scripts; deps |
+| `package.json` | modify | `test:e2e` script; deps |
 | `sanad-auth/.env.example` (other repo) | modify | document the new trusted origin |
-
----
-
-### Task 1: Unit-test harness
-
-**Files:**
-- Create: `vitest.config.ts`
-- Modify: `package.json` (scripts, devDependencies)
-
-- [ ] **Step 1: Install Vitest**
-
-Run: `cd meeqat && bun add -d vitest@^3`
-Expected: `vitest` appears in `devDependencies`.
-
-- [ ] **Step 2: Create `vitest.config.ts`**
-
-```ts
-import { defineConfig } from "vitest/config";
-import { fileURLToPath } from "node:url";
-
-// Unit tests for framework-free modules (no Nuxt runtime needed).
-export default defineConfig({
-  resolve: {
-    alias: { "@": fileURLToPath(new URL("./app", import.meta.url)) },
-  },
-  test: {
-    include: ["tests/unit/**/*.test.ts"],
-    environment: "node",
-  },
-});
-```
-
-- [ ] **Step 3: Add scripts to `package.json`** (inside `"scripts"`)
-
-```json
-"test": "vitest run",
-"test:e2e": "node tests/e2e/web-smoke.mjs"
-```
-
-- [ ] **Step 4: Verify the runner works**
-
-Run: `bun run test`
-Expected: exits with "No test files found" (non-zero is fine at this point) — confirms config loads.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add vitest.config.ts package.json bun.lock
-git commit -m "test: add vitest for unit tests"
-```
 
 ---
 
@@ -89,47 +40,8 @@ git commit -m "test: add vitest for unit tests"
 
 **Files:**
 - Create: `app/utils/platform.ts`
-- Test: `tests/unit/platform.test.ts`
 
-- [ ] **Step 1: Write the failing test** — `tests/unit/platform.test.ts`
-
-```ts
-import { describe, expect, it } from "vitest";
-import { detectPlatform } from "@/utils/platform";
-
-const tauri = { __TAURI_INTERNALS__: { invoke: () => {} } };
-
-describe("detectPlatform", () => {
-  it("is web without a window", () => {
-    expect(detectPlatform(undefined, () => "macos")).toBe("web");
-  });
-  it("is web in a browser without Tauri globals", () => {
-    expect(detectPlatform({}, () => "macos")).toBe("web");
-  });
-  it.each(["macos", "windows", "linux"])("is desktop on %s", (os) => {
-    expect(detectPlatform(tauri, () => os)).toBe("desktop");
-  });
-  it("is android on android", () => {
-    expect(detectPlatform(tauri, () => "android")).toBe("android");
-  });
-  it("is ios on ios", () => {
-    expect(detectPlatform(tauri, () => "ios")).toBe("ios");
-  });
-  it("accepts the legacy __TAURI__.core.invoke global", () => {
-    expect(detectPlatform({ __TAURI__: { core: { invoke: () => {} } } }, () => "linux")).toBe("desktop");
-  });
-  it("falls back to web when the OS plugin throws", () => {
-    expect(detectPlatform(tauri, () => { throw new Error("no os plugin"); })).toBe("web");
-  });
-});
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `bun run test`
-Expected: FAIL — `Failed to resolve import "@/utils/platform"`.
-
-- [ ] **Step 3: Implement `app/utils/platform.ts`**
+- [ ] **Step 1: Implement `app/utils/platform.ts`**
 
 ```ts
 import { platform as osPlatform } from "@tauri-apps/plugin-os";
@@ -172,15 +84,10 @@ export function isNative(): boolean {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `bun run test`
-Expected: PASS — 9 tests in `platform.test.ts`.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add app/utils/platform.ts tests/unit/platform.test.ts
+git add app/utils/platform.ts
 git commit -m "feat(platform): one place that decides web/desktop/android/ios"
 ```
 
@@ -291,8 +198,8 @@ Expected: no output.
 
 - [ ] **Step 10: Typecheck and unit tests**
 
-Run: `bunx nuxi typecheck && bun run test`
-Expected: typecheck exits 0; tests PASS.
+Run: `bunx nuxi typecheck`
+Expected: exit 0.
 
 - [ ] **Step 11: Manual check in the desktop app**
 
@@ -342,74 +249,8 @@ git commit -m "fix(web): /tray redirects home outside the desktop app"
 
 **Files:**
 - Create: `app/utils/sanadToken.ts`
-- Test: `tests/unit/sanadToken.test.ts`
 
-- [ ] **Step 1: Write the failing test** — `tests/unit/sanadToken.test.ts`
-
-```ts
-import { describe, expect, it, vi } from "vitest";
-import { createTokenCache, jwtExpiry } from "@/utils/sanadToken";
-
-const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
-const jwt = (expSeconds: number) => `${b64({ alg: "RS256" })}.${b64({ sub: "u1", exp: expSeconds })}.sig`;
-
-describe("jwtExpiry", () => {
-  it("reads exp in milliseconds", () => {
-    expect(jwtExpiry(jwt(1_000))).toBe(1_000_000);
-  });
-  it("returns 0 for malformed tokens", () => {
-    expect(jwtExpiry("not-a-jwt")).toBe(0);
-    expect(jwtExpiry(`${b64({})}.${b64({ sub: "u1" })}.x`)).toBe(0);
-  });
-});
-
-describe("createTokenCache", () => {
-  it("reuses a token until 60 s before it expires", async () => {
-    let now = 0;
-    const fetchToken = vi.fn(async () => jwt(900)); // expires at 900 s
-    const cache = createTokenCache(fetchToken, () => now);
-    await cache.get();
-    now = 839_000; // 61 s before expiry
-    await cache.get();
-    expect(fetchToken).toHaveBeenCalledTimes(1);
-    now = 841_000; // 59 s before expiry → refetch
-    await cache.get();
-    expect(fetchToken).toHaveBeenCalledTimes(2);
-  });
-
-  it("shares one request between concurrent callers", async () => {
-    const fetchToken = vi.fn(async () => jwt(900));
-    const cache = createTokenCache(fetchToken, () => 0);
-    const [a, b] = await Promise.all([cache.get(), cache.get()]);
-    expect(a).toBe(b);
-    expect(fetchToken).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not cache a missing token", async () => {
-    const fetchToken = vi.fn(async () => null);
-    const cache = createTokenCache(fetchToken, () => 0);
-    expect(await cache.get()).toBeNull();
-    await cache.get();
-    expect(fetchToken).toHaveBeenCalledTimes(2);
-  });
-
-  it("clear() forces a refetch", async () => {
-    const fetchToken = vi.fn(async () => jwt(900));
-    const cache = createTokenCache(fetchToken, () => 0);
-    await cache.get();
-    cache.clear();
-    await cache.get();
-    expect(fetchToken).toHaveBeenCalledTimes(2);
-  });
-});
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `bun run test`
-Expected: FAIL — cannot resolve `@/utils/sanadToken`.
-
-- [ ] **Step 3: Implement `app/utils/sanadToken.ts`**
+- [ ] **Step 1: Implement `app/utils/sanadToken.ts`**
 
 ```ts
 /** Expiry of a JWT in epoch milliseconds, or 0 if it can't be read. */
@@ -460,15 +301,10 @@ export function createTokenCache(
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
-
-Run: `bun run test`
-Expected: PASS — platform (9) + sanadToken (6).
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: Commit**
 
 ```bash
-git add app/utils/sanadToken.ts tests/unit/sanadToken.test.ts
+git add app/utils/sanadToken.ts
 git commit -m "feat(account): cache short-lived Sanad JWTs"
 ```
 
@@ -480,9 +316,9 @@ git commit -m "feat(account): cache short-lived Sanad JWTs"
 - Modify: `nuxt.config.ts` (`runtimeConfig.public`), `package.json`
 - Create: `app/composables/useAccount.ts`
 
-- [ ] **Step 1: Install the better-auth client** (same major as sanad-auth, which runs `better-auth ^1.4.9`)
+- [ ] **Step 1: Install the better-auth client + passkey plugin** (sanad-auth runs better-auth 1.7.2 and @better-auth/passkey 1.7.2)
 
-Run: `bun add better-auth@^1.4`
+Run: `bun add better-auth@^1.7 @better-auth/passkey@^1.7`
 
 - [ ] **Step 2: Add the auth URL to `nuxt.config.ts`**
 
@@ -501,6 +337,7 @@ Run: `bun add better-auth@^1.4`
 
 ```ts
 import { createAuthClient } from "better-auth/client";
+import { passkeyClient } from "@better-auth/passkey/client";
 import { getPlatform } from "@/utils/platform";
 import { createTokenCache } from "@/utils/sanadToken";
 
@@ -511,7 +348,12 @@ export interface AccountUser {
   image?: string | null;
 }
 
-type AuthClient = ReturnType<typeof createAuthClient>;
+function makeClient(baseURL: string) {
+  // meeqat.sanad.ink → auth.sanad.ink is cross-origin but same-site: the shared
+  // `.sanad.ink` session cookie only travels on credentialed requests.
+  return createAuthClient({ baseURL, fetchOptions: { credentials: "include" }, plugins: [passkeyClient()] });
+}
+type AuthClient = ReturnType<typeof makeClient>;
 
 // Module-level singletons: one client, one session state, one token cache per page.
 let client: AuthClient | null = null;
@@ -520,9 +362,7 @@ const user = ref<AccountUser | null>(null);
 const status = ref<"unknown" | "signed-out" | "signed-in">("unknown");
 
 function authClient(baseURL: string): AuthClient {
-  // meeqat.sanad.ink → auth.sanad.ink is cross-origin but same-site: the shared
-  // `.sanad.ink` session cookie only travels on credentialed requests.
-  client ??= createAuthClient({ baseURL, fetchOptions: { credentials: "include" } });
+  client ??= makeClient(baseURL);
   return client;
 }
 
@@ -557,6 +397,14 @@ export function useAccount() {
     });
   }
 
+  /** Passkeys are registered for rpID `sanad.ink`, so they work on any Sanad subdomain. */
+  async function signInWithPasskey(): Promise<boolean> {
+    const res = await authClient(authUrl).signIn.passkey();
+    if (res?.error) return false;
+    await refresh();
+    return status.value === "signed-in";
+  }
+
   async function signOut(): Promise<void> {
     await authClient(authUrl).signOut();
     tokens?.clear();
@@ -582,6 +430,7 @@ export function useAccount() {
     supported,
     refresh,
     signInWithGoogle,
+    signInWithPasskey,
     signOut,
     getToken,
   };
@@ -615,8 +464,13 @@ const {
   supported: accountSupported,
   refresh: refreshAccount,
   signInWithGoogle,
+  signInWithPasskey,
   signOut: signOutAccount,
 } = useAccount();
+const passkeyFailed = ref(false);
+async function onPasskey() {
+  passkeyFailed.value = !(await signInWithPasskey());
+}
 
 watch(isOpen, (open) => {
   if (open) void refreshAccount();
@@ -645,17 +499,25 @@ watch(isOpen, (open) => {
                 <p class="text-sm font-medium">Sanad account</p>
                 <p class="text-xs text-muted">Optional. You'll need it for Pray Together.</p>
               </div>
-              <UButton
-                size="sm"
-                color="primary"
-                icon="i-lucide-log-in"
-                :loading="accountStatus === 'unknown'"
-                @click="signInWithGoogle"
-              >
-                Sign in with Google
-              </UButton>
+              <div class="flex flex-col items-end gap-1.5 shrink-0">
+                <UButton
+                  size="sm"
+                  color="primary"
+                  icon="i-lucide-log-in"
+                  :loading="accountStatus === 'unknown'"
+                  @click="signInWithGoogle"
+                >
+                  Sign in with Google
+                </UButton>
+                <UButton size="sm" variant="ghost" color="neutral" icon="i-lucide-key-round" @click="onPasskey">
+                  Use a passkey
+                </UButton>
+              </div>
             </template>
           </div>
+          <p v-if="passkeyFailed" class="mt-1.5 text-xs text-error">
+            No passkey signed in. Passkeys come from another Sanad app; use Google if you haven't set one up.
+          </p>
           <p class="mt-1.5 text-xs text-muted">
             Prayer times and reminders never need an account. <NuxtLink to="/privacy" class="underline">What's stored</NuxtLink>
           </p>
@@ -730,7 +592,7 @@ git commit -m "feat(account): Account section in Settings on the web"
 
       <section class="space-y-2">
         <h2 class="text-lg font-semibold">If you sign in (optional)</h2>
-        <p class="text-white/80">Sign-in uses your <b>Sanad</b> account (auth.sanad.ink), shared with other Sanad apps. It holds your name, email and profile picture from Google. Meeqat doesn't send your location, prayer times or settings to Sanad.</p>
+        <p class="text-white/80">Sign-in uses your <b>Sanad</b> account (auth.sanad.ink), shared with other Sanad apps, with Google or a passkey. It holds your name, email and profile picture. Meeqat doesn't send your location, prayer times or settings to Sanad.</p>
       </section>
 
       <section class="space-y-2">
@@ -846,9 +708,11 @@ git commit -m "build(web): static Nuxt build served by Caddy"
 
 **Files:** Create `tests/e2e/web-smoke.mjs`; modify `package.json`
 
-- [ ] **Step 1: Install Playwright**
+- [ ] **Step 1: Install Playwright and add the script**
 
 Run: `bun add -d playwright && bunx playwright install chromium`
+
+Add to `package.json` `"scripts"`: `"test:e2e": "node tests/e2e/web-smoke.mjs"`
 
 - [ ] **Step 2: Create `tests/e2e/web-smoke.mjs`**
 
