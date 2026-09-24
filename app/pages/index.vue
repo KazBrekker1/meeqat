@@ -214,6 +214,10 @@
       :location-mode="locationMode"
       :gps-lat="gpsLat"
       :gps-lng="gpsLng"
+      :has-location="hasLocation"
+      :calendar-lat="activeCoords?.lat"
+      :calendar-lng="activeCoords?.lng"
+      :calendar-name="locationDisplayName"
       @update:location-mode="onLocationModeChange"
       @update:gps-location="onGpsLocationUpdate"
       @clear-cache="onClearCache"
@@ -349,6 +353,12 @@ const activeCoords = computed<{ lat: number; lng: number } | null>(() => {
   }
   return null;
 });
+
+// City label for the "add to calendar" feed: the curated city name, or the
+// reverse-geocoded GPS label when available.
+const locationDisplayName = computed(() =>
+  locationMode.value === "gps" ? gpsCity.value : selectedCity.value,
+);
 
 const { reverseGeocode } = useGeolocation();
 

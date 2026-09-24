@@ -34,6 +34,13 @@
     "prayer-service:default",
     "positioner:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "webcal:*" }
+      ]
+    }
   ]
 }

@@ -79,6 +79,15 @@
           </div>
         </section>
 
+        <!-- Add to calendar Section -->
+        <PrayerCalendarSubscribe
+          v-if="hasLocation && calendarLat != null && calendarLng != null"
+          :lat="calendarLat"
+          :lng="calendarLng"
+          :method-id="selectedMethodId"
+          :name="calendarName"
+        />
+
         <!-- Display Section -->
         <section>
           <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Display</p>
@@ -563,6 +572,11 @@ const props = defineProps<{
   locationMode: 'city' | 'gps';
   gpsLat?: number | null;
   gpsLng?: number | null;
+  // Add-to-calendar props: a location is set when hasLocation is true.
+  hasLocation?: boolean;
+  calendarLat?: number | null;
+  calendarLng?: number | null;
+  calendarName?: string | null;
 }>();
 
 const emit = defineEmits<{

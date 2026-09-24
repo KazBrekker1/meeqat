@@ -14,6 +14,13 @@
     "core:window:allow-show",
     "notification:default",
     "store:default",
-    "prayer-service:default"
+    "prayer-service:default",
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "webcal:*" }
+      ]
+    }
   ]
 }

@@ -8,6 +8,8 @@ export default defineNuxtConfig({
       // Central Sanad auth. Static build: baked in at `nuxt generate` time;
       // override with NUXT_PUBLIC_AUTH_URL for local dev (see Task 11).
       authUrl: process.env.NUXT_PUBLIC_AUTH_URL || "https://auth.sanad.ink",
+      // Pray Together backend: also serves the "add to calendar" ICS feed.
+      togetherUrl: process.env.NUXT_PUBLIC_TOGETHER_URL || "https://together.sanad.ink",
     },
   },
   app: {
