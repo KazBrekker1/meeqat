@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",
+		"test:e2e": "node tests/e2e/web-smoke.mjs",
 		"preinstall": "bunx only-allow bun",
 		"postinstall": "nuxt prepare",
 		"bump": "bumpp",
@@ -45,6 +46,7 @@
 		"@vueuse/nuxt": "^14.3.0",
 		"bumpp": "^10.4.1",
 		"nuxt-svgo": "^4.2.6",
+		"playwright": "^1.63.0",
 		"typescript": "^5.9.3",
 		"vue-tsc": "^3.2.2"
 	}
