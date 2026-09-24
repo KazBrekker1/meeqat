@@ -40,8 +40,10 @@ export function useGeolocation() {
 
   function hasWebGeolocation(): boolean {
     if (!navigator.geolocation) return false;
-    // Desktop webviews have no geolocation delegate (it only times out).
-    return getPlatform() !== "desktop";
+    // Browser and Android only: desktop webviews have no geolocation delegate (it only
+    // times out), and iOS isn't wired up yet.
+    const p = getPlatform();
+    return p === "web" || p === "android";
   }
 
   function tryWebGeolocation(): Promise<LocatedPosition | null> {
