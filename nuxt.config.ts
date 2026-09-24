@@ -5,6 +5,9 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       version: pkg.version,
+      // Central Sanad auth. Static build: baked in at `nuxt generate` time;
+      // override with NUXT_PUBLIC_AUTH_URL for local dev (see Task 11).
+      authUrl: process.env.NUXT_PUBLIC_AUTH_URL || "https://auth.sanad.ink",
     },
   },
   app: {
