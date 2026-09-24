@@ -248,8 +248,51 @@
           </div>
         </section>
 
+        <!-- Account (web for now; desktop/Android sign-in comes with Pray Together) -->
+        <section v-if="accountSupported">
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Account</p>
+          <div class="rounded-xl bg-elevated border border-default px-4 py-3 flex items-center justify-between gap-3">
+            <template v-if="accountStatus === 'signed-in' && accountUser">
+              <div class="flex items-center gap-3 min-w-0">
+                <UAvatar :src="accountUser.image ?? undefined" :alt="accountUser.name" size="sm" />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">{{ accountUser.name }}</p>
+                  <p class="text-xs text-muted truncate">{{ accountUser.email }}</p>
+                </div>
+              </div>
+              <UButton size="sm" variant="soft" color="neutral" @click="signOutAccount">Sign out</UButton>
+            </template>
+            <template v-else>
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Sanad account</p>
+                <p class="text-xs text-muted">Optional. You'll need it for Pray Together.</p>
+              </div>
+              <div class="flex flex-col items-end gap-1.5 shrink-0">
+                <UButton
+                  size="sm"
+                  color="primary"
+                  icon="i-lucide-log-in"
+                  :loading="accountStatus === 'unknown'"
+                  @click="signInWithGoogle"
+                >
+                  Sign in with Google
+                </UButton>
+                <UButton size="sm" variant="ghost" color="neutral" icon="i-lucide-key-round" @click="onPasskey">
+                  Use a passkey
+                </UButton>
+              </div>
+            </template>
+          </div>
+          <p v-if="passkeyFailed" class="mt-1.5 text-xs text-error">
+            No passkey signed in. Passkeys come from another Sanad app; use Google if you haven't set one up.
+          </p>
+          <p class="mt-1.5 text-xs text-muted">
+            Prayer times and reminders never need an account. <NuxtLink to="/privacy" class="underline">What's stored</NuxtLink>
+          </p>
+        </section>
+
         <!-- Updates Section -->
-        <section>
+        <section v-if="updatePlatform !== 'web'">
           <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Updates</p>
           <div class="rounded-xl bg-elevated border border-default px-4 py-3 space-y-3">
             <div class="flex items-center justify-between gap-3">
@@ -540,6 +583,24 @@ const isDev = computed(() => import.meta.dev || isAndroid.value);
 const isOpen = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
+});
+
+const {
+  user: accountUser,
+  status: accountStatus,
+  supported: accountSupported,
+  refresh: refreshAccount,
+  signInWithGoogle,
+  signInWithPasskey,
+  signOut: signOutAccount,
+} = useAccount();
+const passkeyFailed = ref(false);
+async function onPasskey() {
+  passkeyFailed.value = !(await signInWithPasskey());
+}
+
+watch(isOpen, (open) => {
+  if (open) void refreshAccount();
 });
 
 // Two-way binding for method and timezone
