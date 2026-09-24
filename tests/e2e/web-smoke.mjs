@@ -16,6 +16,10 @@ function check(ok, label) {
 
 await page.goto(base);
 await page.waitForTimeout(3000);
+// A fresh visitor has no location: the welcome dialog asks for one first.
+check(await page.getByRole("dialog").getByText("Where do you pray?").isVisible(), "first run asks for a location");
+await page.keyboard.press("Escape");
+await page.waitForTimeout(500);
 check(await page.getByRole("button", { name: "Open settings" }).isVisible(), "home renders");
 
 await page.getByRole("button", { name: "Open settings" }).click();
