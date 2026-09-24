@@ -42,16 +42,23 @@ func RegisterHooks(app core.App) {
 		}
 		e.Record.Set("code", code)
 
-		if e.Record.GetBool("discoverable") {
-			lat := round3(e.Record.GetFloat("lat"))
-			lng := round3(e.Record.GetFloat("lng"))
-			e.Record.Set("lat", lat)
-			e.Record.Set("lng", lng)
-		} else {
-			e.Record.Set("lat", 0)
-			e.Record.Set("lng", 0)
-		}
+		applyLocationPrivacy(e.Record)
 
+		return e.Next()
+	})
+
+	// The owner edits name/place/tz/discoverable/coords through the generic
+	// API; code and ownership only change through the dedicated routes.
+	app.OnRecordUpdateRequest("rooms").BindFunc(func(e *core.RecordRequestEvent) error {
+		original := e.Record.Original()
+		if e.Record.GetString("code") != original.GetString("code") ||
+			e.Record.GetString("owner") != original.GetString("owner") {
+			return apis.NewBadRequestError("code and owner can't be edited directly", nil)
+		}
+		if _, err := time.LoadLocation(e.Record.GetString("tz")); err != nil {
+			return apis.NewBadRequestError("invalid tz", nil)
+		}
+		applyLocationPrivacy(e.Record)
 		return e.Next()
 	})
 
@@ -172,6 +179,9 @@ func Register(se *core.ServeEvent, app core.App) {
 		}
 
 		userId := e.Request.PathValue("userId")
+		if userId == e.Auth.Id {
+			return apis.NewBadRequestError("the owner can't remove themself", nil)
+		}
 		membership, err := e.App.FindFirstRecordByFilter(
 			"memberships",
 			"room = {:room} && user = {:user}",
@@ -315,6 +325,18 @@ func randomCode() (string, error) {
 		b[i] = codeAlphabet[int(b[i])%len(codeAlphabet)]
 	}
 	return string(b), nil
+}
+
+// applyLocationPrivacy keeps coordinates only for discoverable rooms, and
+// only to ~100 m.
+func applyLocationPrivacy(room *core.Record) {
+	if room.GetBool("discoverable") {
+		room.Set("lat", round3(room.GetFloat("lat")))
+		room.Set("lng", round3(room.GetFloat("lng")))
+	} else {
+		room.Set("lat", 0)
+		room.Set("lng", 0)
+	}
 }
 
 func round3(v float64) float64 {

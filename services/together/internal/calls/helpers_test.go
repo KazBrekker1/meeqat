@@ -132,9 +132,14 @@ type apiResponse struct {
 
 func (e *testEnv) postJSON(t *testing.T, path, token string, payload map[string]any) apiResponse {
 	t.Helper()
+	return e.sendJSON(t, http.MethodPost, path, token, payload)
+}
+
+func (e *testEnv) sendJSON(t *testing.T, method, path, token string, payload map[string]any) apiResponse {
+	t.Helper()
 
 	raw, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, e.server.URL+path, bytes.NewReader(raw))
+	req, err := http.NewRequest(method, e.server.URL+path, bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}

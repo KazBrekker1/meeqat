@@ -123,6 +123,18 @@ func addUserFields(app core.App, users *core.Collection) error {
 
 	users.AddIndex("idx_users_sanad_id", true, "sanad_id", "")
 
+	// Accounts only come from POST /api/sanad/exchange. PocketBase's defaults
+	// (public signup, password login, self-update) would let someone register
+	// or edit a record with another person's sanad_id and be handed that
+	// person's account on their first Sanad sign-in.
+	users.CreateRule = nil
+	users.UpdateRule = nil
+	users.PasswordAuth.Enabled = false
+	users.OAuth2.Enabled = false
+	// Signed-in users can see each other's name/avatar (participants, chat
+	// authors); emails stay hidden (emailVisibility is false).
+	users.ViewRule = types.Pointer("@request.auth.id != ''")
+
 	// 7-day PocketBase auth token so native clients don't have to
 	// re-exchange the Sanad JWT on every app open.
 	users.AuthToken.Duration = 7 * 24 * 60 * 60
@@ -485,7 +497,8 @@ func attachMembershipAwareRules(app core.App) error {
 	memberOfRoom := member("room")
 	memberships.ListRule = types.Pointer("user = @request.auth.id || " + memberOfRoom)
 	memberships.ViewRule = types.Pointer("user = @request.auth.id || " + memberOfRoom)
-	memberships.DeleteRule = types.Pointer("user = @request.auth.id || (" + memberOfRoom + " && @request.auth.id = room.owner)")
+	// The owner's own row can't be deleted (the room would be left ownerless).
+	memberships.DeleteRule = types.Pointer("role != 'owner' && (user = @request.auth.id || @request.auth.id = room.owner)")
 	if err := app.Save(memberships); err != nil {
 		return err
 	}
@@ -569,6 +582,7 @@ func configureRateLimits(app core.App) error {
 		core.RateLimitRule{Label: "calls:create", MaxRequests: 10, Duration: 3600},
 		core.RateLimitRule{Label: "messages:create", MaxRequests: 30, Duration: 60},
 		core.RateLimitRule{Label: "POST /api/sanad/exchange", MaxRequests: 60, Duration: 3600},
+		core.RateLimitRule{Label: "POST /api/rooms/join", MaxRequests: 30, Duration: 3600},
 	)
 
 	return app.Save(settings)

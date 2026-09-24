@@ -97,7 +97,7 @@ func deleteOldMessages(app core.App) {
 
 	endedCalls, err := app.FindRecordsByFilter(
 		"calls",
-		"status = 'ended' && updated < {:cutoff}",
+		"(status = 'ended' || status = 'cancelled') && updated < {:cutoff}",
 		"",
 		0,
 		0,

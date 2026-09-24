@@ -33,6 +33,57 @@ func RegisterHooks(app core.App) {
 	app.OnRecordUpdateRequest("calls").BindFunc(func(e *core.RecordRequestEvent) error {
 		return handleUpdate(e)
 	})
+
+	// Joining, chatting and polling only make sense while the call is live.
+	app.OnRecordCreateRequest("participants", "messages", "poll_options").BindFunc(func(e *core.RecordRequestEvent) error {
+		if err := requireActiveCall(e.App, e.Record.GetString("call")); err != nil {
+			return err
+		}
+		return e.Next()
+	})
+
+	app.OnRecordCreateRequest("poll_votes").BindFunc(func(e *core.RecordRequestEvent) error {
+		if err := validateVote(e); err != nil {
+			return err
+		}
+		return e.Next()
+	})
+
+	app.OnRecordUpdateRequest("poll_votes").BindFunc(func(e *core.RecordRequestEvent) error {
+		original := e.Record.Original()
+		if e.Record.GetString("call") != original.GetString("call") ||
+			e.Record.GetString("user") != original.GetString("user") {
+			return apis.NewBadRequestError("only the chosen option can change", nil)
+		}
+		if err := validateVote(e); err != nil {
+			return err
+		}
+		return e.Next()
+	})
+}
+
+func requireActiveCall(app core.App, callId string) error {
+	call, err := app.FindRecordById("calls", callId)
+	if err != nil {
+		return apis.NewBadRequestError("call not found", nil)
+	}
+	if s := call.GetString("status"); s != "open" && s != "finalized" {
+		return apis.NewBadRequestError("this call has ended", nil)
+	}
+	return nil
+}
+
+// validateVote checks the call is live and the chosen option belongs to it.
+func validateVote(e *core.RecordRequestEvent) error {
+	callId := e.Record.GetString("call")
+	if err := requireActiveCall(e.App, callId); err != nil {
+		return err
+	}
+	option, err := e.App.FindRecordById("poll_options", e.Record.GetString("option"))
+	if err != nil || option.GetString("call") != callId {
+		return apis.NewBadRequestError("option does not belong to this call", nil)
+	}
+	return nil
 }
 
 func handleCreate(e *core.RecordRequestEvent) error {
@@ -169,6 +220,9 @@ func handleUpdate(e *core.RecordRequestEvent) error {
 	}
 
 	original := e.Record.Original()
+	if s := original.GetString("status"); s == "ended" || s == "cancelled" {
+		return apis.NewBadRequestError("this call has ended", nil)
+	}
 
 	if optionId, ok := info.Body["finalize_option"].(string); ok && optionId != "" {
 		option, err := e.App.FindRecordById("poll_options", optionId)

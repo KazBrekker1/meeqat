@@ -18,6 +18,10 @@ func TestUnsubscribedMembersCannotSeeCalls(t *testing.T) {
 	env.addMembership(t, room, owner, "owner", true)
 	env.addMembership(t, room, subscribed, "member", true)
 	env.addMembership(t, room, unsubscribed, "member", false)
+	// Subscribed elsewhere: the rule must not let a subscription to another
+	// room count for this one.
+	otherRoom := env.createRoom(t, owner, "Asia/Qatar")
+	env.addMembership(t, otherRoom, unsubscribed, "member", true)
 	_ = stranger // never added as a member of the room at all
 
 	created := env.postJSON(t, "/api/collections/calls/records", ownerToken, map[string]any{
@@ -69,5 +73,32 @@ func TestUnsubscribedMembersCannotSeeCalls(t *testing.T) {
 				t.Fatalf("expected view visible=%v for %s, got status %d", tc.wantVisible, tc.name, view.status)
 			}
 		})
+	}
+}
+
+// Accounts only come from the Sanad exchange: no public signup, no password
+// login, and nobody can rewrite their own sanad_id (which would hand them
+// someone else's account on that person's first sign-in).
+func TestUsersAreLockedDown(t *testing.T) {
+	env := newTestEnv(t)
+	user, token := env.createUser(t, "locked-down")
+
+	signup := env.postJSON(t, "/api/collections/users/records", "", map[string]any{
+		"email": "x@example.com", "password": "12345678", "passwordConfirm": "12345678", "sanad_id": "victim",
+	})
+	if signup.status < 400 {
+		t.Fatalf("public signup should be rejected, got %d", signup.status)
+	}
+
+	login := env.postJSON(t, "/api/collections/users/auth-with-password", "", map[string]any{
+		"identity": user.Email(), "password": "anything",
+	})
+	if login.status < 400 {
+		t.Fatalf("password login should be disabled, got %d", login.status)
+	}
+
+	edit := env.sendJSON(t, "PATCH", "/api/collections/users/records/"+user.Id, token, map[string]any{"sanad_id": "victim"})
+	if edit.status < 400 {
+		t.Fatalf("editing sanad_id should be rejected, got %d", edit.status)
 	}
 }
