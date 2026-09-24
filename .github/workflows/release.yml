@@ -27,6 +27,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       draft: ${{ steps.meta.outputs.draft }}
+      skip: ${{ steps.meta.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +52,11 @@ jobs:
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists"
+            # A push that doesn't bump the version must not rebuild and re-upload an
+            # existing release. To re-run a failed release, use "Run workflow".
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
 
@@ -80,6 +86,7 @@ jobs:
   # First job: Build and release desktop apps
   publish-desktop:
     needs: create-release
+    if: needs.create-release.outputs.skip != 'true'
     permissions:
       contents: write
     strategy:
@@ -179,6 +186,7 @@ jobs:
   # Android job - runs in parallel with desktop (release is created up front)
   publish-android:
     needs: create-release
+    if: needs.create-release.outputs.skip != 'true'
     permissions:
       contents: write
     runs-on: ubuntu-latest
