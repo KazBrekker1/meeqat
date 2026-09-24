@@ -51,7 +51,8 @@
 
 <script lang="ts" setup>
 definePageMeta({
-  layout: false
+  layout: false,
+  middleware: "desktop-only",
 });
 
 useHead({
@@ -67,11 +68,7 @@ import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { pad2 } from "@/utils/time";
 import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
-import { getPlatform } from "@/utils/platform";
 
-// The tray popover only exists in the desktop app; on the web /tray would call
-// Tauri APIs that aren't there.
-if (getPlatform() !== "desktop") await navigateTo("/", { replace: true });
 
 const hijriDate = ref<string>("");
 const receivedMoonPhase = ref<number | null>(null);
