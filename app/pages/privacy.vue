@@ -23,6 +23,7 @@
           <li><b>Place search</b>: what you type goes to <b>Photon</b> (photon.komoot.io, OpenStreetMap). Naming a spot picked on the map uses <b>Nominatim</b> (OpenStreetMap).</li>
           <li><b>Maps</b> load tiles from <b>CARTO</b>.</li>
           <li><b>Updates</b> (apps only) are checked against Meeqat's GitHub releases.</li>
+          <li><b>Add to calendar</b>: the link you copy or add contains your chosen coordinates (rounded to about 100 metres), calculation method and time zone. Your calendar app fetches it periodically from <b>together.sanad.ink</b> to keep prayer times up to date.</li>
         </ul>
       </section>
 
