@@ -45,6 +45,7 @@
           :key="p.id"
           :src="p.expand?.user?.avatar_url || undefined"
           :alt="p.expand?.user?.name || '?'"
+          :class="avatarTint(p.user)"
         />
       </UAvatarGroup>
       <span class="text-sm text-muted flex-1">{{ goingLabel }}</span>
@@ -140,6 +141,14 @@
 </template>
 
 <script setup lang="ts">
+// Distinct tints so overlapping initials stay readable.
+const AVATAR_TINTS = ["bg-sky-500/30", "bg-emerald-500/30", "bg-amber-500/30", "bg-rose-500/30", "bg-violet-500/30", "bg-teal-500/30"];
+function avatarTint(userId: string): string {
+  let h = 0;
+  for (const ch of userId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `${AVATAR_TINTS[h % AVATAR_TINTS.length]} text-highlighted`;
+}
+
 import type { DropdownMenuItem } from "@nuxt/ui";
 import type { CallDetail, OptionInput, OptionKind, useRoomCalls } from "@/composables/useRoomCalls";
 import { formatClock, prayerName } from "@/utils/together";

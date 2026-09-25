@@ -164,7 +164,7 @@
               <UFormField label="Default place">
                 <UInput v-model="settings.place" class="w-full" :maxlength="80" placeholder="e.g. Musalla, Floor 3" />
               </UFormField>
-              <UButton type="submit" size="sm" :loading="busy === 'settings'" :disabled="!settingsDirty || !settings.name.trim()">Save</UButton>
+              <UButton type="submit" size="sm" :loading="busy === 'settings'" :disabled="!settingsDirty || !settings.name.trim()" class="disabled:opacity-40">Save</UButton>
             </form>
             <div class="px-4 py-3 space-y-2">
               <div class="flex items-center justify-between gap-3">
