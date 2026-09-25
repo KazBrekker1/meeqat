@@ -26,7 +26,8 @@
               <span class="truncate">{{ locationMode === 'gps' ? (gpsCity ?? 'GPS Location') : (selectedCity || 'No location') }}</span>
               <UIcon name="lucide:chevron-down" class="size-3.5 text-white/45 shrink-0" />
             </button>
-            <span class="text-sm tabular-nums font-mono text-white/55 shrink-0">{{ currentTimeString }}</span>
+            <!-- Hidden on phones: the status bar shows the time, and the header needs the room. -->
+            <span class="hidden sm:inline text-sm tabular-nums font-mono text-white/55 shrink-0">{{ currentTimeString }}</span>
             <UButton icon="lucide:compass" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Show Qibla direction" @click="openQiblaModal" />
             <UButton icon="heroicons:cog-6-tooth-20-solid" size="xs" variant="ghost" color="neutral" class="text-white/70 shrink-0" aria-label="Open settings" @click="openSettingsModal" />
           </div>

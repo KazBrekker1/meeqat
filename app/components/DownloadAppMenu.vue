@@ -71,6 +71,9 @@ const items = computed<DropdownMenuItem[][]>(() => {
 
 <template>
   <UDropdownMenu :items="items" :content="{ align: 'end' }" :ui="{ content: 'w-64' }">
-    <UButton icon="i-lucide-download" size="xs" color="primary" variant="soft" class="shrink-0" label="Get the app" />
+    <!-- Icon-only on phones: the header has no room for the label next to the city. -->
+    <UButton icon="i-lucide-download" size="xs" color="primary" variant="soft" class="shrink-0" aria-label="Get the app">
+      <span class="hidden sm:inline">Get the app</span>
+    </UButton>
   </UDropdownMenu>
 </template>
