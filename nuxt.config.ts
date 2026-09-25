@@ -15,6 +15,9 @@ export default defineNuxtConfig({
     },
   },
   app: {
+    // html/body are overflow-hidden (app-style layout: each page owns its scroller),
+    // so the Nuxt root must be exactly viewport-high or pages grow and get clipped.
+    rootAttrs: { id: "__nuxt", class: "h-full" },
     head: {
       title: "Meeqat",
       charset: "utf-8",

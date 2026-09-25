@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen overflow-y-auto bg-[#0a0e22] text-white">
+  <div class="h-full overflow-y-auto bg-[#0a0e22] text-white">
     <main class="mx-auto max-w-2xl px-5 py-10 space-y-8">
       <NuxtLink to="/" class="text-sm text-white/60 hover:text-white">← Back to Meeqat</NuxtLink>
       <header>
