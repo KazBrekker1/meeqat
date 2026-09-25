@@ -81,6 +81,7 @@ struct State {
     /// Participants of active calls: id → (call, user).
     participants: HashMap<String, (String, String)>,
     /// Calls already seen (announced or deliberately not), so refetches don't re-notify.
+    /// In memory only: after an app restart, calls younger than FRESH_MS announce again.
     seen: HashSet<String>,
     /// Reminders currently armed: call id → at (epoch ms).
     reminders: HashMap<String, i64>,
@@ -192,7 +193,7 @@ pub fn together_open_room(app: AppHandle, room_id: String) {
 fn reset(app: &AppHandle, st: &mut State) {
     st.calls.clear();
     st.participants.clear();
-    st.seen.clear();
+    // `seen` is kept: signing out and back in shouldn't re-announce the same calls.
     for id in std::mem::take(&mut st.reminders).into_keys() {
         notify::set_reminder(app, &reminder_key(&id), None);
     }
