@@ -89,7 +89,9 @@
 
       <p class="flex items-start gap-2 text-xs text-muted">
         <UIcon name="i-lucide-bell" class="size-3.5 mt-px shrink-0" />
-        Call alerts and meeting reminders arrive only while Meeqat is open in a browser tab.
+        {{ native
+          ? "Call alerts and meeting reminders arrive while the Meeqat app is running."
+          : "Call alerts and meeting reminders arrive only while Meeqat is open in a browser tab." }}
       </p>
     </div>
 
@@ -135,9 +137,11 @@
 <script setup lang="ts">
 import type { ActiveCallSummary, MyRoom, NearbyRoom } from "@/composables/useRooms";
 import { prayerName } from "@/utils/together";
+import { isNative } from "@/utils/platform";
 
-definePageMeta({ middleware: "web-only" });
 useHead({ title: "Pray Together · Meeqat" });
+
+const native = isNative();
 
 const { pb, status, userId, live } = useTogether();
 const rooms$ = useRooms();

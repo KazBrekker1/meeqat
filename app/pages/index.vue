@@ -11,7 +11,6 @@
           <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
             <DownloadAppMenu v-if="isWeb" />
             <UButton
-              v-if="isWeb"
               to="/rooms"
               icon="lucide:users"
               size="xs"
@@ -636,9 +635,9 @@ onMounted(async () => {
   // Quietly check for a newer release; the footer pill appears only if one exists.
   startUpdateChecks();
 
-  // Pray Together call alerts (web): starts only if already signed in — never
-  // prompts sign-in from here, that only happens inside /rooms.
-  if (isWeb) void callAlerts.start();
+  // Pray Together call alerts: starts only if already signed in (on the apps this
+  // also restores the saved session) — never prompts sign-in from here.
+  void callAlerts.start();
 });
 
 // Open the update dialog by itself once per release. The footer pill stays as the

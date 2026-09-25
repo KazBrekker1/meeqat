@@ -264,7 +264,6 @@ import type { Member, Role } from "@/composables/useRooms";
 import type { OptionInput } from "@/composables/useRoomCalls";
 import { PRAYERS, prayerName, weekdayIn, type PrayerId } from "@/utils/together";
 
-definePageMeta({ middleware: "web-only" });
 
 const route = useRoute();
 const roomId = String(route.params.id);

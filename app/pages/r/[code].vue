@@ -18,7 +18,6 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: "web-only" });
 useHead({ title: "Join a room · Meeqat" });
 
 const route = useRoute();

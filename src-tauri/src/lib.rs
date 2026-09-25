@@ -10,9 +10,36 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// `meeqat://` links (sign-in hand-off, room invites) are handled in the webview;
+/// here we only surface the main window, which may be hidden in the tray.
+#[cfg(desktop)]
+fn setup_deep_links(app: &tauri::AppHandle) {
+    use tauri_plugin_deep_link::DeepLinkExt;
+
+    // Installers register the scheme; this covers dev runs and AppImages.
+    #[cfg(any(windows, target_os = "linux"))]
+    if let Err(err) = app.deep_link().register_all() {
+        eprintln!("[deep-link] register failed: {err}");
+    }
+
+    let handle = app.clone();
+    app.deep_link().on_open_url(move |_event| tray::show_main(&handle));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Must be the first plugin. Windows/Linux start a second process for a
+    // `meeqat://` link; its `deep-link` feature forwards the URL to the running
+    // instance (as an onOpenUrl event) and this callback brings the window up.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        tray::show_main(app);
+    }));
+
+    let builder = builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -39,6 +66,7 @@ pub fn run() {
         .setup(|app| {
             tray::setup(app.handle())?;
             notify::setup(app.handle());
+            setup_deep_links(app.handle());
             Ok(())
         });
 
