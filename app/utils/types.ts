@@ -34,6 +34,9 @@ export interface TrayUpdatePayload {
   sinceTime?: string;
   city?: string;
   countryCode?: string;
+  /** The chosen place's coordinates (null: none yet), so the tray draws the Moon as seen from there. */
+  lat?: number | null;
+  lng?: number | null;
   timingsList?: PrayerTimingItem[];
 }
 

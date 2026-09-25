@@ -22,9 +22,13 @@
             :moon-phase="moonPhase"
             :size="180"
             :sonar-intensity="0.25"
-          />
+          >
+            <!-- Flat moon until the map is decoded (after first paint), then the real one -->
+            <PrototypesCelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" />
+          </PrototypesOrbitBumps>
           <div v-else class="flex flex-col items-center gap-2 py-2 text-center">
-            <PrototypesCelestialMoonPhase :phase="moonPhase" :size="72" halo halo-color="#cdd6ff" />
+            <!-- 112 px canvas (glow room) in the old 72 px box: same layout, same 66 px disc -->
+            <PrototypesCelestialMoonSphere class="-m-5" :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="112" :disc="66 / 112" />
             <p class="text-xs text-white/60 max-w-[200px]">Choose a location in Meeqat to see prayer times here.</p>
           </div>
         </div>
@@ -102,6 +106,7 @@ const receivedMoonPhase = ref<number | null>(null);
 const city = ref<string>("");
 const countryCode = ref<string>("");
 const prayers = ref<PrayerTimingItem[]>([]);
+const coords = ref<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
 
 // --- Local clock ---------------------------------------------------------
 // The tray derives countdown / next-prayer / since LOCALLY from a ticking clock
@@ -305,6 +310,7 @@ function applyPayload(payload: TrayUpdatePayload) {
   if (typeof payload.moonPhase === "number") receivedMoonPhase.value = payload.moonPhase;
   if (payload.city) city.value = payload.city;
   if (payload.countryCode !== undefined) countryCode.value = payload.countryCode;
+  if (payload.lat !== undefined && payload.lng !== undefined) coords.value = { lat: payload.lat, lng: payload.lng };
   // An empty list means "not loaded yet" (the main window can report the place and
   // date before the times arrive) — never let it wipe the times already shown.
   const incoming = payload.timingsList?.filter((p) => MAIN_PRAYER_KEYS_SET.has(p.key));
