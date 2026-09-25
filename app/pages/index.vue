@@ -10,6 +10,18 @@
           </div>
           <div class="flex items-center gap-2 sm:gap-3 shrink min-w-0">
             <DownloadAppMenu v-if="isWeb" />
+            <UButton
+              v-if="isWeb"
+              to="/rooms"
+              icon="lucide:users"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              class="text-white/70 shrink-0"
+              aria-label="Pray together"
+            >
+              <span class="hidden sm:inline">Pray together</span>
+            </UButton>
             <button class="flex items-center gap-1 text-sm text-white/80 hover:text-white min-w-0 cursor-pointer" @click="showLocationModal = true">
               <UIcon :name="locationMode === 'gps' ? 'lucide:satellite' : 'lucide:map-pin'" class="size-3.5 shrink-0" />
               <span class="truncate">{{ locationMode === 'gps' ? (gpsCity ?? 'GPS Location') : (selectedCity || 'No location') }}</span>
@@ -289,6 +301,7 @@ const {
 } = useHijriCalendar();
 
 const isWeb = getPlatform() === "web";
+const callAlerts = useCallAlerts();
 const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
 const showLocationModal = shallowRef(false);
@@ -622,6 +635,10 @@ onMounted(async () => {
   startPrayerNotifications();
   // Quietly check for a newer release; the footer pill appears only if one exists.
   startUpdateChecks();
+
+  // Pray Together call alerts (web): starts only if already signed in — never
+  // prompts sign-in from here, that only happens inside /rooms.
+  if (isWeb) void callAlerts.start();
 });
 
 // Open the update dialog by itself once per release. The footer pill stays as the
