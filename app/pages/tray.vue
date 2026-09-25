@@ -42,6 +42,26 @@
           </div>
         </div>
 
+        <!-- Pray Together: the most relevant active call (pushed by the Rust listener) -->
+        <div v-if="call" class="flex flex-col gap-1.5 rounded-lg bg-white/[0.06] p-2 ring-1 ring-inset ring-white/10">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <UIcon name="lucide:users" class="size-3.5 text-amber-300 shrink-0" />
+            <span dir="auto" class="text-xs font-semibold truncate">{{ callTitle }}</span>
+            <span v-if="otherCalls" class="ms-auto shrink-0 text-[10px] text-white/45">+{{ otherCalls }} more</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[11px] leading-tight text-white/55 min-w-0">
+            <span dir="auto" class="truncate">{{ call.organizerName || "Someone" }} · {{ call.going }} going</span>
+            <span class="ms-auto shrink-0" :class="call.status === 'finalized' ? 'text-amber-300' : 'text-white/45'">{{ callStatus }}</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <UButton label="Open" size="xs" color="neutral" variant="soft" class="flex-1 justify-center" @click="openCall" />
+            <div v-if="call.joined" class="flex flex-1 items-center justify-center gap-1 text-xs font-medium text-emerald-300">
+              <UIcon name="lucide:check" class="size-3.5" /> Going
+            </div>
+            <UButton v-else :label="joinError ? 'Retry' : 'Join'" size="xs" color="primary" class="flex-1 justify-center" :loading="joining" @click="joinCall" />
+          </div>
+        </div>
+
         <!-- Actions -->
         <div class="flex items-center gap-1.5">
           <UButton label="Open Meeqat" size="sm" color="neutral" variant="soft" class="flex-1 justify-center" @click="openApp" />
@@ -72,6 +92,8 @@ import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar
 import { pad2 } from "@/utils/time";
 import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
+import { formatClock, prayerName } from "@/utils/together";
+import type { NativeActiveCall } from "@/utils/togetherNative";
 
 
 const hijriDate = ref<string>("");
@@ -124,6 +146,49 @@ const orbitPrayers = computed(() =>
 // "Now" position for the orbit, from the local clock.
 const nowHHMM = computed(() => hhmm(Math.floor(nowSec.value / 60)));
 
+// --- Pray Together call card ------------------------------------------------
+// Rust (src-tauri/src/together.rs) owns the realtime connection and sends the active
+// calls, most relevant first; the card shows the first. Never fetched from here.
+const calls = ref<NativeActiveCall[]>([]);
+const call = computed(() => calls.value[0] ?? null);
+const otherCalls = computed(() => Math.max(0, calls.value.length - 1));
+const callTitle = computed(() =>
+  call.value ? [prayerName(call.value.prayer), call.value.place].filter(Boolean).join(" · ") : "",
+);
+const callStatus = computed(() => {
+  const c = call.value;
+  if (!c) return "";
+  if (c.status !== "finalized") return "Open";
+  return c.meetAt ? `Finalized · ${formatClock(c.meetAt)}` : "Finalized";
+});
+const joining = ref(false);
+const joinError = ref(false);
+
+async function joinCall() {
+  const c = call.value;
+  if (!c || joining.value) return;
+  joining.value = true;
+  joinError.value = false;
+  try {
+    await invoke("together_join_call", { callId: c.id });
+  } catch (e) {
+    joinError.value = true;
+    console.error("[TrayPage] Failed to join call:", e);
+  } finally {
+    joining.value = false;
+  }
+}
+
+async function openCall() {
+  const c = call.value;
+  if (!c) return;
+  try {
+    await invoke("together_open_room", { roomId: c.roomId });
+  } catch (e) {
+    console.error("[TrayPage] Failed to open room:", e);
+  }
+}
+
 // --- Fit the popover window to its content --------------------------------
 // Tauri 2.11 still has no fit-to-content window option (tauri#12420), so measure the
 // content and resize. Runs while hidden too: Rust (tray.rs) reads the window's size at
@@ -157,6 +222,7 @@ let unlistenUpdate: UnlistenFn | null = null;
 let unlistenSnapshot: UnlistenFn | null = null;
 let unlistenShown: UnlistenFn | null = null;
 let unlistenFocus: UnlistenFn | null = null;
+let unlistenCalls: UnlistenFn | null = null;
 
 onMounted(async () => {
   if (rootEl.value) {
@@ -205,6 +271,16 @@ onMounted(async () => {
   } catch {
     // not in Tauri
   }
+
+  // Active Pray Together calls: live pushes, plus Rust's current copy on load.
+  unlistenCalls = await listen<NativeActiveCall[]>("together:calls", ({ payload }) => {
+    calls.value = payload ?? [];
+  });
+  try {
+    calls.value = await invoke<NativeActiveCall[]>("together_get_calls");
+  } catch {
+    // not in Tauri
+  }
 });
 
 const SNAPSHOT_KEY = "meeqat:tray-snapshot";
@@ -246,6 +322,7 @@ onBeforeUnmount(() => {
   }
   unlistenSnapshot?.();
   unlistenShown?.();
+  unlistenCalls?.();
   if (unlistenFocus) {
     unlistenFocus();
   }
