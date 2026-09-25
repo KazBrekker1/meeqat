@@ -262,8 +262,9 @@ const sonarRings = computed(() =>
 // tray's 150px orbit; hidden on tiny widget sizes.
 const showLabels = computed(() => props.cueLabels && props.size >= 140);
 const uid = useId();
-// Scales with the orbit; floor keeps it readable at the small tray size.
-const bannerFont = Math.max(11, Math.round(props.size * 0.05));
+// Scales with the orbit; floor keeps it readable at the small tray size, and the
+// cap keeps a big desktop orb's caption from shouting.
+const bannerFont = Math.min(22, Math.max(11, Math.round(props.size * 0.05)));
 // Rides just outside the ring (Ro = 0.355·size) — far enough to clear a prayer
 // dot sitting at the 6-o'clock bottom, close enough that the outer line stays
 // within the box (so it never collides with the date beneath the orbit).

@@ -1,6 +1,17 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/* Reem Kufi, Arabic subset only (12 KB, bundled — no font service at runtime), for the
+   short Arabic phrases on the home stage (الأيام البيض, سورة الكهف, أذكار …). */
+@font-face {
+	font-family: "Reem Kufi";
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+	src: url("../fonts/reemkufi-arabic.woff2") format("woff2");
+	unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+
 /* Celestial navy surfaces in dark mode — translates the prototype palette to
    every Nuxt UI overlay (modals, drawers, select menus, calendar) instead of
    the default neutral/zinc greys. */
@@ -27,6 +38,7 @@
 @theme {
 	--font-heading: "Montserrat", sans-serif;
 	--font-sans: "Inter", sans-serif;
+	--font-arabic: "Reem Kufi", "Inter", sans-serif;
 
 	--color-primary: var(--ui-color-primary-500);
 	--color-secondary: var(--ui-color-secondary-500);

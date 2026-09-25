@@ -34,8 +34,8 @@
 
         <!-- Body: single column on narrow, two-pane on wide -->
         <div class="flex-1 min-h-0 overflow-y-auto scroll-celestial pb-safe md:pb-0 md:overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_380px]">
-          <!-- LEFT: orbit + countdown -->
-          <section class="flex flex-col items-center justify-center gap-2 px-4 py-6">
+          <!-- LEFT: the stage — orbit + moon, date, today strip -->
+          <section ref="stageEl" class="flex flex-col items-center justify-center gap-2 px-4 pt-6 pb-3 md:py-6 md:gap-3.5 min-h-0">
             <PrototypesOrbitBumps
               v-if="orbitPrayers.length"
               :key="orbitSize"
@@ -45,8 +45,24 @@
               :moon-phase="moonPhase"
               :size="orbitSize"
               :sonar-intensity="0.25"
+            >
+              <!-- Same disc size as the orbit's default flat moon (0.42 × 0.92 of the orbit) -->
+              <PrototypesCelestialMoonSphere
+                :phase="moonPhase"
+                :lat="activeCoords?.lat ?? null"
+                :lng="activeCoords?.lng ?? null"
+                :size="Math.round(orbitSize * 0.6)"
+                :disc="ORBIT_MOON_DISC"
+              />
+            </PrototypesOrbitBumps>
+            <PrototypesCelestialMoonSphere
+              v-else
+              :phase="moonPhase"
+              :lat="activeCoords?.lat ?? null"
+              :lng="activeCoords?.lng ?? null"
+              :size="170"
+              :disc="ORBIT_MOON_DISC"
             />
-            <PrototypesCelestialMoonPhase v-else :phase="moonPhase" :size="120" halo halo-color="#cdd6ff" />
             <UButton
               v-if="!hasLocation"
               class="mt-4"
@@ -56,18 +72,40 @@
               @click="openLocation"
             />
 
-            <!-- Date under the orbit; the countdown/since timers now live as the
+            <!-- Date under the orbit; the countdown/since timers live as the
                  orbit's since/until banner. -->
-            <div v-if="hijriDateVerbose || gregorianDateVerbose" class="text-center mt-1">
-              <p class="text-white/55 text-[11px] md:text-sm">
-                {{ hijriDateVerbose }}<span v-if="hijriDateVerbose && gregorianDateVerbose"> · </span>{{ gregorianDateVerbose }}
-              </p>
-            </div>
+            <p v-if="hijriDateVerbose || gregorianDateVerbose" class="text-center text-white/55 text-[11px] md:text-sm">
+              {{ hijriDateVerbose }}<span v-if="hijriDateVerbose && gregorianDateVerbose"> · </span>{{ gregorianDateVerbose }}
+            </p>
+
+            <StageTodayStrip
+              v-if="hasLocation"
+              :compact="!isWide"
+              :moon="stageMoon"
+              :lat="activeCoords?.lat ?? null"
+              :lng="activeCoords?.lng ?? null"
+              :sunrise="sunTimes.sunrise"
+              :sunset="sunTimes.sunset"
+              :day-length="sunTimes.dayLength"
+              :qibla="qibla"
+              :place="shortPlace"
+              class="md:mt-0.5"
+              @qibla="openQiblaModal"
+            />
           </section>
 
-          <!-- RIGHT: location + schedule + calendar -->
+          <!-- RIGHT: schedule, reminders, calendar, Pray Together -->
           <aside class="min-h-0 md:overflow-y-auto scroll-celestial md:border-l md:border-white/10 md:bg-black/25 md:backdrop-blur-md p-3 flex flex-col gap-3">
             <p v-if="fetchError" class="text-red-300 text-sm px-1">{{ fetchError }}</p>
+
+            <!-- Mobile: a live call is time-critical, so it sits right under the today strip -->
+            <StageTogetherCard
+              v-if="!isWide && liveCall"
+              :call="liveCall"
+              :joining="activeCalls.joining.value === liveCall.id"
+              @join="activeCalls.join"
+            />
+            <StageReminderCard v-if="!isWide" :items="reminders" />
 
             <Transition
               enter-active-class="transition duration-200 ease-out"
@@ -116,8 +154,11 @@
               </div>
             </div>
 
+            <!-- Desktop: reminder right above the calendar -->
+            <StageReminderCard v-if="isWide" :items="reminders" heading />
+
             <!-- Mini calendar (desktop only) -->
-            <div class="hidden md:block">
+            <div v-if="isWide">
               <div class="flex items-center justify-between mb-1.5">
                 <div class="flex p-0.5 rounded-lg bg-white/[0.06] border border-white/10 text-xs">
                   <button
@@ -158,6 +199,17 @@
               </UCalendar>
             </div>
 
+            <!-- Desktop: Pray Together right under the calendar -->
+            <StageTogetherCard
+              v-if="isWide"
+              heading
+              :call="liveCall"
+              :joining="!!liveCall && activeCalls.joining.value === liveCall.id"
+              :start-room-id="activeCalls.startRoomId.value"
+              :next-prayer="nextMainPrayer"
+              @join="activeCalls.join"
+            />
+
             <!-- Calendar button (opens the full calendar popup) -->
             <UButton
               class="mt-auto"
@@ -167,6 +219,14 @@
               icon="lucide:calendar"
               label="Open calendar"
               @click="openCalendarDrawer"
+            />
+
+            <!-- Mobile: Pray Together last (the live call already sits at the top) -->
+            <StageTogetherCard
+              v-if="!isWide && !liveCall"
+              :call="null"
+              :start-room-id="activeCalls.startRoomId.value"
+              :next-prayer="nextMainPrayer"
             />
           </aside>
         </div>
@@ -277,7 +337,10 @@ import { pad2, getSecondsOfDay } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { iconFor } from "@/components/prototypes/celestial/prayerIcons";
 import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
-import { GregorianCalendar, toCalendar } from "@internationalized/date";
+import { CalendarDate, GregorianCalendar, IslamicUmalquraCalendar, toCalendar } from "@internationalized/date";
+import { ISLAMIC_MONTHS } from "@/constants/prayers";
+import { qiblaBearing } from "@/utils/qibla";
+import { moonView } from "@/utils/moon/sphere";
 import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { watchDebounced, watchThrottled } from "@vueuse/core";
@@ -302,6 +365,8 @@ const {
 
 const isWeb = getPlatform() === "web";
 const callAlerts = useCallAlerts();
+// Pray Together on the stage: active calls in my rooms, over the connection call alerts already hold.
+const activeCalls = useActiveCalls();
 const showCalendarDrawer = shallowRef(false);
 const showSettingsModal = shallowRef(false);
 const showLocationModal = shallowRef(false);
@@ -441,10 +506,76 @@ const orbitPrayers = computed(() =>
   })
 );
 
-// Orbit grows on wide (desktop two-pane) windows. useMediaQuery only reacts
-// when the breakpoint is crossed (cheaper than per-pixel useWindowSize).
+// Two-pane layout from md up. useMediaQuery only reacts when the breakpoint is crossed.
 const isWide = useMediaQuery("(min-width: 768px)");
-const orbitSize = computed(() => (isWide.value ? 400 : 300));
+// On wide windows the orb fills ~⅔ of the stage's height (560 px on a 900 px
+// window), within its width; stepped by 20 px because the orbit remounts on a size
+// change. Phones keep 300.
+const stageEl = ref<HTMLElement | null>(null);
+const { width: stageW, height: stageH } = useElementSize(stageEl, undefined, { box: "border-box" });
+const orbitSize = computed(() => {
+  if (!isWide.value) return 300;
+  if (!stageH.value) return 400;
+  const fit = Math.min(stageH.value * 0.67, stageW.value - 80, 600);
+  return Math.max(300, Math.round(fit / 20) * 20);
+});
+// The orbit's flat moon is 0.42 × 0.92 of the orbit; the sphere canvas is 0.6 of it (room for the glow).
+const ORBIT_MOON_DISC = (0.42 * 0.92) / 0.6;
+
+// --- Today strip ---
+// The real Moon for the chips (phase name, % lit), once a minute.
+const stageMoon = computed(() => {
+  void nowHHMM.value;
+  const c = activeCoords.value;
+  const v = moonView(getNow(), c?.lat ?? 0, c?.lng ?? 0);
+  return { phase: v.phase, fraction: v.fraction };
+});
+const timingByKey = (key: string) => timingsList.value.find((t) => t.key === key);
+const sunTimes = computed(() => {
+  const rise = timingByKey("Sunrise"), set = timingByKey("Maghrib");
+  let dayLength: string | undefined;
+  if (typeof rise?.minutes === "number" && typeof set?.minutes === "number" && set.minutes > rise.minutes) {
+    const d = set.minutes - rise.minutes;
+    dayLength = `${Math.floor(d / 60)}h ${pad2(d % 60)}m`;
+  }
+  return { sunrise: rise?.time, sunset: set?.time, dayLength };
+});
+const qibla = computed(() => (activeCoords.value ? qiblaBearing(activeCoords.value.lat, activeCoords.value.lng) : null));
+const shortPlace = computed(() => locationDisplayName.value?.split(",")[0]?.trim() || null);
+
+// --- Reminders (White days → Friday al-Kahf → adhkar) ---
+const hijriToday = computed(() => {
+  void nowHHMM.value;
+  const d = getNow();
+  try {
+    const h = toCalendar(new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate()), new IslamicUmalquraCalendar());
+    return { day: h.day, month: ISLAMIC_MONTHS[h.month - 1] ?? null };
+  } catch {
+    return null;
+  }
+});
+const reminders = computed(() => {
+  if (!timingsList.value.length) return [];
+  const mins = (k: string) => timingByKey(k)?.minutes;
+  const [h, m] = nowHHMM.value.split(":").map(Number);
+  return stageReminders({
+    nowMin: h! * 60 + m!,
+    weekday: getNow().getDay(),
+    hijriDay: hijriToday.value?.day ?? null,
+    hijriMonth: hijriToday.value?.month ?? null,
+    minutes: { fajr: mins("Fajr"), dhuhr: mins("Dhuhr"), asr: mins("Asr"), maghrib: mins("Maghrib") },
+    maghribLabel: timingByKey("Maghrib")?.time,
+  });
+});
+
+// --- Pray Together card ---
+const liveCall = computed(() => activeCalls.calls.value[0] ?? null);
+// The next of the five prayers (tomorrow's Fajr after ʿIshāʾ), for "Start a call for …".
+const nextMainPrayer = computed(() => {
+  const main = timingsList.value.filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key) && typeof t.minutes === "number");
+  const nowS = nowSecondsLive.value;
+  return (main.find((t) => t.minutes! * 60 > nowS) ?? main[0])?.label ?? null;
+});
 
 // Short "in MM:SS"/"in HH:MM" badge next to the next prayer in the list.
 const shortCountdown = computed(() => (countdownToNext.value || "").split(":").slice(0, 2).join(":"));
@@ -731,6 +862,7 @@ watchDebounced(
     timingsList,
     () => locationMode.value === "gps" ? (gpsCity.value ?? "GPS") : selectedCity.value,
     () => locationMode.value === "gps" ? "" : selectedCountry.value,
+    activeCoords,
   ],
   async () => {
     try {
@@ -779,6 +911,9 @@ watchDebounced(
             : selectedCity.value,
         countryCode:
           locationMode.value === "gps" ? "" : selectedCountry.value,
+        // The tray draws the Moon as seen from here.
+        lat: activeCoords.value?.lat ?? null,
+        lng: activeCoords.value?.lng ?? null,
       } satisfies TrayUpdatePayload });
     } catch {
       // ignore emit errors in non-tauri/web
