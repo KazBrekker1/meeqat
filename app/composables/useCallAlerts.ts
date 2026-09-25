@@ -1,4 +1,6 @@
 import type { RecordSubscription } from "pocketbase";
+import { createChannel, Importance, isPermissionGranted, requestPermission, sendNotification, Visibility } from "@tauri-apps/plugin-notification";
+import { isNative } from "@/utils/platform";
 import { prayerName } from "@/utils/together";
 import type { CallsResponse, ParticipantsResponse, RoomsResponse, UsersResponse } from "@/types/together";
 
@@ -10,20 +12,51 @@ const REMIND_BEFORE_MS = 5 * 60 * 1000;
 // Module-level: one set of subscriptions and timers per page, however many
 // components ask for alerts.
 let starting: Promise<void> | null = null;
+let watchingSession = false;
 const reminders = new Map<string, { at: string; timer: ReturnType<typeof setTimeout> }>();
 
+const CALLS_CHANNEL_ID = "together-calls";
+let channelReady: Promise<void> | null = null;
+
 /**
- * Web call alerts while a Meeqat tab is open (spec §2 "Reaching people"):
- * a toast (+ browser notification when the tab is in the background) for a new
+ * The one place a call alert becomes a system notification in the native apps.
+ * Unit C's Rust listener will notify on desktop while the window is hidden; to
+ * avoid doubles, switch the desktop case off here once it lands.
+ */
+async function notifyCall(title: string, body: string): Promise<void> {
+  try {
+    if (!(await isPermissionGranted())) return;
+    channelReady ??= createChannel({
+      id: CALLS_CHANNEL_ID,
+      name: "Pray Together calls",
+      description: "New calls in your rooms and reminders before meeting",
+      importance: Importance.High,
+      visibility: Visibility.Public,
+    }).catch(() => {}); // no channels on desktop
+    await channelReady;
+    sendNotification({ title, body, channelId: CALLS_CHANNEL_ID, sound: "default" });
+  } catch (err) {
+    console.warn("[together] notification failed", err);
+  }
+}
+
+/**
+ * Call alerts while Meeqat is open in a tab or the app (spec §2 "Reaching people"):
+ * a toast (+ a browser/system notification when Meeqat is in the background) for a new
  * call in a subscribed room, and a reminder 5 minutes before the meeting time
  * of every finalized call I've joined.
  */
 export function useCallAlerts() {
   const toast = useToast();
   const route = useRoute();
-  const { pb, ensureSession, live, userId } = useTogether();
+  const { pb, ensureSession, live, userId, onSessionChange } = useTogether();
 
   function notify(title: string, body: string): void {
+    // In the apps the toast covers a focused window; otherwise use the system.
+    if (isNative()) {
+      if (document.hidden || !document.hasFocus()) void notifyCall(title, body);
+      return;
+    }
     if (typeof Notification === "undefined" || Notification.permission !== "granted" || !document.hidden) return;
     try {
       new Notification(title, { body, icon: "/favicon-32.png" });
@@ -108,6 +141,16 @@ export function useCallAlerts() {
 
   /** Idempotent; does nothing while signed out (never prompts sign-in). */
   function start(): Promise<void> {
+    if (!watchingSession) {
+      watchingSession = true;
+      // Signed out (the apps' Settings): drop reminders; start again after the next sign-in.
+      onSessionChange((session) => {
+        if (session) return;
+        starting = null;
+        for (const r of reminders.values()) clearTimeout(r.timer);
+        reminders.clear();
+      });
+    }
     starting ??= (async () => {
       if (!(await ensureSession()) || !userId.value) {
         starting = null; // try again once signed in
@@ -131,6 +174,12 @@ export function useCallAlerts() {
 
   /** Ask once, from a user action (joining or subscribing), never on page load. */
   function requestNotificationPermission(): void {
+    if (isNative()) {
+      void isPermissionGranted()
+        .then(async (granted) => void (granted || (await requestPermission())))
+        .catch(() => {});
+      return;
+    }
     if (typeof Notification !== "undefined" && Notification.permission === "default") {
       void Notification.requestPermission().catch(() => {});
     }

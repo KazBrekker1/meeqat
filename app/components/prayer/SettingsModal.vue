@@ -257,8 +257,50 @@
           </div>
         </section>
 
-        <!-- Account (web for now; desktop/Android sign-in comes with Pray Together) -->
-        <section v-if="accountSupported">
+        <!-- Account (native apps: the Pray Together session from a browser sign-in) -->
+        <section v-if="nativeAccount">
+          <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Account</p>
+          <div class="rounded-xl bg-elevated border border-default px-4 py-3 flex items-center justify-between gap-3">
+            <template v-if="togetherStatus === 'ready' && togetherAccount">
+              <div class="flex items-center gap-3 min-w-0">
+                <UAvatar :src="togetherAccount.avatar_url || undefined" :alt="togetherAccount.name || '?'" size="sm" />
+                <div class="min-w-0">
+                  <p class="text-sm font-medium truncate">{{ togetherAccount.name || 'Signed in' }}</p>
+                  <p class="text-xs text-muted truncate">Pray Together</p>
+                </div>
+              </div>
+              <UButton size="sm" variant="soft" color="neutral" @click="() => void signOutTogether()">Sign out</UButton>
+            </template>
+            <template v-else>
+              <div class="min-w-0">
+                <p class="text-sm font-medium">Sanad account</p>
+                <p class="text-xs text-muted">
+                  {{ awaitingBrowser ? 'Finish signing in in your browser…' : "Optional. You'll need it for Pray Together." }}
+                </p>
+              </div>
+              <UButton v-if="awaitingBrowser" size="sm" variant="ghost" color="neutral" @click="() => void cancelSignIn()">
+                Cancel
+              </UButton>
+              <UButton
+                v-else
+                size="sm"
+                color="primary"
+                icon="i-lucide-external-link"
+                :loading="togetherStatus === 'connecting'"
+                @click="() => void signInWithBrowser()"
+              >
+                Sign in with your browser
+              </UButton>
+            </template>
+          </div>
+          <p v-if="signInError" class="mt-1.5 text-xs text-error">{{ signInError }}</p>
+          <p class="mt-1.5 text-xs text-muted">
+            Prayer times and reminders never need an account. <NuxtLink to="/privacy" class="underline">What's stored</NuxtLink>
+          </p>
+        </section>
+
+        <!-- Account (web: the shared Sanad cookie session) -->
+        <section v-else-if="accountSupported">
           <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Account</p>
           <div class="rounded-xl bg-elevated border border-default px-4 py-3 flex items-center justify-between gap-3">
             <template v-if="accountStatus === 'signed-in' && accountUser">
@@ -613,8 +655,22 @@ async function onPasskey() {
   passkeyFailed.value = !(await signInWithPasskey());
 }
 
+const nativeAccount = getPlatform() !== 'web';
+const {
+  status: togetherStatus,
+  account: togetherAccount,
+  awaitingBrowser,
+  signInError,
+  signInWithBrowser,
+  cancelSignIn,
+  signOut: signOutTogether,
+  ensureSession: ensureTogetherSession,
+} = useTogether();
+
 watch(isOpen, (open) => {
-  if (open) void refreshAccount();
+  if (!open) return;
+  if (nativeAccount) void ensureTogetherSession();
+  else void refreshAccount();
 });
 
 // Two-way binding for method and timezone

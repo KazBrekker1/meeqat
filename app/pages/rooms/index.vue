@@ -136,7 +136,6 @@
 import type { ActiveCallSummary, MyRoom, NearbyRoom } from "@/composables/useRooms";
 import { prayerName } from "@/utils/together";
 
-definePageMeta({ middleware: "web-only" });
 useHead({ title: "Pray Together · Meeqat" });
 
 const { pb, status, userId, live } = useTogether();

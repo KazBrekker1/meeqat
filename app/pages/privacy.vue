@@ -43,6 +43,7 @@
           <li>Chat messages — deleted one hour after each call ends.</li>
           <li>A one-line history entry per finished call (prayer, place and a headcount — not names).</li>
         </ul>
+        <p class="text-white/80">In the desktop and Android apps, you sign in through your browser and the app keeps its Pray Together session on your device until you sign out.</p>
         <p class="text-white/80">Searching for nearby rooms sends your position with that one request; it's never stored. A room only stores a location if its owner turns on "discoverable", rounded to about 100 metres.</p>
       </section>
 
