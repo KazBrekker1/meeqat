@@ -48,6 +48,8 @@ func Register(se *core.ServeEvent, app core.App) {
 	se.Router.POST("/api/sanad/exchange", func(e *core.RequestEvent) error {
 		return handleExchange(e, kf, issuer, audience)
 	})
+
+	registerHandoff(se, kf, issuer, audience, newHandoffStore())
 }
 
 func handleExchange(e *core.RequestEvent, kf keyfunc.Keyfunc, issuer, audience string) error {
