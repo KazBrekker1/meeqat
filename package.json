@@ -27,6 +27,7 @@
 		"@iconify-json/lucide": "^1.2.116",
 		"@nuxt/ui": "^4.9.0",
 		"@tauri-apps/api": "^2.11.1",
+		"@tauri-apps/plugin-deep-link": "^2.4.10",
 		"@tauri-apps/plugin-notification": "^2.3.3",
 		"@tauri-apps/plugin-opener": "^2.5.5",
 		"@tauri-apps/plugin-os": "^2.3.2",
