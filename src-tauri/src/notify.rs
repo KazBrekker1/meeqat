@@ -8,7 +8,11 @@
 //!
 //! Here the list lives in Rust and one thread delivers each notification at its
 //! time. A reminder more than STALE late (the machine slept through it) is dropped.
+//!
+//! Rust-owned one-off reminders (Pray Together meetings, see together.rs) live in a
+//! separate keyed list that the JS window's replace/cancel never touches.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -36,11 +40,13 @@ pub struct ScheduledNotification {
 #[derive(Default)]
 struct Queue {
     items: Vec<ScheduledNotification>,
+    /// Reminders set from Rust by key (`set_reminder`), independent of `items`.
+    keyed: HashMap<String, ScheduledNotification>,
 }
 
 pub struct DesktopScheduler(Arc<(Mutex<Queue>, Condvar)>);
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
@@ -56,13 +62,27 @@ pub fn setup(app: &AppHandle) {
             {
                 let mut q = lock.lock().unwrap_or_else(|e| e.into_inner());
                 let now = now_ms();
-                due = take_due(&mut q.items, now);
+                let mut ready = take_due(&mut q.items, now);
+                q.keyed.retain(|_, n| {
+                    if n.at_ms > now {
+                        return true;
+                    }
+                    if now - n.at_ms <= STALE_MS {
+                        ready.push(n.clone());
+                    }
+                    false
+                });
+                due = ready;
 
                 if due.is_empty() {
                     let wait = q
                         .items
                         .first()
-                        .map(|n| Duration::from_millis((n.at_ms - now).max(0) as u64))
+                        .into_iter()
+                        .chain(q.keyed.values())
+                        .map(|n| n.at_ms)
+                        .min()
+                        .map(|at| Duration::from_millis((at - now).max(0) as u64))
                         .unwrap_or(MAX_WAIT)
                         .min(MAX_WAIT);
                     // Woken early when the list is replaced.
@@ -106,6 +126,26 @@ pub fn schedule_notifications(state: tauri::State<'_, DesktopScheduler>, items: 
 pub fn cancel_notifications(state: tauri::State<'_, DesktopScheduler>) {
     let (lock, wake) = &*state.0;
     lock.lock().unwrap_or_else(|e| e.into_inner()).items.clear();
+    wake.notify_all();
+}
+
+/// Set (`Some`) or cancel (`None`) the Rust-owned reminder under `key`. A reminder
+/// whose time has already passed is not scheduled.
+pub fn set_reminder(app: &AppHandle, key: &str, reminder: Option<ScheduledNotification>) {
+    let Some(state) = app.try_state::<DesktopScheduler>() else { return };
+    let (lock, wake) = &*state.0;
+    let mut q = lock.lock().unwrap_or_else(|e| e.into_inner());
+    match reminder {
+        Some(n) if n.at_ms > now_ms() => {
+            eprintln!("[notify] reminder {key} scheduled at {} (epoch ms)", n.at_ms);
+            q.keyed.insert(key.to_string(), n);
+        }
+        _ => {
+            if q.keyed.remove(key).is_some() {
+                eprintln!("[notify] reminder {key} cancelled");
+            }
+        }
+    }
     wake.notify_all();
 }
 
