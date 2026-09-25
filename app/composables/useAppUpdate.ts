@@ -2,6 +2,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { getPlatform } from "@/utils/platform";
+import { cue } from "@/utils/sounds";
 
 const REPO = "KazBrekker1/meeqat";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -246,6 +247,7 @@ async function downloadAndInstall(): Promise<void> {
       // The system dialog is up. If the user backs out, "ready" keeps an Install
       // button that reopens it from the already-downloaded file.
       status.value = "ready";
+      cue("updateReady");
     } catch (e) {
       fail(e, "download");
     }
@@ -374,6 +376,7 @@ async function simInstall(s: SimScenario) {
   downloadedBytes.value = total;
   if (s === "android" || s === "permission") {
     status.value = "ready";
+    cue("updateReady");
     return;
   }
   status.value = "installing"; // a real build relaunches here

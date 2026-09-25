@@ -7,6 +7,7 @@ import type {
   PollVotesResponse,
   UsersResponse,
 } from "@/types/together";
+import { cue } from "@/utils/sounds";
 
 export type Prayer = CallsResponse["prayer"];
 export type OptionKind = NonNullable<PollOptionsResponse["kind"]>;
@@ -124,6 +125,15 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
     }
   }
 
+  /** A call turning finalized is news once, whichever lands first: the live event or my own update. */
+  function cueIfFinalized(next: Call): void {
+    const prev = calls.value.find((c) => c.id === next.id);
+    if (prev && prev.status !== "finalized" && next.status === "finalized") cue("callFinalized");
+  }
+
+  const applyCall = onEvent(calls);
+  const applyMessage = onEvent(messages);
+
   let stopLive: (() => void) | null = null;
   function stop(): void {
     stopLive?.();
@@ -142,12 +152,24 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
           collection: "calls",
           filter: pb().filter("room = {:roomId}", { roomId }),
           expand: "organizer",
-          onEvent: onEvent(calls),
+          onEvent: (e: RecordSubscription<Call>) => {
+            if (e.action === "update") cueIfFinalized(e.record);
+            applyCall(e);
+          },
         },
         { collection: "participants", filter: ofRoom, expand: "user", onEvent: onEvent(participants) },
         { collection: "poll_options", filter: ofRoom, onEvent: onEvent(options) },
         { collection: "poll_votes", filter: ofRoom, onEvent: onEvent(votes) },
-        { collection: "messages", filter: ofRoom, expand: "user", onEvent: onEvent(messages) },
+        {
+          collection: "messages",
+          filter: ofRoom,
+          expand: "user",
+          onEvent: (e: RecordSubscription<Message>) => {
+            const news = e.action === "create" && e.record.user !== userId.value && !messages.value.some((m) => m.id === e.record.id);
+            if (news) cue("messageIn");
+            applyMessage(e);
+          },
+        },
       ],
       () => void refresh(),
     );
@@ -216,6 +238,7 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
   async function join(callId: string): Promise<void> {
     const { client, uid } = await session();
     upsert(participants, await client.collection("participants").create<Participant>({ call: callId, user: uid }, { expand: "user" }));
+    cue("callJoined");
   }
 
   async function leave(callId: string): Promise<void> {
@@ -224,11 +247,13 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
     if (!mine) return;
     await client.collection("participants").delete(mine.id);
     participants.value = participants.value.filter((p) => p.id !== mine.id);
+    cue("callLeft");
   }
 
   async function updateCall(callId: string, body: Record<string, string>): Promise<void> {
     const { client } = await session();
     const call = await client.collection("calls").update<Call>(callId, body, { expand: "organizer" });
+    cueIfFinalized(call);
     upsert(calls, call);
   }
 
@@ -257,6 +282,7 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
       ? await client.collection("poll_votes").update<PollVote>(mine.id, { option: optionId })
       : await client.collection("poll_votes").create<PollVote>({ call: callId, option: optionId, user: uid });
     upsert(votes, saved);
+    cue("voted");
   }
 
   async function sendMessage(callId: string, body: string): Promise<void> {
@@ -265,6 +291,7 @@ export function useRoomCalls(roomId: string, enabled: Ref<boolean>) {
       .collection("messages")
       .create<Message>({ call: callId, user: uid, body: body.trim().slice(0, 280) }, { expand: "user" });
     upsert(messages, message);
+    cue("messageSent");
   }
 
   return {

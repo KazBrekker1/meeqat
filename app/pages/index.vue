@@ -282,6 +282,7 @@ import { emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { getPlatform } from "@/utils/platform";
+import { cue } from "@/utils/sounds";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
@@ -339,6 +340,7 @@ const {
   fetchByCoordinates,
   getNextDayFirstPrayer,
   getUpcomingDays,
+  upcomingKey,
 } = usePrayerTimes();
 
 function openLocation() {
@@ -478,7 +480,12 @@ async function onLocationSelect(city: string, countryCode: string) {
   selectedCity.value = city;
   selectedCountry.value = countryCode;
   await nextTick();
-  onFetchByCity();
+  await onFetchByCity();
+  cueLocationSet();
+}
+
+function cueLocationSet() {
+  if (!fetchError.value) cue("locationSet");
 }
 
 async function onAddCurrentToFavorites() {
@@ -509,16 +516,18 @@ function onLocationModeChange(mode: 'city' | 'gps') {
 function onPlaceSelect(place: { lat: number; lng: number; label?: string }) {
   showLocationModal.value = false;
   locationMode.value = "gps";
-  onGpsLocationUpdate(place);
+  void onGpsLocationUpdate(place)?.then(cueLocationSet);
   if (place.label) gpsCity.value = place.label;
 }
 
-function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string } | null) {
+/** Returns the fetch when one starts, so callers can react to it. */
+function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string } | null): Promise<void> | undefined {
+  let fetching: Promise<void> | undefined;
   if (coords) {
     gpsLat.value = coords.lat;
     gpsLng.value = coords.lng;
     if (locationMode.value === 'gps') {
-      fetchByCoordinates(coords.lat, coords.lng);
+      fetching = fetchByCoordinates(coords.lat, coords.lng);
     }
     // Resolve the place name in the background unless the source already knew it.
     gpsCity.value = coords.label ?? null;
@@ -532,6 +541,7 @@ function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string 
     gpsLng.value = null;
     gpsCity.value = null;
   }
+  return fetching;
 }
 
 // Notification settings handler
@@ -582,7 +592,7 @@ const timezoneSelectOptions = computed(() => {
 
 function onFetchByCity() {
   if (!selectedCity.value || !selectedCountry.value) return;
-  fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
+  return fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
     methodId: selectedMethodId.value,
   });
 }
@@ -638,6 +648,18 @@ onMounted(async () => {
   // Pray Together call alerts: starts only if already signed in (on the apps this
   // also restores the saved session) — never prompts sign-in from here.
   void callAlerts.start();
+});
+
+// A prayer's time arrives while the app is open: the next-prayer pointer moves past a
+// main prayer that started within the last minute and a half. Loading, a new
+// location or the date rolling over move the pointer too, but not onto a prayer
+// that has only just begun.
+watch(upcomingKey, (_next, prev) => {
+  if (!prev || !MAIN_PRAYER_KEYS_SET.has(prev)) return;
+  const minutes = timingsList.value.find((t) => t.key === prev)?.minutes;
+  if (typeof minutes !== "number") return;
+  const since = getSecondsOfDay(getNow()) - minutes * 60;
+  if (since >= 0 && since < 90) cue("prayerTime");
 });
 
 // Open the update dialog by itself once per release. The footer pill stays as the

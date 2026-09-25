@@ -94,6 +94,7 @@ import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
 import { formatClock, prayerName } from "@/utils/together";
 import type { NativeActiveCall } from "@/utils/togetherNative";
+import { cue, loadSoundsPreference } from "@/utils/sounds";
 
 
 const hijriDate = ref<string>("");
@@ -171,6 +172,8 @@ async function joinCall() {
   joinError.value = false;
   try {
     await invoke("together_join_call", { callId: c.id });
+    // Settings live in the main window; read the shared store for the current choice.
+    void loadSoundsPreference().then(() => cue("callJoined"));
   } catch (e) {
     joinError.value = true;
     console.error("[TrayPage] Failed to join call:", e);

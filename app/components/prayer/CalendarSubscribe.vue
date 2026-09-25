@@ -26,6 +26,7 @@
 <script lang="ts" setup>
 import { getUserTimezone } from "@/utils/time";
 import { getPlatform } from "@/utils/platform";
+import { cue } from "@/utils/sounds";
 
 const props = defineProps<{
   lat: number;
@@ -87,6 +88,7 @@ function openGoogle(): void {
 
 async function copyLink(): Promise<void> {
   await navigator.clipboard.writeText(feedUrl.value);
+  cue("copied");
   toast.add({
     title: "Link copied",
     color: "success",

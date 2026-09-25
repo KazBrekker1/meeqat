@@ -5,6 +5,7 @@ import { getPlatform, isNative } from "@/utils/platform";
 /** On desktop the Rust listener (src-tauri/src/together.rs) sends system notifications and meeting reminders even while the window is hidden; the page only adds toasts. */
 const rustOwnsAlerts = () => getPlatform() === "desktop";
 import { prayerName } from "@/utils/together";
+import { cue } from "@/utils/sounds";
 import type { CallsResponse, ParticipantsResponse, RoomsResponse, UsersResponse } from "@/types/together";
 
 type AlertCall = CallsResponse<{ room?: RoomsResponse; organizer?: UsersResponse }>;
@@ -77,6 +78,7 @@ export function useCallAlerts() {
     const call = e.record;
     if (e.action === "create" && call.organizer !== userId.value) {
       const title = `${call.expand?.organizer?.name || "Someone"} started ${prayerName(call.prayer)}`;
+      cue("callStarted");
       notify(title, `${describe(call)} — Join or ignore`);
       // Already looking at that room: the call appears there anyway.
       if (route.path !== `/rooms/${call.room}`) {
@@ -98,7 +100,9 @@ export function useCallAlerts() {
   async function joinFromAlert(call: AlertCall): Promise<void> {
     try {
       await pb().collection("participants").create({ call: call.id, user: userId.value });
+      cue("callJoined");
     } catch {
+      cue("error");
       toast.add({ title: "Couldn't join — retry from the room", color: "error", icon: "i-lucide-triangle-alert" });
     }
     await navigateTo(`/rooms/${call.room}`);
@@ -131,6 +135,7 @@ export function useCallAlerts() {
         reminders.delete(call.id);
         const title = `${prayerName(call.prayer)} in 5 minutes`;
         toast.add({ title, description: describe(call), icon: "i-lucide-bell-ring", duration: 60_000 });
+        cue("meetingReminder");
         notify(title, describe(call));
       }, delay);
       reminders.set(call.id, { at: call.meet_at, timer });

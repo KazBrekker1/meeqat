@@ -108,8 +108,15 @@
               </div>
               <USwitch
                 :model-value="showAdditionalTimes"
-                @update:model-value="$emit('toggle-additional-times')"
+                @update:model-value="toggleAdditionalTimes"
               />
+            </div>
+            <div class="flex items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <p class="text-sm font-medium">Sounds</p>
+                <p class="text-xs text-muted">Soft cues for calls, messages and prayer times</p>
+              </div>
+              <USwitch :model-value="soundsEnabled" aria-label="Sounds" @update:model-value="toggleSounds" />
             </div>
           </div>
         </section>
@@ -495,6 +502,7 @@
 import { NOTIFICATION_TIMING_OPTIONS, type NotificationSettings } from '@/composables/useNotifications';
 import { useMockTime } from '@/composables/useMockTime';
 import { getPlatform } from '@/utils/platform';
+import { cue, saveSoundsPreference, soundsEnabled } from '@/utils/sounds';
 
 // Check if running on Android
 const isAndroid = ref(false);
@@ -715,8 +723,19 @@ const minutesAfter = computed({
   },
 });
 
+function toggleAdditionalTimes() {
+  cue('toggled');
+  emit('toggle-additional-times');
+}
+
+function toggleSounds(on: boolean) {
+  void saveSoundsPreference(on);
+  cue('toggled'); // audible only when turning sounds on
+}
+
 function toggleNotifications() {
   if (props.notificationSettings) {
+    cue('toggled');
     emit('update:notificationSettings', {
       ...props.notificationSettings,
       enabled: !props.notificationSettings.enabled,
@@ -726,6 +745,7 @@ function toggleNotifications() {
 
 function toggleAtPrayerTime() {
   if (props.notificationSettings) {
+    cue('toggled');
     emit('update:notificationSettings', {
       ...props.notificationSettings,
       atPrayerTime: !props.notificationSettings.atPrayerTime,
@@ -735,6 +755,7 @@ function toggleAtPrayerTime() {
 
 function toggleSilent() {
   if (props.notificationSettings) {
+    cue('toggled');
     emit('update:notificationSettings', {
       ...props.notificationSettings,
       silent: !props.notificationSettings.silent,

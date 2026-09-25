@@ -72,6 +72,7 @@
 
 <script setup lang="ts">
 import { looksLikeBase64url } from "@/utils/pkce";
+import { cue } from "@/utils/sounds";
 
 definePageMeta({ middleware: "web-only" });
 useHead({ title: "Sign in to the app · Meeqat", htmlAttrs: { class: "dark" } });
@@ -142,6 +143,7 @@ async function copyCode(): Promise<void> {
   if (!code.value) return;
   try {
     await navigator.clipboard.writeText(code.value);
+    cue("copied");
     copied.value = true;
     setTimeout(() => (copied.value = false), 2000);
   } catch {

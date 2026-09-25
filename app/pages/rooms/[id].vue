@@ -263,6 +263,7 @@ import type { RoomHistoryResponse, RoomsResponse } from "@/types/together";
 import type { Member, Role } from "@/composables/useRooms";
 import type { OptionInput } from "@/composables/useRoomCalls";
 import { PRAYERS, prayerName, weekdayIn, type PrayerId } from "@/utils/together";
+import { cue } from "@/utils/sounds";
 
 
 const route = useRoute();
@@ -367,10 +368,11 @@ async function toggleSubscribed(): Promise<void> {
   const mine = me.value;
   if (!mine) return;
   const next = !mine.subscribed;
-  await run("subscribe", next ? "Couldn't subscribe — retry" : "Couldn't unsubscribe — retry", async () => {
+  const ok = await run("subscribe", next ? "Couldn't subscribe — retry" : "Couldn't unsubscribe — retry", async () => {
     const updated = await rooms$.setSubscribed(mine.id, next);
     members.value = members.value.map((m) => (m.id === updated.id ? updated : m));
   });
+  if (ok) cue("toggled");
   if (next) alerts.requestNotificationPermission();
 }
 
@@ -444,6 +446,7 @@ async function removeMember(m: Member, name: string): Promise<void> {
 async function copy(text: string, done: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
+    cue("copied");
     toast.add({ title: done, icon: "i-lucide-check", color: "success" });
   } catch {
     toast.add({ title: "Couldn't copy — select it and copy by hand", color: "error" });
@@ -481,10 +484,11 @@ async function saveSettings(): Promise<void> {
 }
 
 async function setDiscoverable(on: boolean): Promise<void> {
-  await run("discoverable", on ? "Couldn't make it discoverable" : "Couldn't turn off discovery — retry", async () => {
+  const ok = await run("discoverable", on ? "Couldn't make it discoverable" : "Couldn't turn off discovery — retry", async () => {
     const patch = on ? { discoverable: true, ...(await rooms$.preciseLocation()) } : { discoverable: false };
     room.value = await rooms$.updateRoom(roomId, patch);
   });
+  if (ok) cue("toggled");
 }
 
 async function relocate(): Promise<void> {

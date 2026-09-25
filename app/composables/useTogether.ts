@@ -4,6 +4,7 @@ import type { TypedPocketBase, UsersRecord } from "@/types/together";
 import { isNative } from "@/utils/platform";
 import { createChallenge, createState, createVerifier } from "@/utils/pkce";
 import { getSettingsStore } from "@/utils/store";
+import { cue } from "@/utils/sounds";
 
 export type TogetherStatus = "signed-out" | "connecting" | "ready" | "error";
 
@@ -176,6 +177,8 @@ async function establish(): Promise<boolean> {
     return (verified = true);
   }
 
+  // A different (or no) account before: this exchange is a real sign-in, not a 7-day renewal.
+  const newAccount = store.record?.sanad_id !== sanadUser.id;
   const jwt = await account.getToken();
   if (!jwt) throw new Error("no Sanad token");
   const res = await pb().send<{ token: string; record: AuthRecord }>("/api/sanad/exchange", {
@@ -183,6 +186,7 @@ async function establish(): Promise<boolean> {
     body: { token: jwt },
   });
   store.save(res.token, res.record);
+  if (newAccount) cue("signedIn");
   return (verified = true);
 }
 
@@ -303,6 +307,7 @@ export function useTogether() {
         status.value = "ready";
         errorMessage.value = null;
         await setPending(null);
+        cue("signedIn");
         return true;
       } catch (err) {
         const s = errorStatus(err);
@@ -400,6 +405,7 @@ export function useTogetherAction() {
       await fn();
       return true;
     } catch (err) {
+      cue("error");
       toast.add({
         title: failTitle,
         description: describeError(err, "") || undefined,
