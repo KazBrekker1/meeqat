@@ -106,7 +106,6 @@
               :joining="activeCalls.joining.value === liveCall.id"
               @join="activeCalls.join"
             />
-            <StageReminderCard v-if="!isWide" :items="reminders" />
 
             <Transition
               enter-active-class="transition duration-200 ease-out"
@@ -155,9 +154,6 @@
               </div>
             </div>
 
-            <!-- Desktop: reminder right above the calendar -->
-            <StageReminderCard v-if="isWide" :items="reminders" heading />
-
             <!-- Mini calendar (desktop only) -->
             <div v-if="isWide">
               <div class="flex items-center justify-between mb-1.5">
@@ -200,7 +196,9 @@
               </UCalendar>
             </div>
 
-            <!-- Desktop: Pray Together right under the calendar -->
+            <!-- Desktop: reminder under the calendar, then Pray Together -->
+            <StageReminderCard v-if="isWide" :items="reminders" heading />
+
             <StageTogetherCard
               v-if="isWide"
               heading
@@ -222,7 +220,10 @@
               @click="openCalendarDrawer"
             />
 
-            <!-- Mobile: Pray Together last (the live call already sits at the top) -->
+            <!-- Mobile: the same order — reminder after the calendar, Pray Together last
+                 (a live call already sits at the top) -->
+            <StageReminderCard v-if="!isWide" :items="reminders" />
+
             <StageTogetherCard
               v-if="!isWide && !liveCall"
               :call="null"
