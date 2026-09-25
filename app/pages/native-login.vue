@@ -1,6 +1,6 @@
 <template>
-  <div class="h-full overflow-y-auto bg-default text-highlighted">
-    <main class="mx-auto max-w-md px-4 py-12 pt-safe pb-safe">
+  <div class="h-full overflow-y-auto bg-default text-highlighted pt-safe pb-safe">
+    <main class="mx-auto max-w-md px-4 py-12">
       <div class="flex items-center justify-center gap-2 mb-8">
         <MeeqatMark class="size-6 text-indigo-300" />
         <span class="text-lg font-semibold">Meeqat</span>
