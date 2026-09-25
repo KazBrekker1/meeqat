@@ -21,8 +21,19 @@
         title="Sign in to the Meeqat app"
         description="Sign in with your Sanad account here; you'll be sent back to the app."
         sanad-only
-        @signed-in="handOff"
+        @signed-in="askToConfirm"
       />
+
+      <!-- Explicit consent: this page hands your account to whichever app made the
+           link, so a link someone else sent must not sign them in silently. -->
+      <div v-else-if="phase === 'confirm'" class="rounded-xl bg-elevated border border-default px-5 py-8 flex flex-col items-center text-center gap-4">
+        <UIcon name="i-lucide-monitor-smartphone" class="size-8 text-muted" />
+        <div class="space-y-1">
+          <h1 class="text-base font-semibold">Sign in to the Meeqat app{{ user ? ` as ${user.name}` : "" }}?</h1>
+          <p class="text-sm text-muted">Continue only if you just chose “Sign in with your browser” in Meeqat on your own device.</p>
+        </div>
+        <UButton icon="i-lucide-log-in" @click="handOff">Continue</UButton>
+      </div>
 
       <div v-else class="rounded-xl bg-elevated border border-default px-5 py-8 flex flex-col items-center text-center gap-4">
         <template v-if="phase === 'handing-off'">
@@ -45,6 +56,7 @@
           <UButton :href="appLink" icon="i-lucide-external-link">Open Meeqat</UButton>
           <div class="w-full border-t border-default pt-4 space-y-2">
             <p class="text-xs text-muted">App didn't open? Copy this code and choose “Paste code” in the app. It works once, for 3 minutes.</p>
+            <p class="text-xs text-warning">Never share this code — anyone who has it can sign in to Pray Together as you.</p>
             <div class="flex gap-2">
               <UInput :model-value="code" readonly size="sm" class="flex-1 font-mono" aria-label="Sign-in code" />
               <UButton size="sm" variant="soft" color="neutral" :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'" @click="copyCode">
@@ -64,7 +76,7 @@ import { looksLikeBase64url } from "@/utils/pkce";
 definePageMeta({ middleware: "web-only" });
 useHead({ title: "Sign in to the app · Meeqat", htmlAttrs: { class: "dark" } });
 
-type Phase = "invalid" | "checking" | "sign-in" | "handing-off" | "error" | "done";
+type Phase = "invalid" | "checking" | "sign-in" | "confirm" | "handing-off" | "error" | "done";
 
 const route = useRoute();
 // base64url of a SHA-256 digest is 43 characters; the app's state is 22.
@@ -122,6 +134,10 @@ async function handOff(): Promise<void> {
   }
 }
 
+function askToConfirm(): void {
+  phase.value = "confirm";
+}
+
 async function copyCode(): Promise<void> {
   if (!code.value) return;
   try {
@@ -136,7 +152,6 @@ async function copyCode(): Promise<void> {
 onMounted(async () => {
   if (!valid) return;
   await refresh();
-  if (accountStatus.value === "signed-in") await handOff();
-  else phase.value = "sign-in";
+  phase.value = accountStatus.value === "signed-in" ? "confirm" : "sign-in";
 });
 </script>
