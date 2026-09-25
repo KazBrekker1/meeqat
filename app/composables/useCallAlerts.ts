@@ -1,6 +1,9 @@
 import type { RecordSubscription } from "pocketbase";
 import { createChannel, Importance, isPermissionGranted, requestPermission, sendNotification, Visibility } from "@tauri-apps/plugin-notification";
-import { isNative } from "@/utils/platform";
+import { getPlatform, isNative } from "@/utils/platform";
+
+/** On desktop the Rust listener (src-tauri/src/together.rs) sends system notifications and meeting reminders even while the window is hidden; the page only adds toasts. */
+const rustOwnsAlerts = () => getPlatform() === "desktop";
 import { prayerName } from "@/utils/together";
 import type { CallsResponse, ParticipantsResponse, RoomsResponse, UsersResponse } from "@/types/together";
 
@@ -52,6 +55,7 @@ export function useCallAlerts() {
   const { pb, ensureSession, live, userId, onSessionChange } = useTogether();
 
   function notify(title: string, body: string): void {
+    if (rustOwnsAlerts()) return;
     // In the apps the toast covers a focused window; otherwise use the system.
     if (isNative()) {
       if (document.hidden || !document.hasFocus()) void notifyCall(title, body);
@@ -103,7 +107,7 @@ export function useCallAlerts() {
   /** Re-arm reminders from the server's truth: finalized calls I joined that meet later. */
   async function syncReminders(): Promise<void> {
     const uid = userId.value;
-    if (!uid) return;
+    if (!uid || rustOwnsAlerts()) return;
     let mine: MyParticipation[];
     try {
       mine = await pb().collection("participants").getFullList<MyParticipation>({

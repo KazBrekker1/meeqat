@@ -3,6 +3,8 @@ use tauri::{self};
 #[cfg(desktop)]
 mod notify;
 #[cfg(desktop)]
+mod together;
+#[cfg(desktop)]
 mod tray;
 
 #[tauri::command]
@@ -57,6 +59,16 @@ pub fn run() {
             notify::schedule_notifications,
             #[cfg(desktop)]
             notify::cancel_notifications,
+            #[cfg(desktop)]
+            together::together_set_session,
+            #[cfg(desktop)]
+            together::together_clear_session,
+            #[cfg(desktop)]
+            together::together_get_calls,
+            #[cfg(desktop)]
+            together::together_join_call,
+            #[cfg(desktop)]
+            together::together_open_room,
         ]);
 
     // Positioner plugin is desktop-only (kept for the page's drag/position helpers)
@@ -67,6 +79,7 @@ pub fn run() {
             tray::setup(app.handle())?;
             notify::setup(app.handle());
             setup_deep_links(app.handle());
+            together::setup(app.handle());
             Ok(())
         });
 
