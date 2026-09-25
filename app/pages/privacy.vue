@@ -33,8 +33,17 @@
       </section>
 
       <section class="space-y-2">
-        <h2 class="text-lg font-semibold">Pray Together (coming soon)</h2>
-        <p class="text-white/80">When it launches, it will store only: the rooms you join and your role, calls you start or join, and your votes. Chat messages are deleted one hour after each call. Your location is never stored; rooms that choose to be discoverable store a location rounded to about 100 metres.</p>
+        <h2 class="text-lg font-semibold">Pray Together</h2>
+        <p class="text-white/80">Rooms need a Sanad account. Using them stores, on <b>together.sanad.ink</b>:</p>
+        <ul class="list-disc ps-5 space-y-1 text-white/80">
+          <li>Your Sanad account ID and email (never shown to anyone), and your name and avatar, shown to other members of your rooms.</li>
+          <li>The rooms you create or join, and your role and subscribe state in each.</li>
+          <li>Calls you start or join: prayer, place, meeting time and who joined.</li>
+          <li>Your poll votes.</li>
+          <li>Chat messages — deleted one hour after each call ends.</li>
+          <li>A one-line history entry per finished call (prayer, place and a headcount — not names).</li>
+        </ul>
+        <p class="text-white/80">Searching for nearby rooms sends your position with that one request; it's never stored. A room only stores a location if its owner turns on "discoverable", rounded to about 100 metres.</p>
       </section>
 
       <p class="text-sm text-white/50">Questions? Open an issue on <a class="underline" href="https://github.com/KazBrekker1/meeqat/issues">GitHub</a>.</p>
