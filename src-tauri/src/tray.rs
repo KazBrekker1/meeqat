@@ -163,7 +163,7 @@ pub fn hide(app: &AppHandle) {
     }
 }
 
-fn show_main(app: &AppHandle) {
+pub(crate) fn show_main(app: &AppHandle) {
     hide(app);
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();

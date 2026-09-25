@@ -2062,6 +2062,8 @@ dependencies = [
 name = "meeqat-app"
 version = "3.5.0"
 dependencies = [
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",
@@ -2075,6 +2077,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-store",
  "tauri-plugin-updater",
+ "tokio",
 ]
 
 [[package]]
