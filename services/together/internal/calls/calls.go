@@ -10,6 +10,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 // Register is a no-op placeholder kept for symmetry with the other internal
@@ -34,10 +35,22 @@ func RegisterHooks(app core.App) {
 		return handleUpdate(e)
 	})
 
+	// An organizer leaving (or being removed from) the room hands their live
+	// calls to another caller; with nobody left to run them, they're cancelled.
+	app.OnRecordAfterDeleteSuccess("memberships").BindFunc(func(e *core.RecordEvent) error {
+		handOverCalls(e.App, e.Record.GetString("room"), e.Record.GetString("user"))
+		return e.Next()
+	})
+
 	// Joining, chatting and polling only make sense while the call is live.
 	app.OnRecordCreateRequest("participants", "messages", "poll_options").BindFunc(func(e *core.RecordRequestEvent) error {
 		if err := requireActiveCall(e.App, e.Record.GetString("call")); err != nil {
 			return err
+		}
+		if e.Collection.Name == "messages" {
+			if err := perUserLimit(e, "messages", "user", 20, time.Minute); err != nil {
+				return err
+			}
 		}
 		return e.Next()
 	})
@@ -60,6 +73,47 @@ func RegisterHooks(app core.App) {
 		}
 		return e.Next()
 	})
+}
+
+func handOverCalls(app core.App, roomId, leaverId string) {
+	live, err := app.FindRecordsByFilter("calls",
+		"room = {:room} && organizer = {:user} && (status = 'open' || status = 'finalized')",
+		"", 0, 0, dbx.Params{"room": roomId, "user": leaverId})
+	if err != nil || len(live) == 0 {
+		return
+	}
+	// Prefer the owner, then the longest-standing subscribed caller.
+	next, _ := app.FindRecordsByFilter("memberships",
+		"room = {:room} && user != {:user} && subscribed = true && (role = 'owner' || role = 'caller')",
+		"-role,created", 1, 0, dbx.Params{"room": roomId, "user": leaverId})
+	for _, call := range live {
+		if len(next) > 0 {
+			call.Set("organizer", next[0].GetString("user"))
+		} else {
+			call.Set("status", "cancelled")
+		}
+		if err := app.Save(call); err != nil {
+			app.Logger().Error("calls: hand-over failed", "error", err, "call", call.Id)
+		}
+	}
+}
+
+// perUserLimit caps how many records a user created in a collection within a
+// window. PocketBase's built-in limiter is per IP, which would throttle a whole
+// office sharing one address together.
+func perUserLimit(e *core.RecordRequestEvent, collection, userField string, max int, window time.Duration) error {
+	since := types.NowDateTime().Add(-window).String()
+	n, err := e.App.CountRecords(collection, dbx.NewExp(
+		userField+" = {:user} AND created > {:since}",
+		dbx.Params{"user": e.Auth.Id, "since": since},
+	))
+	if err != nil {
+		return err
+	}
+	if n >= int64(max) {
+		return apis.NewTooManyRequestsError("You're doing that too often — try again in a moment.", nil)
+	}
+	return nil
 }
 
 func requireActiveCall(app core.App, callId string) error {
@@ -120,6 +174,10 @@ func handleCreate(e *core.RecordRequestEvent) error {
 	prayer := e.Record.GetString("prayer")
 	if prayer == "jumuah" && now.Weekday() != time.Friday {
 		return apis.NewBadRequestError("jumuah calls can only be started on a Friday", nil)
+	}
+
+	if err := perUserLimit(e, "calls", "organizer", 10, time.Hour); err != nil {
+		return err
 	}
 
 	if existing, err := findActiveCall(e.App, roomId, prayer, day); err == nil {
