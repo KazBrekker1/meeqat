@@ -23,11 +23,20 @@ export function useGeolocation() {
   const isLocating = ref(false);
   const error = ref<string | null>(null);
 
-  async function getCurrentPosition(): Promise<LocatedPosition | null> {
+  /**
+   * `precise`: device geolocation only, high accuracy, no IP fallback — for
+   * Pray Together's 1 km room search, where a city-level guess is wrong.
+   */
+  async function getCurrentPosition(opts: { precise?: boolean } = {}): Promise<LocatedPosition | null> {
     if (!import.meta.client) return null;
     isLocating.value = true;
     error.value = null;
     try {
+      if (opts.precise) {
+        const result = hasWebGeolocation() ? await tryWebGeolocation(true) : null;
+        if (!result) error.value = "Couldn't get your precise location. Allow location access for this site and retry.";
+        return result;
+      }
       const ip = tryIpGeolocation(); // start now; it's the fallback either way
       const web = hasWebGeolocation() ? await tryWebGeolocation() : null;
       const result = web ?? (await ip);
@@ -46,7 +55,7 @@ export function useGeolocation() {
     return p === "web" || p === "android";
   }
 
-  function tryWebGeolocation(): Promise<LocatedPosition | null> {
+  function tryWebGeolocation(precise = false): Promise<LocatedPosition | null> {
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -54,7 +63,9 @@ export function useGeolocation() {
           resolve(lat === 0 && lng === 0 ? null : { lat, lng });
         },
         () => resolve(null),
-        { enableHighAccuracy: false, timeout: 6000, maximumAge: 30 * 60 * 1000 }
+        precise
+          ? { enableHighAccuracy: true, timeout: 15000, maximumAge: 60 * 1000 }
+          : { enableHighAccuracy: false, timeout: 6000, maximumAge: 30 * 60 * 1000 }
       );
     });
   }

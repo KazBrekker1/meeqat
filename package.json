@@ -6,7 +6,9 @@
 	"scripts": {
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",
+		"together:types": "pocketbase-typegen --db services/together/pb_data/data.db --out app/types/together.ts",
 		"test:e2e": "node tests/e2e/web-smoke.mjs",
+		"test:e2e:together": "node tests/e2e/together-e2e.mjs",
 		"preinstall": "bunx only-allow bun",
 		"postinstall": "nuxt prepare",
 		"bump": "bumpp",
@@ -36,6 +38,7 @@
 		"better-auth": "^1.7",
 		"maplibre-gl": "^6.11.0",
 		"nuxt": "^4.4.8",
+		"pocketbase": "^0.28.1",
 		"vue": "^3.5.39",
 		"vue-router": "^5.1.0",
 		"zod": "^4.4.3"
@@ -48,6 +51,7 @@
 		"bumpp": "^10.4.1",
 		"nuxt-svgo": "^4.2.6",
 		"playwright": "^1.63.0",
+		"pocketbase-typegen": "^1.5.0",
 		"typescript": "^5.9.3",
 		"vue-tsc": "^3.2.2"
 	}
