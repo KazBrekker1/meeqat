@@ -10,6 +10,8 @@ export default defineNuxtConfig({
       authUrl: process.env.NUXT_PUBLIC_AUTH_URL || "https://auth.sanad.ink",
       // Pray Together backend: also serves the "add to calendar" ICS feed.
       togetherUrl: process.env.NUXT_PUBLIC_TOGETHER_URL || "https://together.sanad.ink",
+      // The web app: the native apps send sign-in through its /native-login page.
+      webUrl: process.env.NUXT_PUBLIC_WEB_URL || "https://meeqat.sanad.ink",
     },
   },
   app: {

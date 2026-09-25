@@ -53,9 +53,10 @@ export function useAccount() {
 
   async function signInWithGoogle(): Promise<void> {
     // Absolute URL: a relative callbackURL would resolve against auth.sanad.ink.
+    // Keeps the query (e.g. /native-login's challenge and state).
     await authClient(authUrl).signIn.social({
       provider: "google",
-      callbackURL: window.location.origin + window.location.pathname,
+      callbackURL: window.location.origin + window.location.pathname + window.location.search,
     });
   }
 
