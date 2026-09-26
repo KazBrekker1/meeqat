@@ -118,6 +118,36 @@
               </div>
               <USwitch :model-value="soundsEnabled" aria-label="Sounds" @update:model-value="toggleSounds" />
             </div>
+            <div class="px-4 py-3">
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="text-sm font-medium">Moon style</p>
+                <p class="text-xs text-muted">{{ moonStyleLabel }}</p>
+              </div>
+              <div role="radiogroup" aria-label="Moon style" class="mt-2 grid grid-cols-6 gap-1">
+                <button
+                  v-for="opt in MOON_STYLE_OPTIONS"
+                  :key="opt.value"
+                  type="button"
+                  role="radio"
+                  :aria-checked="moonStyle === opt.value"
+                  :aria-label="opt.label"
+                  :title="opt.label"
+                  class="grid place-items-center rounded-xl py-1 cursor-pointer transition-colors"
+                  :class="moonStyle === opt.value ? 'bg-primary/15 ring-1 ring-primary/40' : 'hover:bg-accented/50'"
+                  @click="pickMoonStyle(opt.value)"
+                >
+                  <PrototypesCelestialMoonSphere
+                    :variant="opt.value"
+                    :phase="pickerPhase"
+                    :lat="calendarLat ?? null"
+                    :lng="calendarLng ?? null"
+                    :size="44"
+                    :disc="0.82"
+                    :glow="false"
+                  />
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -503,6 +533,8 @@ import { NOTIFICATION_TIMING_OPTIONS, type NotificationSettings } from '@/compos
 import { useMockTime } from '@/composables/useMockTime';
 import { getPlatform } from '@/utils/platform';
 import { cue, saveSoundsPreference, soundsEnabled } from '@/utils/sounds';
+import { MOON_STYLE_OPTIONS, moonStyle, saveMoonStylePreference, type MoonStyle } from '@/utils/moonStyle';
+import { moonPhase as lunarPhase } from '@/components/prototypes/celestial/lunar';
 
 // Check if running on Android
 const isAndroid = ref(false);
@@ -515,7 +547,7 @@ function closeModal() {
 }
 
 // Mock time (for developer tools)
-const { mockTimeOffsetMs, jumpTime, clearOffset, loadOffset, formatOffset } = useMockTime();
+const { mockTimeOffsetMs, jumpTime, clearOffset, loadOffset, formatOffset, getNow } = useMockTime();
 
 // In-app updates — shares the singleton state with the footer pill + auto-prompt modal.
 const appVersion = useRuntimeConfig().public.version as string;
@@ -731,6 +763,15 @@ function toggleAdditionalTimes() {
 function toggleSounds(on: boolean) {
   void saveSoundsPreference(on);
   cue('toggled'); // audible only when turning sounds on
+}
+
+// Moon style picker: live thumbnails of every style at the current phase.
+const pickerPhase = computed(() => lunarPhase(getNow()));
+const moonStyleLabel = computed(() => MOON_STYLE_OPTIONS.find((o) => o.value === moonStyle.value)?.label ?? '');
+function pickMoonStyle(style: MoonStyle) {
+  if (style === moonStyle.value) return;
+  cue('toggled');
+  void saveMoonStylePreference(style);
 }
 
 function toggleNotifications() {

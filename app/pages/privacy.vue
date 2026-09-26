@@ -49,7 +49,7 @@
 
       <section class="space-y-2">
         <h2 class="text-lg font-semibold">Credits</h2>
-        <p class="text-white/80">Moon imagery: NASA/LRO LROC (public domain), from NASA's Scientific Visualization Studio <a class="underline" href="https://svs.gsfc.nasa.gov/4720" target="_blank" rel="noopener">CGI Moon Kit</a>. It ships with Meeqat, so drawing the Moon contacts no other service.</p>
+        <p class="text-white/80">Moon imagery: NASA/LRO LROC (public domain) — the colour map and the greyscale albedo map behind the illustrated moon styles — from NASA's Scientific Visualization Studio <a class="underline" href="https://svs.gsfc.nasa.gov/4720" target="_blank" rel="noopener">CGI Moon Kit</a>. Both ship with Meeqat, so drawing the Moon contacts no other service.</p>
       </section>
 
       <p class="text-sm text-white/50">Questions? Open an issue on <a class="underline" href="https://github.com/KazBrekker1/meeqat/issues">GitHub</a>.</p>

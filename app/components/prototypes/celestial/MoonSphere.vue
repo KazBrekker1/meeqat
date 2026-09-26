@@ -23,9 +23,10 @@
 </template>
 
 <script lang="ts" setup>
-import { moonView, renderMoon, moonGlow, type MoonView } from "@/utils/moon/sphere";
-import { loadMoonMap } from "@/utils/moon/map";
-import type { MoonMap } from "@/utils/moon/sphere";
+import { moonView, moonGlow, type MoonMap, type MoonView } from "@/utils/moon/sphere";
+import { renderStyle, STYLE_GLOW, type GreyChain, type MoonStyle } from "@/utils/moon/styles";
+import { loadStyleMap } from "@/utils/moon/map";
+import { moonStyle } from "@/utils/moonStyle";
 
 const props = withDefaults(
   defineProps<{
@@ -40,9 +41,13 @@ const props = withDefaults(
     disc?: number;
     /** Soft halo under the disc. */
     glow?: boolean;
+    /** Paint style; defaults to the user's "Moon style" preference. */
+    variant?: MoonStyle | null;
   }>(),
-  { lat: null, lng: null, size: 160, disc: 0.72, glow: true },
+  { lat: null, lng: null, size: 160, disc: 0.72, glow: true, variant: null },
 );
+
+const style = computed<MoonStyle>(() => props.variant ?? moonStyle.value);
 
 const { getNow, getOffset } = useMockTime();
 
@@ -55,7 +60,10 @@ const label = computed(() =>
   view.value ? `Moon, ${Math.round(view.value.fraction * 100)}% illuminated` : "Moon",
 );
 
-let map: MoonMap | null = null;
+/** The map the current style paints from, and that style (a new style keeps the old picture until its map loads). */
+let map: MoonMap | GreyChain | null = null;
+let mapStyle: MoonStyle | null = null;
+let loadToken = 0;
 let scratch: HTMLCanvasElement | null = null;
 let disposed = false;
 
@@ -83,12 +91,13 @@ function draw(): void {
 
   const params = { subLon: v.libLon, subLat: v.libLat, poleAngle: v.poleAngle, phaseAngle: v.phaseAngle, limbAngle: v.limbAngle, disc: props.disc };
   const img = sctx.createImageData(W, W);
-  renderMoon(img, map, params);
+  const st = mapStyle!;
+  renderStyle(st, img, map, params);
   sctx.putImageData(img, 0, 0);
 
   ctx.clearRect(0, 0, W, W);
   if (props.glow) {
-    const gl = moonGlow(W, props.disc, v.phaseAngle, v.limbAngle);
+    const gl = moonGlow(W, props.disc, v.phaseAngle, v.limbAngle, STYLE_GLOW[st]);
     const g = ctx.createRadialGradient(gl.cx, gl.cy, gl.r0, gl.cx, gl.cy, gl.r1);
     for (const [o, c] of gl.stops) g.addColorStop(o, c);
     ctx.fillStyle = g;
@@ -97,7 +106,7 @@ function draw(): void {
   ctx.drawImage(scratch, 0, 0);
   view.value = v;
   ready.value = true;
-  if (import.meta.dev) console.debug(`[moon] render ${W}×${W}px ${(performance.now() - t0).toFixed(1)} ms`);
+  if (import.meta.dev) console.debug(`[moon] ${st} ${W}×${W}px ${(performance.now() - t0).toFixed(1)} ms`);
 }
 
 function safeDraw(): void {
@@ -124,19 +133,24 @@ const onResize = () => {
   }
 };
 
+/** Loads the map the current style needs (shared, decoded once per page), then draws. */
+function loadAndDraw(): void {
+  const want = style.value, token = ++loadToken;
+  loadStyleMap(want)
+    .then((m) => {
+      if (disposed || token !== loadToken) return;
+      map = m;
+      mapStyle = want;
+      safeDraw();
+    })
+    // Keeps what is shown: the flat SVG moon, or the previous style.
+    .catch((err) => console.warn(`[moon] map for "${want}" unavailable`, err));
+}
+
 onMounted(() => {
   lastDpr = window.devicePixelRatio || 1;
   // Load after the first paint so the SVG shows at once (the tray popover paints fast).
-  requestAnimationFrame(() =>
-    setTimeout(() => {
-      loadMoonMap()
-        .then((m) => {
-          map = m;
-          safeDraw();
-        })
-        .catch((err) => console.warn("[moon] map unavailable, keeping the flat moon", err));
-    }, 0),
-  );
+  requestAnimationFrame(() => setTimeout(loadAndDraw, 0));
   timer = setInterval(() => {
     if (!document.hidden) safeDraw();
   }, REDRAW_MS);
@@ -153,4 +167,8 @@ onBeforeUnmount(() => {
 
 // Redraw for a new place, size, or a debug time jump.
 watch(() => [props.lat, props.lng, props.size, props.disc, props.glow, getOffset()], safeDraw);
+// …and for a new style (all instances follow the shared preference at once).
+watch(style, () => {
+  if (loadToken > 0) loadAndDraw(); // before mount the first load picks the style up
+});
 </script>

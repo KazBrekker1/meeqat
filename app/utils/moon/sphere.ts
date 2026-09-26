@@ -173,7 +173,7 @@ export function moonView(date: Date, lat: number, lng: number, opts: { orientati
 // ─────────────────────────────────────────────────────────────────────────────
 const toLin = (c: number) => Math.pow(c, 2.2);
 const toSrgb = (c: number) => Math.pow(c > 0 ? c : 0, 1 / 2.2);
-const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+export const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /** Linear-RGB floats, row-major. */
 export interface MoonMap {
@@ -230,31 +230,97 @@ export interface RenderParams {
   graticule?: boolean;
 }
 
+/**
+ * The orthographic sphere for one render, shared by the photo renderer and the illustrated
+ * styles (styles.ts): disc geometry, the sun direction in screen space, and the rotations
+ * screen → lunar-north-up → body frame. Build once per render with `sphereFrame()`, then map
+ * pixels with `projectPixel()` (screen → surface) or surface points with `projectBody()`.
+ */
+export interface SphereFrame {
+  W: number;
+  /** disc radius and centre, px */
+  R: number;
+  c0: number;
+  /** bounding box of the disc (same range for x and y), px */
+  x0: number;
+  x1: number;
+  /** illuminated fraction */
+  frac: number;
+  /** sun direction, screen space (x right, y up, z toward viewer) */
+  Sx: number;
+  Sy: number;
+  Sz: number;
+  /** cos/sin of the pole angle and of the sub-observer lon/lat */
+  cp: number;
+  sp: number;
+  sl: number;
+  cl: number;
+  sb: number;
+  cb: number;
+}
+
+export function sphereFrame(W: number, p: RenderParams): SphereFrame {
+  const disc = p.disc ?? .72, R = W * disc / 2, c0 = W / 2, inc = p.phaseAngle;
+  const lx = -Math.sin(p.limbAngle), ly = Math.cos(p.limbAngle);
+  return {
+    W, R, c0, x0: Math.max(0, Math.floor(c0 - R - 2)), x1: Math.min(W, Math.ceil(c0 + R + 2)), frac: (1 + Math.cos(inc)) / 2,
+    Sx: Math.sin(inc) * lx, Sy: Math.sin(inc) * ly, Sz: Math.cos(inc),
+    // screen → lunar-north-up: rotate by −poleAngle; lunar-north-up view → body frame (X → lat 0/lon 0, Y → lon 90° E, Z → north pole)
+    cp: Math.cos(p.poleAngle), sp: Math.sin(p.poleAngle),
+    sl: Math.sin(p.subLon), cl: Math.cos(p.subLon), sb: Math.sin(p.subLat), cb: Math.cos(p.subLat),
+  };
+}
+
+/** Output slots of `projectPixel`. */
+export const PX_X = 0, PX_Y = 1, PX_Z = 2, PX_LAT = 3, PX_LON = 4, PX_MU0 = 5;
+
+/**
+ * Pixel (i, j) → point on the sphere. Returns the anti-aliased disc coverage (≤ 0: off the disc,
+ * `o` untouched); otherwise writes x, y (disc units, y up), z (normal toward viewer), selenographic
+ * lat/lon (radians) and μ0 (cosine to the sun, unclipped) into `o` at the PX_* slots.
+ */
+export function projectPixel(f: SphereFrame, i: number, j: number, o: Float64Array): number {
+  const x = (i + .5 - f.c0) / f.R, y = -(j + .5 - f.c0) / f.R, rr = x * x + y * y;
+  const cov = Math.min(1, Math.max(0, (1 - Math.sqrt(rr)) * f.R + .5));
+  if (cov <= 0) return 0;
+  const z = Math.sqrt(1 - Math.min(rr, 1));
+  const { cp, sp, sl, cl, sb, cb } = f;
+  const xr = x * cp + y * sp, yr = -x * sp + y * cp;
+  const Px = -xr * sl - yr * sb * cl + z * cb * cl, Py = xr * cl - yr * sb * sl + z * cb * sl, Pz = yr * cb + z * sb;
+  o[0] = x; o[1] = y; o[2] = z;
+  o[3] = Math.asin(Math.max(-1, Math.min(1, Pz))); o[4] = Math.atan2(Py, Px);
+  o[5] = x * f.Sx + y * f.Sy + z * f.Sz;
+  return cov;
+}
+
+/**
+ * Body-frame unit vector (X, Y, Z) → screen. Returns the normal's z (≤ 0: far side, `o` untouched);
+ * otherwise writes the pixel position fx, fy into o[0], o[1]. Inverse of `projectPixel`.
+ */
+export function projectBody(f: SphereFrame, X: number, Y: number, Z: number, o: Float64Array): number {
+  const { cp, sp, sl, cl, sb, cb } = f;
+  const z = cb * cl * X + cb * sl * Y + sb * Z;
+  if (z <= 0) return z;
+  const xr = -sl * X + cl * Y, yr = -sb * cl * X - sb * sl * Y + cb * Z;
+  o[0] = f.c0 + (xr * cp - yr * sp) * f.R; o[1] = f.c0 - (xr * sp + yr * cp) * f.R;
+  return z;
+}
+
+const PIX = new Float64Array(6);
+
 /** Fill `out` (square RGBA ImageData-like) with the lit sphere. */
 export function renderMoon<T extends { width: number; height: number; data: Uint8ClampedArray }>(out: T, map: MoonMap, p: RenderParams): T {
-  const W = out.width, px = out.data, disc = p.disc ?? .72, R = W * disc / 2, c0 = W / 2;
+  const W = out.width, px = out.data, f = sphereFrame(W, p), R = f.R, o = PIX;
   const { w: mw, h: mh, data, mean } = map;
-  const inc = p.phaseAngle, frac = (1 + Math.cos(inc)) / 2;
-  // sun direction in screen space (x right, y up, z toward viewer)
-  const lx = -Math.sin(p.limbAngle), ly = Math.cos(p.limbAngle);
-  const Sx = Math.sin(inc) * lx, Sy = Math.sin(inc) * ly, Sz = Math.cos(inc);
-  // screen → lunar-north-up: rotate by −poleAngle
-  const cp = Math.cos(p.poleAngle), sp = Math.sin(p.poleAngle);
-  // lunar-north-up view → body frame (X → lat 0/lon 0, Y → lon 90° E, Z → north pole)
-  const sl = Math.sin(p.subLon), cl = Math.cos(p.subLon), sb = Math.sin(p.subLat), cb = Math.cos(p.subLat);
+  const frac = f.frac;
   const es = (.0008 + .008 * (1 - frac) * (1 - frac)) * (p.earthshine ?? 1);
   const expo = p.exposure ?? 1.02 + .3 * (1 - frac);
   const grat = !!p.graticule, gW = .7 / R / RAD; // half-width of a grid line in degrees (≈ 1.4 px at disc centre)
   px.fill(0);
-  const x0 = Math.max(0, Math.floor(c0 - R - 2)), x1 = Math.min(W, Math.ceil(c0 + R + 2));
-  for (let j = x0; j < x1; j++) for (let i = x0; i < x1; i++) {
-    const x = (i + .5 - c0) / R, y = -(j + .5 - c0) / R, rr = x * x + y * y;
-    const cov = Math.min(1, Math.max(0, (1 - Math.sqrt(rr)) * R + .5));
+  for (let j = f.x0; j < f.x1; j++) for (let i = f.x0; i < f.x1; i++) {
+    const cov = projectPixel(f, i, j, o);
     if (cov <= 0) continue;
-    const z = Math.sqrt(1 - Math.min(rr, 1));
-    const x1r = x * cp + y * sp, y1r = -x * sp + y * cp;
-    const Px = -x1r * sl - y1r * sb * cl + z * cb * cl, Py = x1r * cl - y1r * sb * sl + z * cb * sl, Pz = y1r * cb + z * sb;
-    const lat = Math.asin(Math.max(-1, Math.min(1, Pz))), lon = Math.atan2(Py, Px);
+    const z = o[2]!, lat = o[3]!, lon = o[4]!;
     // bilinear lookup, wrapping in longitude
     const u = (lon / (2 * Math.PI) + .5) * mw - .5;
     let v = (.5 - lat / Math.PI) * mh - .5;
@@ -267,7 +333,7 @@ export function renderMoon<T extends { width: number; height: number; data: Uint
     const A1 = data[o00 + 1]! * w00 + data[o10 + 1]! * w10 + data[o01 + 1]! * w01 + data[o11 + 1]! * w11;
     const A2 = data[o00 + 2]! * w00 + data[o10 + 2]! * w10 + data[o01 + 2]! * w01 + data[o11 + 2]! * w11;
     // photometry: Lommel–Seeliger (flat full moon) + a little Lambert → gentle limb darkening
-    const mu0raw = x * Sx + y * Sy + z * Sz, mu = Math.max(z, .02);
+    const mu0raw = o[5]!, mu = Math.max(z, .02);
     const m0 = mu0raw + (A1 - mean) * .35 * .25;        // dark maria catch the light a touch later
     const s = m0 > 0 ? m0 : 0;
     const ls = Math.min(2 * s / (s + mu), 1.25);
