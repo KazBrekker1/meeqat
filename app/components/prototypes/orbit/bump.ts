@@ -78,42 +78,6 @@ export function fmtDur(min: number) {
   return h ? `${h}h ${r.toString().padStart(2, "0")}m` : `${r}m`;
 }
 
-/**
- * A tapered "comet tail" ribbon riding the ring, from `nowMin` back over
- * `coveredMin`. Returns fading quads — wide at the head, pinching to nothing at the
- * tail — so it reads as a smooth comet. `radiusFn(t)` is the (possibly bumped) path.
- */
-export function tailRibbon(
-  nowMin: number,
-  coveredMin: number,
-  radiusFn: (t: number) => number,
-  halfW: number,
-  cx: number,
-  cy: number,
-  segments = 28
-) {
-  const at = (i: number) => {
-    const f = i / segments;
-    const t = (nowMin - f * coveredMin) / 1440;
-    return { t, hw: halfW * (1 - f) ** 0.7, f, r: radiusFn(t) };
-  };
-  const out: { d: string; o: number }[] = [];
-  let a = at(0);
-  for (let i = 1; i <= segments; i++) {
-    const b = at(i);
-    const oa = ptAt(a.t, a.r + a.hw, cx, cy);
-    const ob = ptAt(b.t, b.r + b.hw, cx, cy);
-    const ib = ptAt(b.t, b.r - b.hw, cx, cy);
-    const ia = ptAt(a.t, a.r - a.hw, cx, cy);
-    out.push({
-      d: `M ${oa.x.toFixed(2)} ${oa.y.toFixed(2)} L ${ob.x.toFixed(2)} ${ob.y.toFixed(2)} L ${ib.x.toFixed(2)} ${ib.y.toFixed(2)} L ${ia.x.toFixed(2)} ${ia.y.toFixed(2)} Z`,
-      o: (1 - a.f) ** 1.3,
-    });
-    a = b;
-  }
-  return out;
-}
-
 const mixHex = (c1: string, c2: string, t: number) => {
   const p = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
   const [r1, g1, b1] = p(c1);

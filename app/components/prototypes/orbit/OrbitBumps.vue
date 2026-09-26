@@ -3,6 +3,59 @@
     <!-- flat sky-coloured ring; each prayer's outer edge swells (spring) on hover -->
     <div class="absolute inset-0" :style="{ background: conic, clipPath: clip, '-webkit-clip-path': clip }" />
 
+    <!-- centre (overridable) -->
+    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <slot>
+        <PrototypesCelestialMoonPhase :phase="moonPhase" :size="Math.round(size * 0.42)" halo halo-color="#cdd6ff" />
+      </slot>
+    </div>
+
+    <!-- NOW-MARKER · the moon as gnomon. One arm from the moon's limb toward now,
+         clipped to the gap + band: by day the sun's shadow at its true length
+         (touching the prayer path at ʿAṣr), by night moonlight. Each arm is a fixed
+         shape drawn at 12 o'clock and turned to now by one CSS transform per tick;
+         its path/blur only rebuild when its length changes by 0.1 px. -->
+    <template v-if="cue">
+      <div
+        v-if="gn.sun > 0.001"
+        class="absolute inset-0 pointer-events-none mix-blend-multiply"
+        :style="{ clipPath: armClip, '-webkit-clip-path': armClip, opacity: gn.sun.toFixed(3) }"
+      >
+        <div class="absolute inset-0" :style="armTurn">
+          <svg :viewBox="`0 0 ${size} ${size}`" class="absolute inset-0 w-full h-full overflow-visible">
+            <defs>
+              <filter :id="`${uid}-s`" x="-100%" y="-10%" width="300%" height="120%"><feGaussianBlur :stdDeviation="(1.4 * k).toFixed(2)" /></filter>
+              <filter :id="`${uid}-c`" x="-100%" y="-10%" width="300%" height="120%"><feGaussianBlur :stdDeviation="(0.45 * k).toFixed(2)" /></filter>
+            </defs>
+            <g :fill="ink">
+              <path :d="shadowSoft" opacity="0.42" :filter="`url(#${uid}-s)`" />
+              <path :d="shadowCore" opacity="0.9" :filter="`url(#${uid}-c)`" />
+            </g>
+          </svg>
+        </div>
+      </div>
+      <div
+        v-if="gn.moon > 0.001"
+        class="absolute inset-0 pointer-events-none mix-blend-screen"
+        :style="{ clipPath: armClip, '-webkit-clip-path': armClip, opacity: gn.moon.toFixed(3) }"
+      >
+        <div class="absolute inset-0" :style="armTurn">
+          <svg :viewBox="`0 0 ${size} ${size}`" class="absolute inset-0 w-full h-full overflow-visible">
+            <defs>
+              <linearGradient :id="`${uid}-bg`" gradientUnits="userSpaceOnUse" x1="0" :y1="C - moonR" x2="0" :y2="C - Ro">
+                <stop offset="0" :stop-color="MOONLIGHT_CSS" stop-opacity="0.3" />
+                <stop offset="0.55" :stop-color="MOONLIGHT_CSS" stop-opacity="0.5" />
+                <stop offset="1" :stop-color="MOONLIGHT_CSS" stop-opacity="0.9" />
+              </linearGradient>
+              <filter :id="`${uid}-b`" x="-100%" y="-10%" width="300%" height="120%"><feGaussianBlur :stdDeviation="(0.9 * k).toFixed(2)" /></filter>
+            </defs>
+            <path :d="beamSoft" :fill="`url(#${uid}-bg)`" :filter="`url(#${uid}-b)`" />
+            <path :d="beamCore" :fill="`url(#${uid}-bg)`" opacity="0.75" />
+          </svg>
+        </div>
+      </div>
+    </template>
+
     <svg :viewBox="`0 0 ${size} ${size}`" class="absolute inset-0 w-full h-full overflow-visible">
       <path :d="outerPath" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-linejoin="round" />
       <circle :cx="C" :cy="C" :r="Ri" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1" />
@@ -16,29 +69,28 @@
         class="transition-[r] duration-100"
       />
 
-      <!-- COMET · SONAR cue. Tail (gold, trailing behind the head toward the
-           previous prayer) = time since. Sonar pings on the next prayer dot =
-           time until (faster + cool→coral as it nears). Head = now, riding the
-           same wavy dot-path so it lands on the next prayer when the time comes. -->
+      <!-- Next prayer: a calm ping (two slow rings) around a small beacon, cool →
+           coral as it nears. Now: one small point where the arm meets the path. -->
       <g v-if="cue">
-        <path v-for="(q, i) in tail" :key="'tl' + i" :d="q.d" fill="#fcd34d" :opacity="q.o" />
         <circle
           v-for="(r, i) in sonarRings" :key="'sn' + i"
           class="orbit-ping"
           :cx="prayerPt.x" :cy="prayerPt.y" :r="sonarMaxR"
-          fill="none" :stroke="beaconColor" stroke-width="1.6"
+          fill="none" :stroke="beaconColor" stroke-width="1.2"
           :style="{ animationDuration: sonarPeriod + 's', animationDelay: r.delay + 's', '--peak': sonarPeak }"
         />
-        <circle :cx="prayerPt.x" :cy="prayerPt.y" :r="4 + urgency * 3" :fill="beaconColor" />
-        <circle class="orbit-head-glow" :cx="headPt.x" :cy="headPt.y" :r="headR * 1.4" fill="#fff7d6" />
-        <circle :cx="headPt.x" :cy="headPt.y" :r="headR" fill="#fcd34d" stroke="rgba(8,6,2,0.6)" stroke-width="2" />
-        <circle :cx="headPt.x" :cy="headPt.y" :r="headR * 0.5" fill="#fff" />
+        <circle :cx="prayerPt.x" :cy="prayerPt.y" :r="3.4 + urgency * 1.6" :fill="beaconColor" />
+        <circle
+          :cx="headPt.x.toFixed(2)" :cy="headPt.y.toFixed(2)" :r="(3.8 * k).toFixed(2)"
+          :fill="nowFill" :stroke="nowStroke" :stroke-width="Math.max(1.2, 1.3 * k).toFixed(2)"
+          :style="{ filter: nowGlow }"
+        />
       </g>
 
       <!-- since / until read out as a caption banner anchored at the dial's
            bottom (6 o'clock). Fixed there — rather than riding the prayer dots —
            so the curved text stays upright at every position and never twists;
-           the comet + dots already carry "where", so the banner only carries
+           the now-point + dots already carry "where", so the banner only carries
            "how long". A soft dark band keeps it legible over the ring. Large orbs
            stack two lines ("in" bright above "ago" muted); the tray packs one. -->
       <template v-if="cue && showLabels">
@@ -63,13 +115,6 @@
         </template>
       </template>
     </svg>
-
-    <!-- centre (overridable) -->
-    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <slot>
-        <PrototypesCelestialMoonPhase :phase="moonPhase" :size="Math.round(size * 0.42)" halo halo-color="#cdd6ff" />
-      </slot>
-    </div>
 
     <button
       v-for="(p, i) in prayers"
@@ -105,7 +150,8 @@
 
 <script lang="ts" setup>
 import { ref, reactive, computed, onBeforeUnmount, useId } from "vue";
-import { contourPath, ptAt, frac, toMin, bracket, tailRibbon, urgencyColor, fmtDur, type BumpPrayer } from "./bump";
+import { contourPath, ptAt, frac, toMin, bracket, urgencyColor, fmtDur, type BumpPrayer } from "./bump";
+import { sunAltitudeDeg, cotD, gnomonWeights, sunInk, mixRgb, rgb, armPath, MOONLIGHT } from "@/utils/moon/gnomon";
 
 const props = withDefaults(
   defineProps<{
@@ -116,19 +162,23 @@ const props = withDefaults(
     baseAmp?: number;
     hoverAmp?: number;
     sigma?: number;
-    /** Draw the comet · sonar cue (tail = since, sonar = until). Off → plain dial. */
+    /** Draw the now-marker (the moon as gnomon) + next-prayer ping. Off → plain dial. */
     cue?: boolean;
     /** Show the since / until caption pills on the orbit. Auto-hidden when small. */
     cueLabels?: boolean;
-    /** Seconds-of-day for the now position. Sub-minute precision → the comet
+    /** Seconds-of-day for the now position. Sub-minute precision → the marker
      *  advances smoothly each tick instead of stepping once a minute (which looks
      *  frozen next to a ticking countdown). Falls back to `time` when omitted. */
     nowSeconds?: number;
     /** Scales the sonar ping opacity (0 = off, 1 = full). Lower it to keep the
      *  pings from competing with nearby labels. */
     sonarIntensity?: number;
+    /** Observer position for the sun's real altitude (the shadow's length). null → no
+     *  arm, just the now-point (day/night from the prayer times). */
+    lat?: number | null;
+    lng?: number | null;
   }>(),
-  { size: 320, baseAmp: 0.022, hoverAmp: 0.07, sigma: 0.022, cue: true, cueLabels: true, sonarIntensity: 1 }
+  { size: 320, baseAmp: 0.022, hoverAmp: 0.07, sigma: 0.022, cue: true, cueLabels: true, sonarIntensity: 0.6, lat: null, lng: null }
 );
 
 const LABELS: Record<string, string> = {
@@ -228,13 +278,11 @@ const nowSecNorm = computed(() =>
 );
 const nowFrac = computed(() => (nowSecNorm.value == null ? frac(props.time) : nowSecNorm.value / 86400));
 
-// ── Comet · sonar cue ──────────────────────────────────────────────────────
-const TAIL_CAP = 150; // minutes the tail can span before it saturates
-const BEACON_RANGE = 100; // minutes out at which the sonar starts reacting
-const SONAR_RINGS = 4;
-const headR = props.size * 0.019;
-const sonarMaxR = props.size * 0.095;
-// The prayer dots ride outerR-0.016; the comet rides that exact (live) path so it
+// ── Next-prayer ping ───────────────────────────────────────────────────────
+const BEACON_RANGE = 100; // minutes out at which the ping starts reacting
+const SONAR_RINGS = 2;
+const sonarMaxR = props.size * 0.062;
+// The prayer dots ride outerR-0.016; the now-point rides that exact (live) path so it
 // lands on them and tracks the hover bumps.
 const rEdge = (t: number) => outerR(t) - props.size * 0.016;
 
@@ -242,22 +290,107 @@ const nowMin = computed(() => (nowSecNorm.value == null ? toMin(props.time) : no
 const br = computed(() => bracket(props.prayers, nowMin.value));
 const headPt = computed(() => ptAt(nowFrac.value, rEdge(nowFrac.value), C, C));
 const prayerPt = computed(() => ptAt(br.value.nextMin / 1440, rEdge(br.value.nextMin / 1440), C, C));
-const tail = computed(() => tailRibbon(nowMin.value, Math.min(br.value.sinceMin, TAIL_CAP), rEdge, props.size * 0.016, C, C));
 const urgency = computed(() => Math.max(0, Math.min(1, 1 - br.value.untilMin / BEACON_RANGE)));
 const beaconColor = computed(() => urgencyColor(urgency.value));
 // Quantise the ping speed into a few buckets. Colour (stroke) and peak opacity
 // stay smooth — they don't restart the CSS animation — but animation-duration
 // does, so it must change rarely or the rings visibly jump every minute.
-const SONAR_PERIODS = [2.4, 1.7, 1.1, 0.6];
+const SONAR_PERIODS = [3.6, 3.0, 2.4, 1.8];
 const sonarPeriod = computed(() => SONAR_PERIODS[Math.min(3, Math.floor(urgency.value * 4))]!);
-const sonarPeak = computed(() => ((0.12 + urgency.value * 0.6) * props.sonarIntensity).toFixed(2));
+const sonarPeak = computed(() => ((0.1 + urgency.value * 0.35) * props.sonarIntensity).toFixed(3));
 const sonarRings = computed(() =>
   Array.from({ length: SONAR_RINGS }, (_, k) => ({ delay: -(k * sonarPeriod.value) / SONAR_RINGS }))
 );
 
+// ── Now-marker · the moon as gnomon ───────────────────────────────────────
+// Arm / point scale: never thinner than 80 % at phone size.
+const k = Math.max(0.8, props.size / 500);
+// Moon disc radius: the centre moon is 0.42 × 0.92 of the orbit (see MoonSphere callers).
+const moonR = (props.size * 0.42 * 0.92) / 2;
+const r0 = moonR + 0.5;
+const rMax = Ro + baseA * 2.5 + 12;
+const MOONLIGHT_CSS = rgb(MOONLIGHT);
+const f2 = (n: number) => n.toFixed(2);
+// The arms live between the moon's limb and the ring's outer contour.
+const limbPath = `M ${f2(C - moonR)},${f2(C)} a ${f2(moonR)},${f2(moonR)} 0 1,0 ${f2(2 * moonR)},0 a ${f2(moonR)},${f2(moonR)} 0 1,0 ${f2(-2 * moonR)},0 Z`;
+const armClip = computed(() => `path(evenodd, '${outerPath.value} ${limbPath}')`);
+const armTurn = computed(() => ({
+  transformOrigin: `${C}px ${C}px`,
+  transform: `rotate(${(nowFrac.value * 360).toFixed(2)}deg)`,
+  willChange: "transform",
+}));
+
+const { getNow } = useMockTime();
+const hasPlace = computed(() => props.lat != null && props.lng != null);
+// The orbit's clock is local seconds-of-day; map a minute-of-day back to an instant today.
+function instantAt(min: number): Date {
+  const d = getNow();
+  d.setHours(0, 0, 0, 0);
+  return new Date(d.getTime() + min * 60_000);
+}
+// Real (apparent) sun altitude now, in degrees; null without a place.
+const sunAlt = computed(() =>
+  hasPlace.value ? sunAltitudeDeg(instantAt(nowMin.value), props.lat!, props.lng!) : null
+);
+// Shadow length (in gnomon heights) that exactly reaches the prayer path: today's
+// ʿAṣr. Recomputed only when the day, place or ʿAṣr time changes.
+const dayKey = computed(() => {
+  void nowMin.value;
+  return getNow().toDateString();
+});
+const asrShadow = computed(() => {
+  void dayKey.value;
+  if (!hasPlace.value) return null;
+  const asr = props.prayers.find((p) => p.key === "asr");
+  if (asr) return cotD(sunAltitudeDeg(instantAt(toMin(asr.time)), props.lat!, props.lng!));
+  // No ʿAṣr on the dial: the classic mithl — the noon shadow plus one gnomon.
+  let best = -90;
+  for (let m = 600; m <= 780; m += 2) best = Math.max(best, sunAltitudeDeg(instantAt(m), props.lat!, props.lng!));
+  return cotD(best) + 1;
+});
+// Without a place, fall back to the prayer times: sun up between Sunrise and Maghrib.
+const altOrGuess = computed(() => {
+  if (sunAlt.value != null) return sunAlt.value;
+  const sr = props.prayers.find((p) => p.key === "sunrise");
+  const ss = props.prayers.find((p) => p.key === "maghrib");
+  if (!sr || !ss) return -18;
+  return nowMin.value >= toMin(sr.time) && nowMin.value < toMin(ss.time) ? 30 : -18;
+});
+// Cross-fade weights; the arms need a real sun position.
+const gn = computed(() => {
+  const w = gnomonWeights(altOrGuess.value);
+  return hasPlace.value ? w : { ...w, sun: 0, moon: 0 };
+});
+// Sky tint quantised to whole degrees so the fill only changes a few times an hour.
+const inkRgb = computed(() => sunInk(Math.round(altOrGuess.value)));
+const ink = computed(() => rgb(inkRgb.value));
+
+// Tip of the shadow: L / L(ʿAṣr) of the way from the band's inner edge to the prayer
+// path, so it lands on the path exactly at ʿAṣr. Bucketed to 0.1 px → the path
+// strings below only rebuild when the length visibly changes.
+const shadowTip = computed(() => {
+  if (sunAlt.value == null || asrShadow.value == null) return 0;
+  const rIn = Ri + 2;
+  const Rt = rIn + (cotD(sunAlt.value) / asrShadow.value) * (rEdge(nowFrac.value) - rIn);
+  return Math.round(Math.min(rMax, Rt) * 10) / 10;
+});
+const beamTip = computed(() => Math.round(rEdge(nowFrac.value) * 10) / 10);
+const shadowCore = computed(() => armPath(C, r0, shadowTip.value, 4.2 * k, k));
+const shadowSoft = computed(() => armPath(C, r0, shadowTip.value + 2 * k, 7 * k, k));
+const beamSoft = computed(() => armPath(C, r0, beamTip.value + 3 * k, 4.6 * k, k));
+const beamCore = computed(() => armPath(C, r0, beamTip.value, 1.5 * k, k));
+
+// Now: ink with a white rim by day, moon-white with a dark rim (and a tiny glow) by night.
+const nowFill = computed(() => rgb(mixRgb([246, 249, 255], inkRgb.value, gn.value.day)));
+const nowStroke = computed(() => rgb(mixRgb([8, 12, 32], [255, 255, 255], gn.value.day), 0.9));
+const nowGlow = computed(() => {
+  const day = gn.value.day;
+  return day < 0.999 ? `drop-shadow(0 0 ${f2(2.6 * k)}px rgba(214,226,255,${f2((1 - day) * 0.85)}))` : "none";
+});
+
 // since / until read out as a caption banner anchored at the dial's bottom
 // (6 o'clock). Fixing the position there — instead of riding the prayer dots —
-// keeps the curved text upright everywhere; the comet + dots already carry
+// keeps the curved text upright everywhere; the now-point + dots already carry
 // "where we are", so the banner only carries "how long". Shown down to the
 // tray's 150px orbit; hidden on tiny widget sizes.
 const showLabels = computed(() => props.cueLabels && props.size >= 140);
@@ -357,9 +490,9 @@ const conic = computed(() => {
 </script>
 
 <style scoped>
-/* Sonar pings + head glow run on the compositor (transform/opacity only) — no JS
-   rAF loop, so it stays cheap on mobile. transform-box/origin scale each ring
-   around its own centre (the next-prayer dot). */
+/* Next-prayer pings run on the compositor (transform/opacity only) — no JS rAF
+   loop, so it stays cheap on mobile. transform-box/origin scale each ring around
+   its own centre (the next-prayer dot). */
 .orbit-ping {
   transform-box: fill-box;
   transform-origin: center;
@@ -372,17 +505,7 @@ const conic = computed(() => {
   0% { transform: scale(0.06); opacity: var(--peak, 0.4); }
   100% { transform: scale(1); opacity: 0; }
 }
-.orbit-head-glow {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orbit-head-kf 2.4s ease-in-out infinite;
-}
-@keyframes orbit-head-kf {
-  0%, 100% { transform: scale(1); opacity: 0.16; }
-  50% { transform: scale(1.45); opacity: 0.3; }
-}
 @media (prefers-reduced-motion: reduce) {
-  .orbit-head-glow { animation: none; opacity: 0.2; }
-  .orbit-ping { animation: none; opacity: var(--peak, 0.3); transform: scale(0.72); }
+  .orbit-ping { animation: none; display: none; }
 }
 </style>

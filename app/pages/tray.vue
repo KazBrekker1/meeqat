@@ -21,7 +21,8 @@
             :now-seconds="nowSec"
             :moon-phase="moonPhase"
             :size="180"
-            :sonar-intensity="0.25"
+            :lat="coords.lat"
+            :lng="coords.lng"
           >
             <!-- Flat moon until the map is decoded (after first paint), then the real one -->
             <PrototypesCelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" />

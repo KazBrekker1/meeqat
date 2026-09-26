@@ -45,7 +45,8 @@
               :now-seconds="nowSecondsLive"
               :moon-phase="moonPhase"
               :size="orbitSize"
-              :sonar-intensity="0.25"
+              :lat="activeCoords?.lat ?? null"
+              :lng="activeCoords?.lng ?? null"
             >
               <!-- Same disc size as the orbit's default flat moon (0.42 × 0.92 of the orbit) -->
               <PrototypesCelestialMoonSphere
