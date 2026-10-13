@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/pocketbase/core"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -28,7 +29,8 @@ var prayerOrder = []string{"Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"}
 
 var httpClient = &http.Client{Timeout: httpTimeout}
 
-// Register mounts GET /cal/prayers.ics on se.Router. No auth required.
+// Register mounts GET /cal/prayers.ics on se.Router. No auth required; the
+// per-IP rate limit is the "/cal/" rule in the settings (migration 5).
 func Register(se *core.ServeEvent, app core.App) {
 	c := newCache()
 
@@ -38,8 +40,16 @@ func Register(se *core.ServeEvent, app core.App) {
 }
 
 type params struct {
-	lat     float64
-	lng     float64
+	// lat/lng as they appear in the event UIDs (3 decimals, unchanged so
+	// subscribed calendars keep their events).
+	lat float64
+	lng float64
+	// keyLat/keyLng are what AlAdhan is asked for and what the cache is
+	// keyed by: 2 decimals (~1 km, a few seconds of prayer time), so nearby
+	// subscribers share a fetch and a sweep over coordinates has 100x fewer
+	// distinct locations to ask for.
+	keyLat  float64
+	keyLng  float64
 	method  int
 	tz      string
 	name    string
@@ -51,12 +61,13 @@ type params struct {
 func parseParams(e *core.RequestEvent) (*params, error) {
 	q := e.Request.URL.Query()
 
+	// The range checks also reject NaN and ±Inf, which ParseFloat accepts.
 	lat, err := strconv.ParseFloat(q.Get("lat"), 64)
-	if err != nil {
+	if err != nil || !(lat >= -90 && lat <= 90) {
 		return nil, fmt.Errorf("invalid lat")
 	}
 	lng, err := strconv.ParseFloat(q.Get("lng"), 64)
-	if err != nil {
+	if err != nil || !(lng >= -180 && lng <= 180) {
 		return nil, fmt.Errorf("invalid lng")
 	}
 
@@ -99,6 +110,8 @@ func parseParams(e *core.RequestEvent) (*params, error) {
 	return &params{
 		lat:     round3(lat),
 		lng:     round3(lng),
+		keyLat:  round2(lat),
+		keyLng:  round2(lng),
 		method:  method,
 		tz:      tz,
 		name:    name,
@@ -110,6 +123,10 @@ func parseParams(e *core.RequestEvent) (*params, error) {
 
 func round3(v float64) float64 {
 	return math.Round(v*1000) / 1000
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
 }
 
 func handle(e *core.RequestEvent, c *cache) error {
@@ -202,7 +219,7 @@ type aladhanResponse struct {
 func fetchMonth(p *params, year, month int) ([]dayTimings, error) {
 	u := fmt.Sprintf(
 		"https://api.aladhan.com/v1/calendar/%d/%d?latitude=%g&longitude=%g&method=%d&timezonestring=%s&shafaq=general",
-		year, month, p.lat, p.lng, p.method, url.QueryEscape(p.tz),
+		year, month, p.keyLat, p.keyLng, p.method, url.QueryEscape(p.tz),
 	)
 
 	resp, err := httpClient.Get(u)
@@ -276,49 +293,71 @@ type cache struct {
 	mu      sync.Mutex
 	entries map[string]*cacheEntry
 	order   []string // insertion order, for bounded eviction
+
+	// flight collapses concurrent misses for one key into a single upstream
+	// request; the other callers wait for its result.
+	flight singleflight.Group
+	fetch  func(p *params, year, month int) ([]dayTimings, error)
 }
 
 func newCache() *cache {
-	return &cache{entries: make(map[string]*cacheEntry)}
+	return &cache{entries: make(map[string]*cacheEntry), fetch: fetchMonth}
 }
 
 func cacheKey(p *params, year, month int) string {
-	return fmt.Sprintf("%.3f,%.3f,%d,%s,%d,%d", p.lat, p.lng, p.method, p.tz, year, month)
+	return fmt.Sprintf("%.2f,%.2f,%d,%s,%d,%d", p.keyLat, p.keyLng, p.method, p.tz, year, month)
+}
+
+func (c *cache) lookup(key string) (entry *cacheEntry, fresh bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.entries[key]
+	return entry, ok && time.Since(entry.fetchedAt) < cacheTTL
 }
 
 func (c *cache) getMonth(p *params, year, month int) ([]dayTimings, error) {
 	key := cacheKey(p, year, month)
 
-	c.mu.Lock()
-	entry, ok := c.entries[key]
-	c.mu.Unlock()
-
-	if ok && time.Since(entry.fetchedAt) < cacheTTL {
+	if entry, fresh := c.lookup(key); fresh {
 		return entry.days, nil
 	}
 
-	fresh, err := fetchMonth(p, year, month)
-	if err != nil {
-		if ok {
-			// stale-but-present beats a hard failure
+	days, err, _ := c.flight.Do(key, func() (any, error) {
+		// Another request may have filled the entry since the miss above.
+		entry, fresh := c.lookup(key)
+		if fresh {
 			return entry.days, nil
 		}
+
+		days, err := c.fetch(p, year, month)
+		if err != nil {
+			if entry != nil {
+				// stale-but-present beats a hard failure
+				return entry.days, nil
+			}
+			return nil, err
+		}
+
+		c.mu.Lock()
+		if _, exists := c.entries[key]; !exists {
+			c.order = append(c.order, key)
+		}
+		c.entries[key] = &cacheEntry{days: days, fetchedAt: time.Now()}
+		for len(c.order) > maxCacheEntries {
+			oldest := c.order[0]
+			c.order = c.order[1:]
+			delete(c.entries, oldest)
+		}
+		c.mu.Unlock()
+
+		return days, nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	c.mu.Lock()
-	if _, exists := c.entries[key]; !exists {
-		c.order = append(c.order, key)
-	}
-	c.entries[key] = &cacheEntry{days: fresh, fetchedAt: time.Now()}
-	for len(c.order) > maxCacheEntries {
-		oldest := c.order[0]
-		c.order = c.order[1:]
-		delete(c.entries, oldest)
-	}
-	c.mu.Unlock()
-
-	return fresh, nil
+	return days.([]dayTimings), nil
 }
 
 // ---- ICS building ----

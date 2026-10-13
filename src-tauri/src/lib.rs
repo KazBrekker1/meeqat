@@ -71,17 +71,14 @@ pub fn run() {
             together::together_open_room,
         ]);
 
-    // Positioner plugin is desktop-only (kept for the page's drag/position helpers)
     #[cfg(desktop)]
-    let builder = builder
-        .plugin(tauri_plugin_positioner::init())
-        .setup(|app| {
-            tray::setup(app.handle())?;
-            notify::setup(app.handle());
-            setup_deep_links(app.handle());
-            together::setup(app.handle());
-            Ok(())
-        });
+    let builder = builder.setup(|app| {
+        tray::setup(app.handle())?;
+        notify::setup(app.handle());
+        setup_deep_links(app.handle());
+        together::setup(app.handle());
+        Ok(())
+    });
 
     // macOS: the tray popover is an NSPanel so it can appear over full-screen apps.
     #[cfg(target_os = "macos")]

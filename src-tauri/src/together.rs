@@ -7,7 +7,8 @@
 //! - keeps one SSE connection to `{url}/api/realtime` while signed in,
 //! - notifies about calls other people start ("Ahmed started Asr · Musalla B2"),
 //! - arms a reminder 5 min before the meeting time of finalized calls I joined
-//!   (through notify.rs's scheduler),
+//!   (through notify.rs's scheduler), or reminds at once when less than that is left,
+//! - tells the webview when the session stopped being valid (`together:session-expired`),
 //! - keeps the active calls for the tray popover (`together:calls` + `together_get_calls`).
 //!
 //! PocketBase v0.40.4 realtime (apis/realtime.go, tools/subscriptions):
@@ -38,12 +39,19 @@ use crate::notify::{self, now_ms, ScheduledNotification};
 const CALLS_EVENT: &str = "together:calls";
 /// Asks the main window to route to a room (payload: the room id).
 const OPEN_ROOM_EVENT: &str = "together:open-room";
+/// Sent to the webview when the server no longer accepts the session's token (expired
+/// after 30 days, or revoked); the listener has stopped. Payload: `{ "userId": "<id>" }`.
+/// The webview should sign in again (and hand over the new session) to resume alerts.
+const SESSION_EXPIRED_EVENT: &str = "together:session-expired";
 /// Calls older than this are not announced (e.g. already running when the app starts).
 const FRESH_MS: i64 = 45 * 60 * 1000;
 const REMIND_BEFORE_MS: i64 = 5 * 60 * 1000;
 /// The server closes an idle stream after 5 min; if not even that close arrives, the
 /// connection died silently (sleep, network change) — give up on it.
 const READ_IDLE: Duration = Duration::from_secs(6 * 60);
+/// Ordinary requests (everything but the SSE stream, which READ_IDLE covers): a
+/// connection that died while the machine slept would otherwise hang them forever.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const BACKOFF_MIN_MS: u64 = 1_000;
 const BACKOFF_MAX_MS: u64 = 60_000;
 
@@ -163,6 +171,7 @@ pub async fn together_join_call(app: AppHandle, call_id: String) -> Result<(), S
         .post(format!("{}/api/collections/participants/records", session.url))
         .header(reqwest::header::AUTHORIZATION, &session.token)
         .json(&json!({ "call": call_id, "user": session.user_id }))
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("Couldn't reach Pray Together: {e}"))?;
@@ -301,6 +310,13 @@ fn place_line(c: &ActiveCall) -> String {
         .join(" · ")
 }
 
+/// "Asr in 5 minutes"; `left_ms` (time until the meeting) is rounded up to a minute.
+fn reminder_title(prayer: &str, left_ms: i64) -> String {
+    let minutes = ((left_ms + 59_999) / 60_000).max(1);
+    let unit = if minutes == 1 { "minute" } else { "minutes" };
+    format!("{} in {minutes} {unit}", prayer_name(prayer))
+}
+
 /// Side effects to run once the state lock is released.
 struct Effects {
     notifications: Vec<(String, String)>,
@@ -344,15 +360,14 @@ fn reconcile(app: &AppHandle, st: &mut State) -> Effects {
     }
 
     // Reminders: finalized calls I joined, 5 min before the meeting time.
-    let mut want: HashMap<String, (i64, &ActiveCall)> = HashMap::new();
+    let mut want: HashMap<String, (i64, i64, &ActiveCall)> = HashMap::new();
     for c in &snapshot {
         if c.status != "finalized" || !c.joined {
             continue;
         }
         if let Some(meet) = c.meet_at.as_deref().and_then(parse_pb_date) {
-            let at = meet - REMIND_BEFORE_MS;
-            if at > now {
-                want.insert(c.id.clone(), (at, c));
+            if meet > now {
+                want.insert(c.id.clone(), (meet - REMIND_BEFORE_MS, meet, c));
             }
         }
     }
@@ -361,14 +376,22 @@ fn reconcile(app: &AppHandle, st: &mut State) -> Effects {
         st.reminders.remove(&id);
         notify::set_reminder(app, &reminder_key(&id), None);
     }
-    for (id, (at, c)) in want {
+    for (id, (at, meet, c)) in want {
+        // Same time as before: already armed, or already shown.
         if st.reminders.get(&id) == Some(&at) {
             continue;
         }
         st.reminders.insert(id.clone(), at);
+        if at <= now {
+            // Finalized (or joined) with less than 5 minutes to go: there is nothing
+            // left to schedule, so remind now, with the time that's really left.
+            notify::set_reminder(app, &reminder_key(&id), None);
+            notifications.push((reminder_title(&c.prayer, meet - now), place_line(c)));
+            continue;
+        }
         let reminder = ScheduledNotification {
             at_ms: at,
-            title: format!("{} in 5 minutes", prayer_name(&c.prayer)),
+            title: reminder_title(&c.prayer, REMIND_BEFORE_MS),
             body: place_line(c),
             silent: false,
         };
@@ -401,17 +424,73 @@ fn parse_pb_date(s: &str) -> Option<i64> {
 
 // --- Realtime ----------------------------------------------------------------
 
+/// Why a connection ended.
+enum Failure {
+    /// The server no longer accepts the token: reconnecting can't help.
+    Expired,
+    Other(String),
+}
+
+impl From<String> for Failure {
+    fn from(e: String) -> Self {
+        Failure::Other(e)
+    }
+}
+
 async fn run(app: AppHandle, session: Session) {
     let http = app.state::<Together>().http.clone();
     let mut attempt: u32 = 0;
     loop {
         match connect(&app, &http, &session, &mut attempt).await {
             Ok(()) => {}
-            Err(e) => eprintln!("[together] realtime: {e}"),
+            Err(Failure::Expired) => {
+                expire(&app, &session);
+                return;
+            }
+            Err(Failure::Other(e)) => eprintln!("[together] realtime: {e}"),
         }
         let delay = backoff(attempt);
         attempt = attempt.saturating_add(1);
         tokio::time::sleep(delay).await;
+    }
+}
+
+/// The session's token stopped working: forget the session (as on sign-out) and tell
+/// the webview, instead of reconnecting forever as a guest who is sent nothing.
+fn expire(app: &AppHandle, session: &Session) {
+    {
+        let mut st = lock(app);
+        // The webview may have handed over a newer session in the meantime.
+        if st.session.as_ref() != Some(session) {
+            return;
+        }
+        st.task = None; // this task; it returns right after
+        st.session = None;
+        reset(app, &mut st);
+    }
+    eprintln!("[together] session expired; listener stopped");
+    let _ = app.emit(CALLS_EVENT, Vec::<ActiveCall>::new());
+    let _ = app.emit(SESSION_EXPIRED_EVENT, json!({ "userId": session.user_id }));
+}
+
+/// Whether the server still accepts the token. PocketBase treats an expired or
+/// invalid token as a guest instead of answering 401: subscribing succeeds and the
+/// lists come back empty, so the listener would go quiet without any error. Reading
+/// my own user record (view rule: signed in) tells the two apart.
+async fn session_valid(http: &reqwest::Client, s: &Session) -> Result<bool, String> {
+    let status = http
+        .get(format!("{}/api/collections/users/records/{}?fields=id", s.url, encode(&s.user_id)))
+        .header(reqwest::header::AUTHORIZATION, &s.token)
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| format!("session check failed: {e}"))?
+        .status();
+    match status.as_u16() {
+        200..=299 => Ok(true),
+        // As a guest the view rule hides the record (404); 401/403 for good measure.
+        401 | 403 | 404 => Ok(false),
+        _ => Err(format!("session check failed: HTTP {status}")),
     }
 }
 
@@ -436,13 +515,18 @@ fn encode(s: &str) -> String {
 }
 
 /// One connection: connect, subscribe, refetch, then apply events until it ends.
-async fn connect(app: &AppHandle, http: &reqwest::Client, s: &Session, attempt: &mut u32) -> Result<(), String> {
+async fn connect(app: &AppHandle, http: &reqwest::Client, s: &Session, attempt: &mut u32) -> Result<(), Failure> {
+    if !session_valid(http, s).await? {
+        return Err(Failure::Expired);
+    }
+
     let realtime = format!("{}/api/realtime", s.url);
-    let mut stream = http
-        .get(&realtime)
-        .header(reqwest::header::ACCEPT, "text/event-stream")
-        .send()
+    // No request timeout here (it would also cut the stream short): only the wait
+    // for the response headers is bounded; after that READ_IDLE watches the stream.
+    let connecting = http.get(&realtime).header(reqwest::header::ACCEPT, "text/event-stream").send();
+    let mut stream = tokio::time::timeout(REQUEST_TIMEOUT, connecting)
         .await
+        .map_err(|_| "connect failed: timed out".to_string())?
         .and_then(|r| r.error_for_status())
         .map_err(|e| format!("connect failed: {e}"))?;
     let mut sse = SseParser::default();
@@ -460,11 +544,12 @@ async fn connect(app: &AppHandle, http: &reqwest::Client, s: &Session, attempt: 
         .post(&realtime)
         .header(reqwest::header::AUTHORIZATION, &s.token)
         .json(&json!({ "clientId": client_id, "subscriptions": [calls_topic, "participants/*"] }))
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await
         .map_err(|e| format!("subscribe failed: {e}"))?;
     if !res.status().is_success() {
-        return Err(format!("subscribe failed: HTTP {}", res.status()));
+        return Err(format!("subscribe failed: HTTP {}", res.status()).into());
     }
 
     // Subscribed first, so nothing falls between the fetch and the live events.
@@ -495,6 +580,7 @@ async fn get_items(http: &reqwest::Client, s: &Session, url: reqwest::Url) -> Re
     let res = http
         .get(url)
         .header(reqwest::header::AUTHORIZATION, &s.token)
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await
         .and_then(|r| r.error_for_status())
@@ -601,5 +687,25 @@ async fn next_event(stream: &mut reqwest::Response, sse: &mut SseParser) -> Resu
             Ok(Ok(None)) => return Err("stream closed by the server".into()),
             Ok(Ok(Some(bytes))) => sse.push(&bytes),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reminder_title_rounds_the_time_left_up() {
+        assert_eq!(reminder_title("asr", REMIND_BEFORE_MS), "Asr in 5 minutes");
+        assert_eq!(reminder_title("asr", 3 * 60_000 + 1), "Asr in 4 minutes");
+        assert_eq!(reminder_title("jumuah", 60_000), "Jumu'ah in 1 minute");
+        assert_eq!(reminder_title("isha", 5_000), "Isha in 1 minute");
+    }
+
+    #[test]
+    fn parses_pocketbase_dates() {
+        assert_eq!(parse_pb_date("1970-01-01 00:00:00.000Z"), Some(0));
+        assert_eq!(parse_pb_date("2026-09-25 13:05:00.250Z"), Some(1_790_341_500_250));
+        assert_eq!(parse_pb_date(""), None);
     }
 }

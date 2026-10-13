@@ -52,6 +52,24 @@ func Register(se *core.ServeEvent, app core.App) {
 	registerHandoff(se, kf, issuer, audience, newHandoffStore())
 }
 
+// RegisterHooks lets a user read their own `sanad_id`. The field is hidden
+// from API responses (other signed-in users can view a user record), but the
+// web client compares it with the signed-in Sanad account to decide whether
+// a stored session can be reused instead of exchanging again. This covers
+// the responses PocketBase builds for the caller's own record (auth-refresh,
+// record views, expands, realtime events); exchange and redeem write the
+// record themselves and unhide it there.
+func RegisterHooks(app core.App) {
+	app.OnRecordEnrich("users").BindFunc(func(e *core.RecordEnrichEvent) error {
+		if e.RequestInfo != nil && e.RequestInfo.Auth != nil &&
+			e.RequestInfo.Auth.Id == e.Record.Id &&
+			e.RequestInfo.Auth.Collection().Id == e.Record.Collection().Id {
+			e.Record.Unhide("sanad_id")
+		}
+		return e.Next()
+	})
+}
+
 func handleExchange(e *core.RequestEvent, kf keyfunc.Keyfunc, issuer, audience string) error {
 	var body exchangeRequest
 	if err := e.BindBody(&body); err != nil || strings.TrimSpace(body.Token) == "" {
@@ -77,6 +95,9 @@ func handleExchange(e *core.RequestEvent, kf keyfunc.Keyfunc, issuer, audience s
 	if err != nil {
 		return apis.NewInternalServerError("could not issue token", nil)
 	}
+
+	// The user's own record, written without the record enrich hooks.
+	record.Unhide("sanad_id")
 
 	return e.JSON(200, map[string]any{
 		"token":  token,

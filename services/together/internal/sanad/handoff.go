@@ -130,6 +130,8 @@ func registerHandoff(se *core.ServeEvent, kf keyfunc.Keyfunc, issuer, audience s
 		if err != nil {
 			return apis.NewInternalServerError("could not issue token", nil)
 		}
+		// The user's own record, written without the record enrich hooks.
+		record.Unhide("sanad_id")
 		return e.JSON(200, map[string]any{"token": token, "record": record})
 	})
 }

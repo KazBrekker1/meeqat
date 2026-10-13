@@ -47,6 +47,7 @@ func main() {
 
 	calls.RegisterHooks(app)
 	rooms.RegisterHooks(app)
+	sanad.RegisterHooks(app)
 	cleanup.Register(app)
 
 	if err := app.Start(); err != nil {

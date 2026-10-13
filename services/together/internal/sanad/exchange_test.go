@@ -74,6 +74,7 @@ func newTestServer(t *testing.T) (*tests.TestApp, *httptest.Server, *rsa.Private
 
 	se := &core.ServeEvent{App: testApp, Router: router}
 	sanad.Register(se, testApp)
+	sanad.RegisterHooks(testApp)
 
 	mux, err := router.BuildMux()
 	if err != nil {

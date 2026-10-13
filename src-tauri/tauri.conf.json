@@ -84,7 +84,40 @@
 			}
 		],
 		"security": {
-			"csp": null
+			"csp": {
+				"default-src": "'self'",
+				"script-src": "'self' 'wasm-unsafe-eval'",
+				"style-src": "'self' 'unsafe-inline'",
+				"img-src": "'self' data: blob: https:",
+				"font-src": "'self' data:",
+				"media-src": "'self' data: blob:",
+				"worker-src": "'self' blob:",
+				"child-src": "'self' blob:",
+				"connect-src": [
+					"'self'",
+					"ipc:",
+					"http://ipc.localhost",
+					"data:",
+					"blob:",
+					"https://together.sanad.ink",
+					"https://auth.sanad.ink",
+					"https://api.aladhan.com",
+					"https://aladhan.api.islamic.network",
+					"https://get.geojs.io",
+					"https://nominatim.openstreetmap.org",
+					"https://photon.komoot.io",
+					"https://api.github.com",
+					"https://basemaps.cartocdn.com",
+					"https://*.basemaps.cartocdn.com",
+					"https://api.iconify.design",
+					"https://api.simplesvg.com",
+					"https://api.unisvg.com"
+				],
+				"object-src": "'none'",
+				"base-uri": "'self'",
+				"form-action": "'self'"
+			},
+			"dangerousDisableAssetCspModification": ["style-src"]
 		},
 		"macOSPrivateApi": true
 	}
