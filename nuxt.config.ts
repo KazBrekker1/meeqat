@@ -44,6 +44,18 @@ export default defineNuxtConfig({
   },
   css: ["@/assets/css/main.css"],
   icon: {
+    // Ship every icon the app uses inside the bundle. Without this they are fetched
+    // from the Iconify API at runtime, so an offline launch has no icons at all.
+    clientBundle: {
+      scan: true,
+      sizeLimitKb: 512,
+      icons: [
+        // named in .ts data (prayer icons, reminders), which the scan doesn't see
+        "lucide:book-open", "lucide:cloud-sun", "lucide:moon-star", "lucide:sun-medium", "lucide:sunset",
+        // Nuxt UI's own defaults (calendar arrows, toast close, select check, spinners…)
+        "lucide:arrow-down", "lucide:arrow-left", "lucide:arrow-right", "lucide:arrow-up", "lucide:arrow-up-right", "lucide:check", "lucide:chevron-down", "lucide:chevron-left", "lucide:chevron-right", "lucide:chevron-up", "lucide:chevrons-left", "lucide:chevrons-right", "lucide:circle-alert", "lucide:circle-check", "lucide:circle-x", "lucide:copy", "lucide:copy-check", "lucide:ellipsis", "lucide:eye", "lucide:eye-off", "lucide:file", "lucide:folder", "lucide:folder-open", "lucide:grip-vertical", "lucide:hash", "lucide:info", "lucide:lightbulb", "lucide:loader-circle", "lucide:menu", "lucide:minus", "lucide:monitor", "lucide:moon", "lucide:panel-left-close", "lucide:panel-left-open", "lucide:plus", "lucide:rotate-ccw", "lucide:search", "lucide:square", "lucide:sun", "lucide:terminal", "lucide:triangle-alert", "lucide:upload", "lucide:x",
+      ],
+    },
     customCollections: [
       {
         prefix: "local",
