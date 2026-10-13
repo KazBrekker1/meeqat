@@ -15,7 +15,7 @@ export type CacheMap = Record<string, CachedDay>; // key: YYYY-MM-DD
 /**
  * Payload for the `meeqat:tray:update` event (main window → tray window + tray
  * icon). Single source of truth for the IPC event contract — emitted by
- * index.vue, consumed by tray.vue (popover) and tray.client.ts (menu-bar title).
+ * usePrayerRuntime, consumed by tray.vue (popover) and tray.client.ts (menu-bar title).
  * All fields optional: the 1s watcher sends a live subset, the 30s watcher the
  * full snapshot.
  */
