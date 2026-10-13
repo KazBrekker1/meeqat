@@ -4,6 +4,7 @@ import {
   getUserTimezone,
   parseYyyyMmDd,
   formatDdMmYyyy,
+  parseTimeToMinutes,
 } from "@/utils/time";
 import {
   buildTimingsByCoordinatesUrl,
@@ -412,9 +413,8 @@ export function usePrayerFetch() {
       const cached = await cache.getCachedDay(currentOptionsKey, getDateKey(tomorrow));
       const fajrRaw = cached?.timings?.Fajr;
       if (!fajrRaw) return null;
-      const m = String(fajrRaw).match(/(\d{1,2}):(\d{2})/);
-      if (!m) return null;
-      const minutes = Number(m[1]) * 60 + Number(m[2]);
+      const minutes = parseTimeToMinutes(String(fajrRaw));
+      if (minutes == null) return null;
       const t = new Date(tomorrow);
       t.setHours(0, 0, 0, 0);
       t.setMinutes(minutes);
@@ -457,13 +457,9 @@ export function usePrayerFetch() {
       for (const { key, label } of wanted) {
         const raw = timings[key];
         if (!raw) continue;
-        const m = String(raw).match(/(\d{1,2}):(\d{2})/);
-        if (!m) continue;
-        prayers.push({
-          key,
-          label,
-          minutes: Number(m[1]) * 60 + Number(m[2]),
-        });
+        const minutes = parseTimeToMinutes(String(raw));
+        if (minutes == null) continue;
+        prayers.push({ key, label, minutes });
       }
       if (prayers.length) result.push({ dateKey, date, prayers });
     }

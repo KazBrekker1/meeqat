@@ -6,19 +6,16 @@ import {
   resetToMidnight,
   getUserTimezone,
   buildCurrentTimeRefs,
+  parseTimeToMinutes,
 } from "@/utils/time";
+import { indexOfNextToday, flagPrayers } from "@/utils/prayerClock";
+import { formatHijriVerbose } from "@/utils/hijri";
 import {
   PRAYER_ORDER,
   ADDITIONAL_PRAYER_KEYS_SET,
   PRAYER_DESCRIPTIONS,
-  ISLAMIC_MONTHS,
 } from "@/constants/prayers";
 import type { PrayerTimingItem } from "@/utils/types";
-import {
-  toCalendar,
-  CalendarDate,
-  IslamicUmalquraCalendar,
-} from "@internationalized/date";
 
 const EXTENDED_ORDER: [string, string][] = [
   ["Imsak", "Imsak"],
@@ -32,60 +29,6 @@ const EXTENDED_ORDER: [string, string][] = [
   ["Firstthird", "First Third"],
   ["Lastthird", "Last Third"],
 ];
-
-function parseTimeToMinutes(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const cleaned = raw.trim();
-  const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (ampmMatch) {
-    let hours = Number(ampmMatch[1]);
-    const minutes = Number(ampmMatch[2]);
-    const isPM = ampmMatch[3]?.toUpperCase() === "PM";
-    if (hours === 12) hours = 0;
-    return (isPM ? hours + 12 : hours) * 60 + minutes;
-  }
-  const parts = cleaned.match(/^(\d{1,2}):(\d{2})/);
-  if (!parts) return null;
-  const h = Number(parts[1]);
-  const m = Number(parts[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
-}
-
-/** "12 Rabi' al-Thani 1448 AH" for a local calendar day (Umm al-Qura). */
-export function formatHijriVerbose(date: Date): string | null {
-  try {
-    const gregorianDate = new CalendarDate(
-      date.getFullYear(),
-      date.getMonth() + 1,
-      date.getDate(),
-    );
-    const islamicDate = toCalendar(
-      gregorianDate,
-      new IslamicUmalquraCalendar(),
-    );
-    const monthName =
-      ISLAMIC_MONTHS[islamicDate.month - 1] || `Month ${islamicDate.month}`;
-    return `${islamicDate.day} ${monthName} ${islamicDate.year} AH`;
-  } catch (e) {
-    console.error("[usePrayerDisplay] Failed to format Hijri date:", e);
-    return null;
-  }
-}
-
-/** "October 13, 2026" for a local calendar day. */
-export function formatGregorianVerbose(date: Date): string | null {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
-      calendar: "gregory",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).format(date);
-  } catch {
-    return null;
-  }
-}
 
 export function usePrayerDisplay() {
   const state = usePrayerState();
@@ -212,31 +155,13 @@ export function usePrayerDisplay() {
   // so although it is re-evaluated every second, everything built on it (the
   // list below, and through it the tray, widget, orbit and notifications) only
   // recomputes when a prayer time is crossed.
-  const nextIndexToday = computed(() => {
-    const nowS = nowSecondsOfDay.value;
-    return baseTimingsList.value.findIndex(
-      (t) =>
-        typeof t.minutes === "number" && (t.minutes as number) * 60 > nowS,
-    );
-  });
+  const nextIndexToday = computed(() =>
+    indexOfNextToday(baseTimingsList.value, nowSecondsOfDay.value),
+  );
 
-  const timingsList = computed<PrayerTimingItem[]>(() => {
-    const list = baseTimingsList.value;
-    if (list.length === 0) return [];
-
-    // All of today's times have passed: the next one is tomorrow's first.
-    const allPassed = nextIndexToday.value === -1;
-    const nextIndex = allPassed ? 0 : nextIndexToday.value;
-
-    return list.map((t, idx) => ({
-      ...t,
-      isPast:
-        typeof t.minutes === "number"
-          ? idx !== nextIndex && (allPassed || idx < nextIndex)
-          : false,
-      isNext: idx === nextIndex,
-    }));
-  });
+  const timingsList = computed<PrayerTimingItem[]>(() =>
+    flagPrayers(baseTimingsList.value, nextIndexToday.value),
+  );
 
   // Single lookup for the next prayer — avoids 3x .find() per second
   const nextPrayerItem = computed(

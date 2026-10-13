@@ -1,6 +1,9 @@
 // Shared geometry for the "blooming" orbit — a ring whose radius bulges into a
 // lobe at each prayer time (see the hand sketch).
 
+import { parseTimeToMinutes } from "@/utils/time";
+import { prayerClock } from "@/utils/prayerClock";
+
 export interface BumpPrayer {
   key: string;
   time: string;
@@ -8,10 +11,8 @@ export interface BumpPrayer {
   isPast?: boolean;
 }
 
-export const toMin = (t: string) => {
-  const [h, m] = t.split(":").map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
-};
+/** Minutes after midnight for a dial time ("HH:MM"). */
+export const toMin = (t: string) => parseTimeToMinutes(t) ?? 0;
 
 /** Fraction of the day (0..1); 0 sits at the top of the dial, increasing clockwise. */
 export const frac = (t: string) => toMin(t) / 1440;
@@ -48,25 +49,18 @@ export interface OrbitBracket {
   nextKey: string;
 }
 export function bracket(prayers: BumpPrayer[], nowMin: number): OrbitBracket {
-  const sorted = [...prayers].sort((a, b) => toMin(a.time) - toMin(b.time));
-  const mins = sorted.map((p) => toMin(p.time));
+  const sorted = [...prayers]
+    .map((p) => ({ key: p.key, minutes: toMin(p.time) }))
+    .sort((a, b) => a.minutes - b.minutes);
   if (!sorted.length) return { prevMin: nowMin, nextMin: nowMin, sinceMin: 0, untilMin: 0, prevKey: "", nextKey: "" };
-  let pi = -1;
-  for (let i = 0; i < mins.length; i++) if (mins[i]! <= nowMin) pi = i;
-  let prevI: number, nextI: number, prevMin: number, nextMin: number;
-  if (pi === -1) {
-    prevI = sorted.length - 1; nextI = 0;
-    prevMin = mins[prevI]! - 1440; nextMin = mins[0]!;
-  } else if (pi === mins.length - 1) {
-    prevI = pi; nextI = 0;
-    prevMin = mins[pi]!; nextMin = mins[0]! + 1440;
-  } else {
-    prevI = pi; nextI = pi + 1;
-    prevMin = mins[pi]!; nextMin = mins[pi + 1]!;
-  }
+  const clock = prayerClock(sorted, nowMin * 60);
+  const prev = clock.previous!, next = clock.next!;
+  // Before the first time the previous one is yesterday's; after the last, the next is tomorrow's.
+  const prevMin = clock.beforeFirst ? prev.minutes - 1440 : prev.minutes;
+  const nextMin = clock.allPassed ? next.minutes + 1440 : next.minutes;
   return {
     prevMin, nextMin, sinceMin: nowMin - prevMin, untilMin: nextMin - nowMin,
-    prevKey: sorted[prevI]!.key, nextKey: sorted[nextI]!.key,
+    prevKey: prev.key, nextKey: next.key,
   };
 }
 

@@ -4,10 +4,8 @@ import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { getCityCoordinates, getCityTimezone } from "@/constants/cities";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
-import {
-  formatGregorianVerbose,
-  formatHijriVerbose,
-} from "@/composables/prayer/usePrayerDisplay";
+import { formatGregorianVerbose } from "@/utils/format";
+import { formatHijriVerbose } from "@/utils/hijri";
 import { getPlatform } from "@/utils/platform";
 import {
   pad2,

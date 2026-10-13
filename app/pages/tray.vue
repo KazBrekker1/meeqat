@@ -98,6 +98,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
 import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
 import { pad2 } from "@/utils/time";
+import { flagPrayers, indexOfNextToday } from "@/utils/prayerClock";
 import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";
 import { formatClock, prayerName } from "@/utils/together";
@@ -135,14 +136,8 @@ const moonPhase = computed(() => receivedMoonPhase.value ?? lunarPhase(localNow.
 // Prayers decorated with LOCAL next/past flags (overriding any stale pushed flags).
 const decoratedPrayers = computed(() => {
   const list = prayers.value.filter((p) => typeof p.minutes === "number");
-  const ns = nowSec.value;
-  let nextIdx = list.findIndex((p) => (p.minutes as number) * 60 > ns);
-  if (nextIdx === -1) nextIdx = 0; // all passed → next is tomorrow's first
-  return list.map((p, i) => ({
-    ...p,
-    isNext: i === nextIdx,
-    isPast: i !== nextIdx && (p.minutes as number) * 60 <= ns,
-  }));
+  // All passed → next is tomorrow's first.
+  return flagPrayers(list, indexOfNextToday(list, nowSec.value));
 });
 
 const orbitPrayers = computed(() =>

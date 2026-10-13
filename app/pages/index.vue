@@ -349,10 +349,12 @@
 <script lang="ts" setup>
 import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
-import { pad2, getSecondsOfDay } from "@/utils/time";
+import { pad2, getSecondsOfDay, parseTimeToMinutes } from "@/utils/time";
+import { prayerClock } from "@/utils/prayerClock";
+import { toHijri } from "@/utils/hijri";
 import { MAIN_PRAYER_KEYS_SET, PRAYER_ORDER } from "@/constants/prayers";
 import { iconFor } from "@/constants/prayerIcons";
-import { CalendarDate, GregorianCalendar, IslamicUmalquraCalendar, toCalendar } from "@internationalized/date";
+import { GregorianCalendar, toCalendar } from "@internationalized/date";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
 import { qiblaBearing } from "@/utils/qibla";
 import { moonView } from "@/utils/moon/sphere";
@@ -361,7 +363,7 @@ import { cue } from "@/utils/sounds";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
-import { formatGregorianVerbose } from "@/composables/prayer/usePrayerDisplay";
+import { formatGregorianVerbose } from "@/utils/format";
 
 const isWeb = getPlatform() === "web";
 const callAlerts = useCallAlerts();
@@ -528,7 +530,7 @@ const hijriToday = computed(() => {
   void nowHHMM.value;
   const d = getNow();
   try {
-    const h = toCalendar(new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate()), new IslamicUmalquraCalendar());
+    const h = toHijri(d);
     return { day: h.day, month: ISLAMIC_MONTHS[h.month - 1] ?? null };
   } catch {
     return null;
@@ -537,9 +539,8 @@ const hijriToday = computed(() => {
 const reminders = computed(() => {
   if (!timingsList.value.length) return [];
   const mins = (k: string) => timingByKey(k)?.minutes;
-  const [h, m] = nowHHMM.value.split(":").map(Number);
   return stageReminders({
-    nowMin: h! * 60 + m!,
+    nowMin: parseTimeToMinutes(nowHHMM.value) ?? 0,
     weekday: getNow().getDay(),
     hijriDay: hijriToday.value?.day ?? null,
     hijriMonth: hijriToday.value?.month ?? null,
@@ -553,8 +554,7 @@ const liveCall = computed(() => activeCalls.calls.value[0] ?? null);
 // The next of the five prayers (tomorrow's Fajr after ʿIshāʾ), for "Start a call for …".
 const nextMainPrayer = computed(() => {
   const main = timingsList.value.filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key) && typeof t.minutes === "number");
-  const nowS = nowSecondsLive.value;
-  return (main.find((t) => t.minutes! * 60 > nowS) ?? main[0])?.label ?? null;
+  return prayerClock(main, nowSecondsLive.value).next?.label ?? null;
 });
 
 // Short "in MM:SS"/"in HH:MM" badge next to the next prayer in the list.
@@ -784,9 +784,9 @@ const selectedDayTimes = computed(() => {
   const day = selectedDay.value;
   if (!day || day.dateKey !== selectedDateKey.value) return [];
   return PRAYER_ORDER.flatMap(([key, label]) => {
-    const m = String(day.timings[key] ?? "").match(/(\d{1,2}):(\d{2})/);
-    if (!m) return [];
-    return [{ key, label, time: formatMinutesLocal(Number(m[1]) * 60 + Number(m[2]), timeFormat.value === "24h") }];
+    const minutes = parseTimeToMinutes(day.timings[key]);
+    if (minutes == null) return [];
+    return [{ key, label, time: formatMinutesLocal(minutes, timeFormat.value === "24h") }];
   });
 });
 const selectedDayLabel = computed(() => {
