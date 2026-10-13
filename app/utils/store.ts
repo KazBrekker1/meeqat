@@ -2,11 +2,6 @@ import { load as loadTauriStore } from "@tauri-apps/plugin-store";
 import type { TauriStore } from "@/utils/types";
 import { isNative } from "@/utils/platform";
 
-/** Kept for existing imports; prefer getPlatform()/isNative() in new code. */
-export function isTauriAvailable(): boolean {
-  return isNative();
-}
-
 export function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
   const storageKey = `localStore:${localKey}`;
   function readAll(): Record<string, unknown> {
@@ -65,7 +60,7 @@ function loadStore(filename: string): () => Promise<TauriStore> {
   let promise: Promise<TauriStore> | null = null;
   return () => {
     if (!promise) {
-      if (!isTauriAvailable()) {
+      if (!isNative()) {
         promise = Promise.resolve(createWebFallbackStore(filename));
       } else {
         promise = loadTauriStore(filename, {

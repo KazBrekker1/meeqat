@@ -24,8 +24,6 @@ export interface TrayUpdatePayload {
   moonPhase?: number;
   now?: string; // current time as "HH:MM" (24h, mock-aware) for the orbit's now-dot
   dateLine?: string;
-  nextLine?: string;
-  sinceLine?: string;
   hijriDate?: string | null;
   gregorianDate?: string | null;
   nextPrayerLabel?: string | null;

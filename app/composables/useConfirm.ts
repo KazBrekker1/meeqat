@@ -1,5 +1,13 @@
-import type { ComponentPublicInstance } from "vue";
 import { LazyConfirmDialog } from "#components";
+
+type ButtonColor =
+  | "primary"
+  | "neutral"
+  | "secondary"
+  | "success"
+  | "info"
+  | "warning"
+  | "error";
 
 type ConfirmDialogProps = {
   title?: string;
@@ -8,23 +16,17 @@ type ConfirmDialogProps = {
   confirmText?: string;
   cancelText?: string;
   dismissible?: boolean;
-  confirmColor?: string;
-  cancelColor?: string;
-};
-
-type OverlayApi<T extends ComponentPublicInstance = ComponentPublicInstance> = {
-  open: (props?: Record<string, any>) => Promise<T>;
-  close: (value?: any) => void;
-  patch: (props: Record<string, any>) => void;
+  confirmColor?: ButtonColor;
+  cancelColor?: ButtonColor;
 };
 
 export function useConfirm() {
   const overlay = useOverlay();
 
-  const modal = overlay.create(LazyConfirmDialog) as unknown as OverlayApi;
+  const modal = overlay.create(LazyConfirmDialog);
 
   async function confirm(options: ConfirmDialogProps = {}): Promise<boolean> {
-    const opened: any = modal.open(options);
+    const opened = modal.open(options);
     try {
       const result = await opened.result;
       return Boolean(result);

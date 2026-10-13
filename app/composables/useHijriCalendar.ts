@@ -149,7 +149,6 @@ export function useHijriCalendar(todayKey?: Ref<string>) {
     calendarDate,
     calendarPlaceholder,
     calendarHeading,
-    isToday,
     formatTooltip,
     toggleCalendarSystem,
     selectToday,

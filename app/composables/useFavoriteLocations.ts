@@ -87,45 +87,6 @@ export function useFavoriteLocations() {
     }
   }
 
-  // Update a favorite's label
-  async function updateFavoriteLabel(id: string, label: string): Promise<void> {
-    const favorite = favorites.value.find(f => f.id === id);
-    if (favorite) {
-      favorite.label = label || undefined;
-      await saveFavorites();
-    }
-  }
-
-  // Check if a location is favorited
-  function isFavorite(city: string, countryCode: string): boolean {
-    return favorites.value.some(
-      f => f.city.toLowerCase() === city.toLowerCase() &&
-           f.countryCode === countryCode
-    );
-  }
-
-  // Get a favorite by city and country
-  function getFavorite(city: string, countryCode: string): FavoriteLocation | undefined {
-    return favorites.value.find(
-      f => f.city.toLowerCase() === city.toLowerCase() &&
-           f.countryCode === countryCode
-    );
-  }
-
-  // Reorder favorites
-  async function reorderFavorites(fromIndex: number, toIndex: number): Promise<void> {
-    const [removed] = favorites.value.splice(fromIndex, 1);
-    if (!removed) return;
-    favorites.value.splice(toIndex, 0, removed);
-    await saveFavorites();
-  }
-
-  // Clear all favorites
-  async function clearFavorites(): Promise<void> {
-    favorites.value = [];
-    await saveFavorites();
-  }
-
   // Load once on first init
   if (!isLoaded.value) {
     void loadFavorites();
@@ -133,15 +94,8 @@ export function useFavoriteLocations() {
 
   return {
     favorites: computed(() => favorites.value),
-    isLoaded,
-    loadFavorites,
     addFavorite,
     removeFavorite,
-    updateFavoriteLabel,
-    isFavorite,
-    getFavorite,
-    reorderFavorites,
-    clearFavorites,
     MAX_FAVORITES,
   };
 }

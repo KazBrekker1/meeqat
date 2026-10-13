@@ -48,6 +48,7 @@
 </template>
 
 <script lang="ts" setup>
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { isNative } from "@/utils/platform";
 import type { StageReminder } from "@/utils/reminders";
 
@@ -70,7 +71,6 @@ function next() {
 async function openExternal(e: MouseEvent, href: string) {
   if (!isNative()) return;
   e.preventDefault();
-  const { openUrl } = await import("@tauri-apps/plugin-opener");
   await openUrl(href);
 }
 </script>

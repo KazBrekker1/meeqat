@@ -17,21 +17,6 @@ export const toMin = (t: string) => parseTimeToMinutes(t) ?? 0;
 /** Fraction of the day (0..1); 0 sits at the top of the dial, increasing clockwise. */
 export const frac = (t: string) => toMin(t) / 1440;
 
-/**
- * Radius at fraction `t` for a bumpy ring. Each prayer adds a gaussian lobe.
- * @param amp  lobe height (px)
- * @param sigma lobe width in fraction-of-day units
- */
-export function bumpR(t: number, base: number, amp: number, sigma: number, fracs: number[]) {
-  let b = 0;
-  for (const f of fracs) {
-    let d = Math.abs(t - f);
-    d = Math.min(d, 1 - d); // wrap around the circle
-    b += Math.exp(-(d * d) / (2 * sigma * sigma));
-  }
-  return base + amp * b;
-}
-
 /** Point on the dial for fraction `t` at radius `r`, centered at (cx,cy). Top = 0, clockwise. */
 export function ptAt(t: number, r: number, cx: number, cy: number) {
   const a = t * 2 * Math.PI - Math.PI / 2;

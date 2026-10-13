@@ -1,6 +1,7 @@
 import type { PrayerTimingItem } from "@/utils/types";
 import type { Ref } from "vue";
 import type { UpcomingDay } from "@/composables/prayer/usePrayerFetch";
+import { invoke } from "@tauri-apps/api/core";
 import { getPlatform } from "@/utils/platform";
 import { getDateKey } from "@/utils/time";
 
@@ -36,23 +37,9 @@ interface UpdatePrayerTimesOptions extends Record<string, unknown> {
   upcomingDays?: UpcomingDayData[];
 }
 
-// Dynamic imports to avoid issues on non-Android platforms
-async function getPluginApi() {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return {
-      // Update widget data (this is what startService does now - just saves data)
-      updatePrayerTimes: (options: UpdatePrayerTimesOptions): Promise<void> => {
-        return invoke("plugin:prayer-service|update_prayer_times", options);
-      },
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function isAndroidPlatform(): Promise<boolean> {
-  return getPlatform() === "android";
+// Update widget data (this is what startService does now - just saves data)
+function updatePrayerTimes(options: UpdatePrayerTimesOptions): Promise<void> {
+  return invoke("plugin:prayer-service|update_prayer_times", options);
 }
 
 function convertTimingsToServiceData(
@@ -150,13 +137,10 @@ export function usePrayerService(options: {
     dataVersion,
   } = options;
 
-  const isAndroid = ref(false);
+  const isAndroid = getPlatform() === "android";
 
-  // Check if we're on Android
   onMounted(async () => {
-    isAndroid.value = await isAndroidPlatform();
-
-    if (isAndroid.value) {
+    if (isAndroid) {
       console.log("[PrayerService] Android platform detected");
 
       // If we have timings, update widgets immediately
@@ -229,7 +213,7 @@ export function usePrayerService(options: {
    * Update widget data. Call this whenever prayer times change.
    */
   async function update(): Promise<void> {
-    if (!isAndroid.value) {
+    if (!isAndroid) {
       return;
     }
 
@@ -239,9 +223,6 @@ export function usePrayerService(options: {
 
     const seq = ++updateSeq;
     try {
-      const api = await getPluginApi();
-      if (!api) return;
-
       const prayers = convertTimingsToServiceData(timingsList.value);
       const nextPrayerIndex = findNextPrayerIndex(timingsList.value);
 
@@ -255,7 +236,7 @@ export function usePrayerService(options: {
       const upcomingDays = await buildUpcomingDays(prayers);
       if (seq !== updateSeq) return;
 
-      await api.updatePrayerTimes({
+      await updatePrayerTimes({
         prayers,
         nextPrayerIndex,
         hijriDate: hijriDate?.value ?? undefined,
@@ -286,15 +267,14 @@ export function usePrayerService(options: {
 
   // Single watch: fires only when prayer data, dates, or location actually change
   watch(
-    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, is24Hour, isAndroid, () => dataVersion?.value],
+    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, is24Hour, () => dataVersion?.value],
     async () => {
-      if (!isAndroid.value || !timingsList.value.length) return;
+      if (!isAndroid || !timingsList.value.length) return;
       await update();
     }
   );
 
   return {
-    isAndroid,
     update,
   };
 }
