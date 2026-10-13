@@ -2,12 +2,21 @@
 # What changed in a release, written for users: the conventional-commit subjects since
 # the previous release tag, grouped into New / Improved / Fixed. Housekeeping commits
 # (chore, release, ci, docs, test, refactor, build) are left out.
+# A release-notes/<version>.md file, if present, is used instead.
 #
 # Usage:  scripts/release-notes.sh meeqat-v4.2.0   → markdown on stdout
 # Needs full history and tags (actions/checkout with fetch-depth: 0).
 set -euo pipefail
 
 TAG="${1:?usage: release-notes.sh <tag>}"
+
+# Hand-written notes win: release-notes/<version>.md, when a release deserves better
+# wording than its commit subjects.
+WRITTEN="$(dirname "$0")/../release-notes/${TAG#meeqat-v}.md"
+if [ -f "$WRITTEN" ]; then
+  cat "$WRITTEN"
+  exit 0
+fi
 
 # The tag may not exist yet (first run of a release) — then the release is HEAD.
 END=HEAD
