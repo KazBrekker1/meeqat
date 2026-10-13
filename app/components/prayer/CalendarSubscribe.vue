@@ -6,11 +6,14 @@
         Prayer times appear in your calendar with a reminder 10 minutes before each prayer, and stay up to date.
       </p>
       <div class="flex flex-wrap gap-2">
-        <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openAppleOutlook">
-          Apple / Outlook
+        <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openApple">
+          Apple Calendar
         </UButton>
         <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openGoogle">
           Google Calendar
+        </UButton>
+        <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openOutlook">
+          Outlook / Teams
         </UButton>
         <UButton size="sm" variant="soft" color="neutral" icon="i-lucide-link" @click="copyLink">
           Copy link
@@ -25,7 +28,6 @@
 
 <script lang="ts" setup>
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getUserTimezone } from "@/utils/time";
 import { getPlatform } from "@/utils/platform";
 import { cue } from "@/utils/sounds";
 
@@ -43,21 +45,26 @@ function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+// Digits, dots and slashes only, ending in .ics: calendar services re-encode or
+// refuse links with a query string. The service works out the place's timezone.
 const feedUrl = computed(() => {
   const togetherUrl = config.public.togetherUrl as string;
-  const url = new URL("/cal/prayers.ics", togetherUrl);
-  url.searchParams.set("lat", String(round3(props.lat)));
-  url.searchParams.set("lng", String(round3(props.lng)));
-  url.searchParams.set("method", String(props.methodId));
-  url.searchParams.set("tz", getUserTimezone());
-  if (props.name) url.searchParams.set("name", props.name.slice(0, 40));
-  return url.toString();
+  const path = `/cal/${round3(props.lat)}/${round3(props.lng)}/${props.methodId}/prayers.ics`;
+  return new URL(path, togetherUrl).toString();
 });
+
+const calendarName = computed(() => (props.name ? `Prayer times · ${props.name.slice(0, 40)}` : "Prayer times"));
 
 const webcalUrl = computed(() => feedUrl.value.replace(/^https?:/, "webcal:"));
 
 const googleUrl = computed(
   () => `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcalUrl.value)}`,
+);
+
+// Outlook on the web (also what the Teams calendar uses) subscribes through its own page.
+const outlookUrl = computed(
+  () =>
+    `https://outlook.office.com/calendar/0/addfromweb?url=${encodeURIComponent(feedUrl.value)}&name=${encodeURIComponent(calendarName.value)}`,
 );
 
 async function openExternal(url: string): Promise<void> {
@@ -78,8 +85,12 @@ async function openExternal(url: string): Promise<void> {
   }
 }
 
-function openAppleOutlook(): void {
+function openApple(): void {
   void openExternal(webcalUrl.value);
+}
+
+function openOutlook(): void {
+  void openExternal(outlookUrl.value);
 }
 
 function openGoogle(): void {

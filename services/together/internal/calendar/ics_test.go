@@ -164,3 +164,67 @@ func TestRejectsOutOfRangeCoordinates(t *testing.T) {
 		}
 	}
 }
+
+// Calendar services re-encode the link they are given; a mangled or missing tz
+// must not turn the feed into an error page.
+func TestTimezoneParamIsForgiving(t *testing.T) {
+	for raw, want := range map[string]string{
+		"Asia/Qatar":       "Asia/Qatar",
+		"Asia%2FQatar":     "Asia/Qatar", // double-encoded by the caller
+		"":                 "",
+		"Not/AZone":        "",
+		"Asia%252FQatar":   "",
+		"America/New_York": "America/New_York",
+	} {
+		if got := cleanTZ(raw); got != want {
+			t.Errorf("cleanTZ(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestPlaceTimezoneIsLookedUpOnce(t *testing.T) {
+	c := newCache()
+	var calls atomic.Int32
+	c.fetchTZ = func(*params) (string, error) {
+		calls.Add(1)
+		return "Asia/Qatar", nil
+	}
+
+	for i := 0; i < 3; i++ {
+		// 25.2854 and 25.2861 are the same place at cache precision.
+		tz, err := c.placeTZ(testParams(25.2854+float64(i)*0.0003, 51.531))
+		if err != nil || tz != "Asia/Qatar" {
+			t.Fatalf("placeTZ = %q, %v", tz, err)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected one lookup, got %d", got)
+	}
+}
+
+// The path form of the link reaches the same handler (and its validation).
+func TestPathFormOfTheLink(t *testing.T) {
+	srv := newTestServer(t)
+	if got := status(t, srv.URL+"/cal/95/51.531/4/prayers.ics"); got != 400 {
+		t.Fatalf("out-of-range lat in the path: expected 400, got %d", got)
+	}
+	if got := status(t, srv.URL+"/cal/25.285/51.531/99/prayers.ics"); got != 400 {
+		t.Fatalf("bad method in the path: expected 400, got %d", got)
+	}
+}
+
+func TestEventsCarryAnExplicitEnd(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Qatar")
+	p := testParams(25.285, 51.531)
+	p.tz = "Asia/Qatar"
+	ics := buildICS(p, loc, []dayTimings{{year: 2026, month: 10, day: 13, timings: map[string]string{"Fajr": "04:13"}}})
+
+	for _, want := range []string{"DTSTART:20261013T011300Z\r\n", "DTEND:20261013T013300Z\r\n", "X-WR-TIMEZONE:Asia/Qatar\r\n"} {
+		if !strings.Contains(ics, want) {
+			t.Errorf("feed is missing %q", want)
+		}
+	}
+	if strings.Contains(ics, "DURATION:PT20M") {
+		t.Errorf("events should end with DTEND, not DURATION")
+	}
+}

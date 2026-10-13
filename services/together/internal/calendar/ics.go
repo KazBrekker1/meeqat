@@ -37,6 +37,13 @@ func Register(se *core.ServeEvent, app core.App) {
 	se.Router.GET("/cal/prayers.ics", func(e *core.RequestEvent) error {
 		return handle(e, c)
 	})
+	// The link the app hands out: nothing but digits, dots and slashes, ending in
+	// .ics. Calendar services re-encode or reject links with a query string (a
+	// re-encoded "tz=Asia%2FQatar" used to come back as a 400, i.e. "not a
+	// calendar"), so the place is in the path and the timezone is worked out here.
+	se.Router.GET("/cal/{lat}/{lng}/{method}/prayers.ics", func(e *core.RequestEvent) error {
+		return handle(e, c)
+	})
 }
 
 type params struct {
@@ -60,26 +67,32 @@ type params struct {
 
 func parseParams(e *core.RequestEvent) (*params, error) {
 	q := e.Request.URL.Query()
+	// Path form (/cal/{lat}/{lng}/{method}/prayers.ics) or the older query form.
+	arg := func(name string) string {
+		if v := e.Request.PathValue(name); v != "" {
+			return v
+		}
+		return q.Get(name)
+	}
 
 	// The range checks also reject NaN and ±Inf, which ParseFloat accepts.
-	lat, err := strconv.ParseFloat(q.Get("lat"), 64)
+	lat, err := strconv.ParseFloat(arg("lat"), 64)
 	if err != nil || !(lat >= -90 && lat <= 90) {
 		return nil, fmt.Errorf("invalid lat")
 	}
-	lng, err := strconv.ParseFloat(q.Get("lng"), 64)
+	lng, err := strconv.ParseFloat(arg("lng"), 64)
 	if err != nil || !(lng >= -180 && lng <= 180) {
 		return nil, fmt.Errorf("invalid lng")
 	}
 
-	method, err := strconv.Atoi(q.Get("method"))
+	method, err := strconv.Atoi(arg("method"))
 	if err != nil || method < 0 || method > 23 {
 		return nil, fmt.Errorf("method must be an integer 0-23")
 	}
 
-	tz := q.Get("tz")
-	if _, err := time.LoadLocation(tz); err != nil {
-		return nil, fmt.Errorf("invalid tz")
-	}
+	// Optional. A missing or mangled tz (calendar services double-encode the
+	// slash) is not an error: the place's own timezone is looked up instead.
+	tz := cleanTZ(q.Get("tz"))
 
 	alert := 10
 	if v := q.Get("alert"); v != "" {
@@ -121,6 +134,28 @@ func parseParams(e *core.RequestEvent) (*params, error) {
 	}, nil
 }
 
+// cleanTZ returns raw as an IANA timezone name, undoing one extra round of URL
+// encoding ("Asia%2FQatar"), or "" when it isn't one.
+func cleanTZ(raw string) string {
+	if validTZ(raw) {
+		return raw
+	}
+	if un, err := url.QueryUnescape(raw); err == nil && validTZ(un) {
+		return un
+	}
+	return ""
+}
+
+// validTZ reports whether s names an IANA timezone. "" loads as UTC in Go, which
+// is not what a caller who sent nothing means.
+func validTZ(s string) bool {
+	if s == "" {
+		return false
+	}
+	_, err := time.LoadLocation(s)
+	return err == nil
+}
+
 func round3(v float64) float64 {
 	return math.Round(v*1000) / 1000
 }
@@ -135,6 +170,13 @@ func handle(e *core.RequestEvent, c *cache) error {
 		return e.BadRequestError(err.Error(), nil)
 	}
 
+	if p.tz == "" {
+		tz, err := c.placeTZ(p)
+		if err != nil {
+			return e.Error(503, "prayer times temporarily unavailable", nil)
+		}
+		p.tz = tz
+	}
 	loc, err := time.LoadLocation(p.tz)
 	if err != nil {
 		return e.BadRequestError("invalid tz", nil)
@@ -151,6 +193,7 @@ func handle(e *core.RequestEvent, c *cache) error {
 	body := buildICS(p, loc, days)
 
 	e.Response.Header().Set("Cache-Control", "public, max-age=21600")
+	e.Response.Header().Set("Content-Disposition", `inline; filename="prayers.ics"`)
 	return e.Blob(200, "text/calendar; charset=utf-8", []byte(body))
 }
 
@@ -264,6 +307,34 @@ func fetchMonth(p *params, year, month int) ([]dayTimings, error) {
 	return days, nil
 }
 
+// fetchPlaceTZ asks AlAdhan which timezone a place is in (it resolves one from
+// the coordinates when no timezonestring is given).
+func fetchPlaceTZ(p *params) (string, error) {
+	u := fmt.Sprintf("https://api.aladhan.com/v1/timings?latitude=%g&longitude=%g&method=%d", p.keyLat, p.keyLng, p.method)
+	resp, err := httpClient.Get(u)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("aladhan returned %d", resp.StatusCode)
+	}
+	var parsed struct {
+		Data struct {
+			Meta struct {
+				Timezone string `json:"timezone"`
+			} `json:"meta"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return "", err
+	}
+	if !validTZ(parsed.Data.Meta.Timezone) {
+		return "", fmt.Errorf("aladhan returned timezone %q", parsed.Data.Meta.Timezone)
+	}
+	return parsed.Data.Meta.Timezone, nil
+}
+
 func parseGregorian(s string) (year, month, day int, err error) {
 	parts := strings.Split(s, "-")
 	if len(parts) != 3 {
@@ -298,10 +369,47 @@ type cache struct {
 	// request; the other callers wait for its result.
 	flight singleflight.Group
 	fetch  func(p *params, year, month int) ([]dayTimings, error)
+
+	// A place's timezone doesn't change: kept for the life of the process.
+	zones   map[string]string
+	fetchTZ func(p *params) (string, error)
 }
 
 func newCache() *cache {
-	return &cache{entries: make(map[string]*cacheEntry), fetch: fetchMonth}
+	return &cache{
+		entries: make(map[string]*cacheEntry), fetch: fetchMonth,
+		zones: make(map[string]string), fetchTZ: fetchPlaceTZ,
+	}
+}
+
+// placeTZ is the timezone of the place a feed is for, when the link names none.
+func (c *cache) placeTZ(p *params) (string, error) {
+	key := fmt.Sprintf("tz:%.2f,%.2f", p.keyLat, p.keyLng)
+
+	c.mu.Lock()
+	tz, ok := c.zones[key]
+	c.mu.Unlock()
+	if ok {
+		return tz, nil
+	}
+
+	v, err, _ := c.flight.Do(key, func() (any, error) {
+		tz, err := c.fetchTZ(p)
+		if err != nil {
+			return "", err
+		}
+		c.mu.Lock()
+		if len(c.zones) >= maxCacheEntries {
+			clear(c.zones)
+		}
+		c.zones[key] = tz
+		c.mu.Unlock()
+		return tz, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return v.(string), nil
 }
 
 func cacheKey(p *params, year, month int) string {
@@ -419,7 +527,7 @@ func buildICS(p *params, loc *time.Location, days []dayTimings) string {
 			write("UID:" + uid)
 			write("DTSTAMP:" + formatUTC(time.Now()))
 			write("DTSTART:" + formatUTC(start))
-			write("DURATION:PT20M")
+			write("DTEND:" + formatUTC(start.Add(20*time.Minute)))
 			write("SUMMARY:" + icsEscape(summary))
 			write("TRANSP:TRANSPARENT")
 			write("BEGIN:VALARM")
