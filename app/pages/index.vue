@@ -597,6 +597,7 @@ const { isAndroid } = usePrayerService({
   gregorianDate: gregorianDateVerbose,
   city: selectedCity,
   countryCode: selectedCountry,
+  is24Hour: computed(() => timeFormat.value === "24h"),
 });
 
 // Favorite locations

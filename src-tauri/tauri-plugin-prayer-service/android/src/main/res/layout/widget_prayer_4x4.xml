@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 4×4 · Dashboard — header, then orbit (with its since/until pill) beside the
-     day's clock-time list. No countdown text: the pill already carries it. -->
+<!-- 4×4 · Dashboard — two-line header, the orbit as hero (its pill carries the
+     countdown), and the day's clock-time strip beneath, as on the app's home page. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -34,29 +34,17 @@
         </LinearLayout>
     </LinearLayout>
 
-    <LinearLayout
+    <ImageView
+        android:id="@+id/orbit_image"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:layout_marginTop="10dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:baselineAligned="false">
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="10dp"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
 
-        <ImageView
-            android:id="@+id/orbit_image"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:adjustViewBounds="true"
-            android:scaleType="fitCenter"
-            android:contentDescription="@null" />
-
-        <include layout="@layout/widget_times_list"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:layout_marginStart="8dp" />
-    </LinearLayout>
+    <include layout="@layout/widget_times_strip" android:layout_width="match_parent" android:layout_height="wrap_content" />
 
 </LinearLayout>

@@ -28,8 +28,11 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       draft: ${{ steps.meta.outputs.draft }}
       skip: ${{ steps.meta.outputs.skip }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # release notes are built from the commits since the last tag
 
       - name: Get version from package.json
         id: version
@@ -37,6 +40,22 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # What's new, for the release page and the in-app update dialog (latest.json notes
+      # on desktop, the release body on Android).
+      - name: Write release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          scripts/release-notes.sh "meeqat-v${VERSION}" > /tmp/whats_new.md
+          cat /tmp/whats_new.md
+          {
+            echo "notes<<MEEQAT_NOTES_EOF"
+            cat /tmp/whats_new.md
+            echo "MEEQAT_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Ensure GitHub release exists
         id: meta
@@ -60,11 +79,8 @@ jobs:
             exit 0
           fi
 
-          cat > /tmp/release_notes.md <<'EOF'
-          ## What's New
-
-          See the [full changelog](https://github.com/KazBrekker1/meeqat/commits/main) for details.
-
+          { echo "## What's New"; echo; cat /tmp/whats_new.md; echo; } > /tmp/release_notes.md
+          cat >> /tmp/release_notes.md <<'EOF'
           ## Installation
 
           ### macOS
@@ -167,7 +183,7 @@ jobs:
           releaseBody: |
             ## What's New
 
-            See the [full changelog](https://github.com/KazBrekker1/meeqat/commits/main) for details.
+            ${{ needs.create-release.outputs.notes }}
 
             ## Installation
 
@@ -327,6 +343,7 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ needs.create-release.outputs.tag }}
           VERSION: ${{ needs.create-release.outputs.version }}
+          NOTES: ${{ needs.create-release.outputs.notes }}
         shell: bash
         run: |
           set -euo pipefail
@@ -374,7 +391,7 @@ jobs:
 
           jq -n \
             --arg v "$VERSION" \
-            --arg notes "See https://github.com/$REPO/releases/tag/$TAG" \
+            --arg notes "${NOTES:-See https://github.com/$REPO/releases/tag/$TAG}" \
             --argjson p "$PLATFORMS" \
             '{version:$v, notes:$notes, pub_date:(now|todate), platforms:$p}' > latest.json
 

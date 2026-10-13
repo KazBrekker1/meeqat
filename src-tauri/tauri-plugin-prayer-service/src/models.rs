@@ -27,6 +27,8 @@ pub struct StartServiceArgs {
     pub city: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub country_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_24_hour: Option<bool>,
 }
 
 pub type UpdatePrayerTimesArgs = StartServiceArgs;

@@ -41,6 +41,7 @@ class StartServiceArgs {
     var nextDayPrayerLabel: String? = null
     var city: String? = null
     var countryCode: String? = null
+    var use24Hour: Boolean? = null
 }
 
 @InvokeArg
@@ -54,6 +55,7 @@ class UpdatePrayerTimesArgs {
     var nextDayPrayerLabel: String? = null
     var city: String? = null
     var countryCode: String? = null
+    var use24Hour: Boolean? = null
 }
 
 @InvokeArg
@@ -93,7 +95,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.d(TAG, "startService called (widget-only mode)")
 
             val args = invoke.parseArgs(StartServiceArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
+            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode, args.use24Hour)
 
             refreshWidgets()
             invoke.resolve()
@@ -121,7 +123,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.d(TAG, "updatePrayerTimes called")
 
             val args = invoke.parseArgs(UpdatePrayerTimesArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode)
+            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode, args.use24Hour)
 
             refreshWidgets()
 
@@ -279,7 +281,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         nextDayPrayerTime: Long? = null,
         nextDayPrayerLabel: String? = null,
         city: String? = null,
-        countryCode: String? = null
+        countryCode: String? = null,
+        use24Hour: Boolean? = null
     ) {
         if (prayers.isEmpty()) {
             Log.w(TAG, "savePrayerData called with empty prayers array, skipping save")
@@ -307,6 +310,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             if (gregorianDate != null) putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, gregorianDate) else remove(PrayerWidgetProvider.KEY_GREGORIAN_DATE)
             if (city != null) putString(PrayerWidgetProvider.KEY_CITY, city) else remove(PrayerWidgetProvider.KEY_CITY)
             if (countryCode != null) putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, countryCode) else remove(PrayerWidgetProvider.KEY_COUNTRY_CODE)
+            if (use24Hour != null) putBoolean(PrayerWidgetProvider.KEY_USE_24_HOUR, use24Hour) else remove(PrayerWidgetProvider.KEY_USE_24_HOUR)
 
             // Record when data was last saved (real time, not debug time)
             putLong("data_timestamp", System.currentTimeMillis())

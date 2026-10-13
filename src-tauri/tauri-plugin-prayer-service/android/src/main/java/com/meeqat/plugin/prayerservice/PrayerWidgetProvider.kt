@@ -42,13 +42,14 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         const val KEY_CITY = "city"
         const val KEY_COUNTRY_CODE = "country_code"
 
-        private val timeFormat = ThreadLocal.withInitial { SimpleDateFormat("h:mm a", Locale.getDefault()) }
-        private val timeFormatShort = ThreadLocal.withInitial { SimpleDateFormat("h:mm", Locale.getDefault()) }
+        const val KEY_USE_24_HOUR = "use_24_hour"
+
         private val gregorianFormat = ThreadLocal.withInitial { SimpleDateFormat("MMM d, yyyy", Locale.getDefault()) }
 
         private const val DATA_STALENESS_THRESHOLD_MS = 25 * 60 * 60 * 1000L
         private const val MS_PER_DAY = 24 * 60 * 60 * 1000L
         private const val PRAYER_ISHA = "Isha"
+        private const val STRIP_MIN_WIDTH = 250
 
         @Volatile private var cachedLaunchPendingIntent: PendingIntent? = null
         // Minute at which we last shipped a full update (bitmap + strip). The per-second
@@ -74,9 +75,10 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             val landscape = minWidth >= 320 && minHeight >= 120 && minWidth > minHeight * 1.2
             return when {
                 landscape -> R.layout.widget_prayer_wide
+                // Narrow widgets can't fit the six-column times strip.
+                minWidth < STRIP_MIN_WIDTH -> if (minHeight >= 110) R.layout.widget_prayer_compact else R.layout.widget_prayer_glance
                 minHeight >= 250 -> R.layout.widget_prayer_4x4
-                minHeight >= 160 -> R.layout.widget_prayer_4x3
-                minHeight >= 110 -> R.layout.widget_prayer_compact
+                minHeight >= 110 -> R.layout.widget_prayer_4x3
                 minHeight >= 72 -> R.layout.widget_prayer_4x2
                 // One-row "glance": just the next prayer + live countdown.
                 else -> R.layout.widget_prayer_glance
@@ -87,7 +89,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
 
         /** Orbit/moon image: (viewId, drawOrbit, renderPx). 4×2 is moon-only. */
         private fun bitmapSpec(layoutId: Int): Triple<Int, Boolean, Int> = when (layoutId) {
-            R.layout.widget_prayer_4x4 -> Triple(R.id.orbit_image, true, 360)
+            R.layout.widget_prayer_4x4 -> Triple(R.id.orbit_image, true, 420)
             R.layout.widget_prayer_4x3 -> Triple(R.id.orbit_image, true, 300)
             R.layout.widget_prayer_compact -> Triple(R.id.orbit_image, true, 260)
             R.layout.widget_prayer_wide -> Triple(R.id.orbit_image, true, 300)
@@ -119,7 +121,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             val countdown: String,
             val progressPct: Int,
             val sinceText: String?,
-            val nowClock: String
+            val nowClock: String,
+            val nextLine: String
         )
 
         private fun computeState(
@@ -130,7 +133,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
         ): WidgetState {
             val now = DebugTimeProvider.currentTimeMillis(context)
             val next = nextDayPrayer ?: prayers.getOrNull(nextIndex)
-            val untilText = if (next != null) "Until ${next.label} · ${formatTimeShort(next.prayerTime)}" else ""
+            val untilText = if (next != null) "Until ${next.label} · ${formatTimeShort(context, next.prayerTime)}" else ""
             val countdown = if (next != null) formatCountdown(context, next.prayerTime) else ""
 
             // progress between previous prayer and next
@@ -155,7 +158,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     ?.let { "Isha · ${formatElapsed(context, it.prayerTime - MS_PER_DAY)}" }
             }
 
-            return WidgetState(untilText, countdown, pct, sinceText, formatTime(now))
+            val nextLine = if (next != null) "${next.label} · ${formatTime(context, next.prayerTime)}" else ""
+            return WidgetState(untilText, countdown, pct, sinceText, formatTime(context, now), nextLine)
         }
 
         // ---- full update (bitmap + everything) ----------------------------------
@@ -215,9 +219,9 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                     applyGlance(views, state)
                 } else {
                     applyState(views, state)
-                    // wide/4×4 render a vertical times LIST → slim accent-bar highlight;
+                    // wide renders a vertical times LIST → slim accent-bar highlight;
                     // the other layouts use the horizontal strip → the chip highlight.
-                    val listStyle = layoutId == R.layout.widget_prayer_wide || layoutId == R.layout.widget_prayer_4x4
+                    val listStyle = layoutId == R.layout.widget_prayer_wide
                     populateStrip(context, views, prayers, clockNext, listStyle)
                 }
             }
@@ -265,6 +269,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.since_line, View.INVISIBLE)
             }
             try { views.setTextViewText(R.id.now_clock, s.nowClock) } catch (_: Exception) {}
+            views.setTextViewText(R.id.next_line, s.nextLine) // compact only; a no-op elsewhere
         }
 
         /** Minimal apply path for the one-row glance layout: until + countdown only. */
@@ -280,7 +285,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                 if (i < prayers.size) {
                     val p = prayers[i]
                     views.setTextViewText(stripLabelIds[i], p.label)
-                    views.setTextViewText(stripTimeIds[i], formatTimeShort(p.prayerTime))
+                    views.setTextViewText(stripTimeIds[i], formatTimeShort(context, p.prayerTime))
                     views.setViewVisibility(stripColIds[i], View.VISIBLE)
                     when {
                         i == nextIndex -> {
@@ -290,8 +295,8 @@ class PrayerWidgetProvider : AppWidgetProvider() {
                         }
                         nextIndex in 0..5 && i < nextIndex -> { // past
                             views.setInt(stripColIds[i], "setBackgroundColor", 0x00000000)
-                            views.setTextColor(stripLabelIds[i], 0x59FFFFFF)
-                            views.setTextColor(stripTimeIds[i], 0x66FFFFFF)
+                            views.setTextColor(stripLabelIds[i], 0x80FFFFFF.toInt())
+                            views.setTextColor(stripTimeIds[i], 0x8CFFFFFF.toInt())
                         }
                         else -> { // upcoming
                             views.setInt(stripColIds[i], "setBackgroundColor", 0x00000000)
@@ -310,6 +315,7 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             try { views.setTextViewText(R.id.until_label, "") } catch (_: Exception) {}
             try { views.setViewVisibility(R.id.since_line, View.INVISIBLE) } catch (_: Exception) {}
             for (id in stripColIds) try { views.setViewVisibility(id, View.GONE) } catch (_: Exception) {}
+            views.setTextViewText(R.id.next_line, "")
         }
 
         private fun setHeaderData(context: Context, views: RemoteViews, prefs: android.content.SharedPreferences) {
@@ -331,8 +337,17 @@ class PrayerWidgetProvider : AppWidgetProvider() {
             } catch (_: Exception) {}
         }
 
-        private fun formatTime(ts: Long) = timeFormat.get()!!.format(Date(ts))
-        private fun formatTimeShort(ts: Long) = timeFormatShort.get()!!.format(Date(ts))
+        /** The app's 12h/24h setting; the system's until the app has pushed one. */
+        private fun use24Hour(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return if (prefs.contains(KEY_USE_24_HOUR)) prefs.getBoolean(KEY_USE_24_HOUR, false)
+            else android.text.format.DateFormat.is24HourFormat(context)
+        }
+
+        private fun formatTime(context: Context, ts: Long) =
+            SimpleDateFormat(if (use24Hour(context)) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date(ts))
+        private fun formatTimeShort(context: Context, ts: Long) =
+            SimpleDateFormat(if (use24Hour(context)) "HH:mm" else "h:mm", Locale.getDefault()).format(Date(ts))
 
         private fun formatElapsed(context: Context, prayerTime: Long): String {
             val diff = DebugTimeProvider.currentTimeMillis(context) - prayerTime

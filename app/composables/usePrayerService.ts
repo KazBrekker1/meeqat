@@ -18,6 +18,7 @@ interface UpdatePrayerTimesOptions extends Record<string, unknown> {
   nextDayPrayerLabel?: string;
   city?: string;
   countryCode?: string;
+  use24Hour?: boolean;
 }
 
 // Dynamic imports to avoid issues on non-Android platforms
@@ -103,6 +104,8 @@ export function usePrayerService(options: {
   gregorianDate?: Ref<string | null>;
   city?: Ref<string | null>;
   countryCode?: Ref<string | null>;
+  /** The app's 12h/24h setting, so the widget's clock times match the app. */
+  is24Hour?: Ref<boolean>;
   /** Resolves tomorrow's first prayer at its real time (from cached calendar). */
   getNextDayPrayer?: () => Promise<{
     prayerName: string;
@@ -110,7 +113,7 @@ export function usePrayerService(options: {
     label: string;
   } | null>;
 }) {
-  const { timingsList, hijriDate, gregorianDate, city, countryCode, getNextDayPrayer } = options;
+  const { timingsList, hijriDate, gregorianDate, city, countryCode, is24Hour, getNextDayPrayer } = options;
 
   const isAndroid = ref(false);
 
@@ -163,6 +166,7 @@ export function usePrayerService(options: {
         gregorianDate: gregorianDate?.value ?? undefined,
         city: city?.value ?? undefined,
         countryCode: countryCode?.value ?? undefined,
+        use24Hour: is24Hour?.value,
         ...(nextDay && {
           nextDayPrayerName: nextDay.prayerName,
           nextDayPrayerTime: nextDay.prayerTime,
@@ -185,7 +189,7 @@ export function usePrayerService(options: {
 
   // Single watch: fires only when prayer data, dates, or location actually change
   watch(
-    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, isAndroid],
+    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, is24Hour, isAndroid],
     async () => {
       if (!isAndroid.value || !timingsList.value.length) return;
       await update();

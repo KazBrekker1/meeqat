@@ -56,6 +56,24 @@ const lastCheckedAt = ref<number | null>(null);
 
 // Desktop: hold the resolved Update handle between check and install.
 let pendingUpdate: Update | null = null;
+/**
+ * Release notes as plain text for the update dialog. Android reads the GitHub release
+ * body (markdown, with install instructions after the notes); desktop reads the notes
+ * from latest.json. Keep only what changed, and turn the markdown into plain lines.
+ */
+export function formatReleaseNotes(body: string | null | undefined): string | null {
+  if (!body) return null;
+  const text = body
+    .split(/^##\s+Installation\b/im)[0]!
+    .replace(/^##\s+What's New\s*$/im, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*]\s+/gm, "• ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text || null;
+}
+
 // Android: the APK asset URL to install.
 let pendingApkUrl: string | null = null;
 
@@ -166,7 +184,7 @@ async function checkAndroid(): Promise<void> {
 
   pendingApkUrl = apk.browser_download_url;
   latestVersion.value = normalizeVersion(tag);
-  releaseNotes.value = data.body ?? null;
+  releaseNotes.value = formatReleaseNotes(data.body);
   status.value = "available";
 }
 
@@ -178,7 +196,7 @@ async function checkDesktop(): Promise<void> {
   }
   pendingUpdate = update;
   latestVersion.value = update.version;
-  releaseNotes.value = update.body ?? null;
+  releaseNotes.value = formatReleaseNotes(update.body);
   status.value = "available";
 }
 

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- compact · orbit hero — header, the orbit (its pill carries since/until), and the
-     day's clock-time strip. No countdown text: the pill already carries it. -->
+<!-- compact · orbit hero for narrow (2–3 cell) widgets — header, the orbit (its pill
+     carries the countdown), and the next prayer's clock time. Six strip columns don't
+     fit at this width. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -26,11 +27,11 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="4dp"
-        android:layout_marginBottom="6dp"
+        android:layout_marginBottom="4dp"
         android:adjustViewBounds="true"
         android:scaleType="fitCenter"
         android:contentDescription="@null" />
 
-    <include layout="@layout/widget_times_strip" android:layout_width="match_parent" android:layout_height="wrap_content" />
+    <TextView android:id="@+id/next_line" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="Asr · 3:42 PM" android:textColor="#FFFDE68A" android:textSize="12sp" android:fontFamily="sans-serif-medium" android:fontFeatureSettings="tnum" android:maxLines="1" android:ellipsize="end" />
 
 </LinearLayout>

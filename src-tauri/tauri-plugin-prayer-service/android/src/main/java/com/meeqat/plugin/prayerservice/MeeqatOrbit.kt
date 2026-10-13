@@ -6,25 +6,26 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
-import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.graphics.Typeface
 import java.util.Calendar
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
- * Renders the Meeqat "orbit" (a sky-coloured ring with a dot per prayer, a live
- * now-marker, and a phase-accurate moon at the centre) to a Bitmap for the home-
+ * Renders the Meeqat "orbit" (a sky-coloured ring with a dot per prayer, a
+ * now-marker, and the app's soft-glass moon at the centre) to a Bitmap for the home-
  * screen widget. RemoteViews can't host the live SVG component, so the widget shows
  * this bitmap via setImageViewBitmap.
  *
- * Mirrors the web prototype (OrbitBumps + MoonPhase): dial top = midnight, clockwise;
- * the ring's conic sky gradient is keyed to the day's sunrise/sunset.
+ * Mirrors the web orbit (OrbitBumps + the "glass" moon style): dial top = midnight,
+ * clockwise; the ring's conic sky gradient is keyed to the day's sunrise/sunset.
  *
  * Bitmaps are cached per (size, kind) and only re-rendered when the minute, next
  * prayer, or moon phase changes — so the per-second widget tick reuses one bitmap.
@@ -95,21 +96,15 @@ object MeeqatOrbit {
         if (drawOrbit && prayers.isNotEmpty()) {
             drawRing(c, cx, cy, r, prayers)
             drawDots(c, cx, cy, r, prayers, nextIndex)
-            drawComet(c, cx, cy, r, prayers, nextIndex, nowMs)
+            drawNow(c, cx, cy, r, nowMs)
         }
-        drawMoon(c, cx, cy, if (drawOrbit) r * 0.52f else r * 0.80f, phase)
+        // Inside the orbit the moon stays clear of the caption band beneath it.
+        drawMoon(c, cx, cy, if (drawOrbit) r * 0.46f else r * 0.66f, phase)
         if (drawOrbit && prayers.isNotEmpty()) {
             drawBottomBanner(c, cx, cy, r, prayers, nextIndex, nowMs)
         }
         return bmp
     }
-
-    // Pretty prayer names to match the web orbit (ʿAṣr, ʿIshāʾ, …).
-    private val PRETTY = mapOf(
-        "fajr" to "Fajr", "sunrise" to "Sunrise", "dhuhr" to "Dhuhr",
-        "asr" to "ʿAṣr", "maghrib" to "Maghrib", "isha" to "ʿIshāʾ"
-    )
-    private fun pretty(name: String) = PRETTY[name.lowercase()] ?: name
 
     private fun fmtDur(min: Int): String {
         val m = if (min < 0) 0 else min
@@ -144,10 +139,10 @@ object MeeqatOrbit {
         val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
         var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
 
-        // Next prayer only ("Asr 3h 08m"): short enough to stay large AND gently
-        // curved. The comet tail already conveys "time since" the previous prayer,
-        // and the widget's list/strip shows every prayer's clock time.
-        val text = "${pretty(prayers[nextIdx].prayerName)} ${fmtDur(untilMin)}"
+        // Next prayer only ("Asr in 3h 08m", the first line of the web caption):
+        // short enough to stay large AND gently curved. The widget's list/strip
+        // shows every prayer's clock time.
+        val text = "${prayers[nextIdx].label} in ${fmtDur(untilMin)}"
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -190,18 +185,6 @@ object MeeqatOrbit {
         // Adding length/2 pushed the second half past the path's end, where Android
         // piles the overflowing glyphs on top of each other.
         c.drawTextOnPath(text, path, 0f, font * 0.35f, paint)
-    }
-
-    // Beacon colour as the next prayer nears: cool blue → amber → hot coral.
-    private fun urgencyColor(u: Float): Int =
-        if (u < 0.5f) mixColor(0xFF7DB0FF.toInt(), 0xFFFCD34D.toInt(), u / 0.5f)
-        else mixColor(0xFFFCD34D.toInt(), 0xFFFF6B4A.toInt(), (u - 0.5f) / 0.5f)
-
-    private fun mixColor(c1: Int, c2: Int, t: Float): Int {
-        val r = ((c1 shr 16 and 0xFF) + ((c2 shr 16 and 0xFF) - (c1 shr 16 and 0xFF)) * t).toInt()
-        val g = ((c1 shr 8 and 0xFF) + ((c2 shr 8 and 0xFF) - (c1 shr 8 and 0xFF)) * t).toInt()
-        val b = ((c1 and 0xFF) + ((c2 and 0xFF) - (c1 and 0xFF)) * t).toInt()
-        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private const val RING_MID = 0.86f
@@ -276,6 +259,7 @@ object MeeqatOrbit {
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99060916.toInt() }
         val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xD9FFFFFF.toInt() }
         val amber = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFCD34D.toInt() }
+        val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x38FCD34D }
         for (i in prayers.indices) {
             val frac = minutesOfDay(prayers[i].prayerTime) / 1440f
             val a = frac * 2f * PI.toFloat() - PI.toFloat() / 2f
@@ -283,126 +267,85 @@ object MeeqatOrbit {
             val y = cy + rad * sin(a)
             val isNext = i == nextIndex
             val rr = if (isNext) dotR * 1.45f else dotR
+            if (isNext) c.drawCircle(x, y, rr * 2.1f, glow)
             c.drawCircle(x, y, rr + r * 0.012f, stroke)
             c.drawCircle(x, y, rr, if (isNext) amber else white)
         }
     }
 
-    private const val TAIL_CAP = 150f   // minutes the tail spans before it saturates
-    private const val BEACON_RANGE = 100f // minutes out at which the beacon reacts
-
-    /**
-     * Comet · beacon now-cue, mirroring the web OrbitBumps. A gold head sits at the
-     * current time on the ring; a tapered gold tail trails behind it toward the
-     * previous prayer (= time since). The next-prayer dot carries a beacon that
-     * warms from blue → coral as the prayer nears (= time until). The web version's
-     * animated sonar pings can't run in a per-minute static bitmap, so the beacon
-     * is a single static ring instead.
-     */
-    private fun drawComet(
-        c: Canvas, cx: Float, cy: Float, r: Float,
-        prayers: List<PrayerTimeData>, nextIndex: Int, nowMs: Long
-    ) {
-        val ringR = r * RING_MID
-        val nowM = minutesOfDay(nowMs)
-        val nowFrac = nowM / 1440f
-        val nextIdx = nextIndex.coerceIn(0, prayers.size - 1)
-        val prevIdx = if (nextIdx - 1 < 0) prayers.size - 1 else nextIdx - 1
-        val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
-        val prevM = minutesOfDay(prayers[prevIdx].prayerTime)
-        var sinceMin = nowM - prevM; if (sinceMin < 0) sinceMin += 1440
-        var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
-
-        // ── tail: gold, tapered, riding the ring from now back over `since` ──
-        val covered = min(sinceMin.toFloat(), TAIL_CAP)
-        val segs = 28
-        val halfW = r * 0.02f
-        for (i in 1..segs) {
-            val fa = (i - 1f) / segs
-            val fb = i.toFloat() / segs
-            val ta = (nowM - fa * covered) / 1440f
-            val tb = (nowM - fb * covered) / 1440f
-            val hwa = halfW * Math.pow((1f - fa).toDouble(), 0.7).toFloat()
-            val hwb = halfW * Math.pow((1f - fb).toDouble(), 0.7).toFloat()
-            val oa = onCircle(cx, cy, ringR + hwa, ta)
-            val ob = onCircle(cx, cy, ringR + hwb, tb)
-            val ib = onCircle(cx, cy, ringR - hwb, tb)
-            val ia = onCircle(cx, cy, ringR - hwa, ta)
-            val o = Math.pow((1f - fa).toDouble(), 1.3).toFloat()
-            val alpha = (o * 255f).toInt().coerceIn(0, 255)
-            val quad = Path().apply {
-                moveTo(oa[0], oa[1]); lineTo(ob[0], ob[1]); lineTo(ib[0], ib[1]); lineTo(ia[0], ia[1]); close()
-            }
-            c.drawPath(quad, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (alpha shl 24) or 0xFCD34D })
-        }
-
-        // ── beacon on the next prayer dot (static; web pulses a sonar here) ──
-        val urgency = (1f - untilMin / BEACON_RANGE).coerceIn(0f, 1f)
-        val beacon = urgencyColor(urgency)
-        val np = onCircle(cx, cy, ringR, nextM / 1440f)
-        c.drawCircle(np[0], np[1], r * 0.085f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = r * 0.013f
-            color = (0x55 shl 24) or (beacon and 0xFFFFFF)
+    /** Now-marker, as on the web orbit: an ink dot with a white ring riding the day ring. */
+    private fun drawNow(c: Canvas, cx: Float, cy: Float, r: Float, nowMs: Long) {
+        val p = onCircle(cx, cy, r * RING_MID, minutesOfDay(nowMs) / 1440f)
+        val dot = r * 0.042f
+        c.drawCircle(p[0], p[1], dot * 1.7f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x33FFFFFF })
+        c.drawCircle(p[0], p[1], dot, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF141C40.toInt() })
+        c.drawCircle(p[0], p[1], dot, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = dot * 0.5f; color = 0xFFFFFFFF.toInt()
         })
-        c.drawCircle(np[0], np[1], r * 0.028f + urgency * r * 0.02f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = beacon
-        })
-
-        // ── head at now ──
-        val hp = onCircle(cx, cy, ringR, nowFrac)
-        val headR = r * 0.032f
-        c.drawCircle(hp[0], hp[1], headR * 1.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x40FFF7D6 }) // glow
-        c.drawCircle(hp[0], hp[1], headR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFCD34D.toInt() })
-        c.drawCircle(hp[0], hp[1], headR, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = headR * 0.4f; color = 0x9908060A.toInt()
-        })
-        c.drawCircle(hp[0], hp[1], headR * 0.5f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() })
     }
 
+    // Soft-glass palette (app/utils/moon/styles.ts `glass`).
+    private val LAV = floatArrayOf(185f, 192f, 244f)
+    private val WHITE = floatArrayOf(247f, 246f, 255f)
+    private val DEEP = floatArrayOf(11f, 16f, 48f)
+    private val MID = floatArrayOf(22f, 29f, 77f)
+    private val RIM = floatArrayOf(143f, 155f, 245f)
+
+    private fun smooth(a: Float, b: Float, x: Float): Float {
+        val t = ((x - a) / (b - a)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    /**
+     * The app's default "soft glass" moon: a luminous, near-flat sphere with a soft
+     * terminator and rim light, shaded per pixel. The widget has no location, so the
+     * sun sits on the horizontal for the phase (no parallactic tilt, no maria).
+     */
     private fun drawMoon(c: Canvas, cx: Float, cy: Float, moonR: Float, phase: Float) {
         // halo
         c.drawCircle(cx, cy, moonR * 1.45f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = RadialGradient(
                 cx, cy, moonR * 1.45f,
-                intArrayOf(0x59CDD6FF, 0x00CDD6FF), floatArrayOf(0.55f, 1f), Shader.TileMode.CLAMP
+                intArrayOf(0x30C9CFFB, 0x00C9CFFB), floatArrayOf(0.68f, 1f), Shader.TileMode.CLAMP
             )
         })
-        // unlit disk
-        c.drawCircle(cx, cy, moonR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0C1226.toInt() })
 
-        // lit region — bright circular limb + elliptical terminator (mirrors web litPath)
-        val p = ((phase % 1f) + 1f) % 1f
-        val ang = 2.0 * PI * p
-        val cosA = cos(ang)
-        val a = (abs(cosA).toFloat() * moonR).coerceAtLeast(moonR * 0.01f)
-        val waxing = p < 0.5f
-        val gibbous = cosA < 0
-        val limbSweep = if (waxing) 180f else -180f
-        val termSweep = if (waxing == gibbous) 180f else -180f
-        val path = Path().apply {
-            moveTo(cx, cy - moonR)
-            arcTo(RectF(cx - moonR, cy - moonR, cx + moonR, cy + moonR), 270f, limbSweep)
-            arcTo(RectF(cx - a, cy - moonR, cx + a, cy + moonR), 90f, termSweep)
-            close()
+        val ang = 2.0 * PI * (((phase % 1f) + 1f) % 1f)
+        val sx = sin(ang).toFloat()      // waxing → lit from the right
+        val sz = -cos(ang).toFloat()     // new moon → sun behind the disc
+        val hz = sz + 1f
+        val hn = hypot(sx, hz).coerceAtLeast(1e-4f)
+
+        val d = (moonR * 2f).toInt() + 2
+        val px = IntArray(d * d)
+        val col = FloatArray(3)
+        fun mix(to: FloatArray, t: Float) { for (k in 0..2) col[k] += (to[k] - col[k]) * t }
+        for (j in 0 until d) for (i in 0 until d) {
+            val x = (i + 0.5f - d / 2f) / moonR
+            val y = (j + 0.5f - d / 2f) / moonR
+            val rr = x * x + y * y
+            val cov = ((1f - sqrt(rr)) * moonR + 0.5f).coerceIn(0f, 1f) // 1px anti-aliased limb
+            if (cov <= 0f) continue
+            val z = sqrt((1f - rr).coerceAtLeast(0f))
+            val day = smooth(-0.14f, 0.3f, x * sx + z * sz)
+            val fres = (1f - z).pow(2.4f)
+
+            // night side, then the lit side over it
+            for (k in 0..2) col[k] = DEEP[k] + (MID[k] - DEEP[k]) * z.pow(1.5f) * 0.7f
+            val lz = z.pow(0.8f) * 0.92f
+            val spec = ((x * sx + z * hz) / hn).coerceIn(0f, 1f).pow(24f) * 0.2f
+            for (k in 0..2) {
+                var lit = LAV[k] + (WHITE[k] - LAV[k]) * lz
+                lit += (255f - lit) * spec
+                col[k] += (lit - col[k]) * day
+            }
+            mix(RIM, fres * (1f - day) * 0.45f)   // cool rim on the night side
+            mix(WHITE, fres * day * 0.3f)         // bright rim on the day side
+            px[j * d + i] = ((cov * 255f).toInt() shl 24) or
+                (col[0].toInt() shl 16) or (col[1].toInt() shl 8) or col[2].toInt()
         }
-        c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(
-                cx - moonR * 0.25f, cy - moonR * 0.35f, moonR * 1.3f,
-                intArrayOf(0xFFFFFDF6.toInt(), 0xFFF1EDE0.toInt(), 0xFFCFC7B4.toInt()),
-                floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP
-            )
-        })
-        // craters, clipped to the lit area
-        c.save()
-        c.clipPath(path)
-        val crater = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x2EA39A86 }
-        c.drawCircle(cx - moonR * 0.20f, cy - moonR * 0.26f, moonR * 0.14f, crater)
-        c.drawCircle(cx + moonR * 0.28f, cy + moonR * 0.15f, moonR * 0.19f, crater)
-        c.drawCircle(cx + moonR * 0.06f, cy + moonR * 0.43f, moonR * 0.10f, crater)
-        c.restore()
-        // rim
-        c.drawCircle(cx, cy, moonR, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = moonR * 0.016f; color = 0x24FFFFFF
-        })
+        val disc = Bitmap.createBitmap(px, d, d, Bitmap.Config.ARGB_8888)
+        c.drawBitmap(disc, cx - d / 2f, cy - d / 2f, Paint(Paint.FILTER_BITMAP_FLAG))
+        disc.recycle()
     }
 }

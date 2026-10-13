@@ -67,6 +67,8 @@ class WidgetPreviewTest {
 
     @Test fun wide() = moments.forEach { (k, t) -> snap("wide_$k", R.layout.widget_prayer_wide, 360, 208, t) }
     @Test fun compact() = snap("compact_1752", R.layout.widget_prayer_compact, 190, 200, at("17:52"))
+    @Test fun glance() = snap("glance_1752", R.layout.widget_prayer_glance, 190, 64, at("17:52"))
+    @Test fun wide24h() { use24 = true; snap("wide_1752_24h", R.layout.widget_prayer_wide, 360, 208, at("17:52")); use24 = false }
     @Test fun tall4x3() = snap("4x3_1752", R.layout.widget_prayer_4x3, 290, 270, at("17:52"))
     @Test fun dashboard4x4() = snap("4x4_1752", R.layout.widget_prayer_4x4, 360, 380, at("17:52"))
     @Test fun strip4x2() = snap("4x2_1752", R.layout.widget_prayer_4x2, 360, 110, at("17:52"))
@@ -108,7 +110,7 @@ class WidgetPreviewTest {
         // orbit / moon bitmap — the real renderer
         val drawOrbit = layout != R.layout.widget_prayer_4x2
         val (imageId, px) = when (layout) {
-            R.layout.widget_prayer_4x4 -> R.id.orbit_image to 360
+            R.layout.widget_prayer_4x4 -> R.id.orbit_image to 420
             R.layout.widget_prayer_4x3, R.layout.widget_prayer_wide -> R.id.orbit_image to 300
             R.layout.widget_prayer_compact -> R.id.orbit_image to 260
             else -> R.id.moon_image to 140
@@ -128,13 +130,14 @@ class WidgetPreviewTest {
         root.findViewById<ProgressBar>(R.id.next_progress)?.progress =
             (((nowMs - prev.prayerTime).toDouble() / (next.prayerTime - prev.prayerTime)) * 100).toInt()
         root.text(R.id.since_line, "${prev.label} · ${elapsed(nowMs - prev.prayerTime)}")
+        root.text(R.id.next_line, "${next.label} · ${clock(next.prayerTime, ampm = true)}")
 
         // populateStrip
-        val listStyle = layout == R.layout.widget_prayer_wide || layout == R.layout.widget_prayer_4x4
+        val listStyle = layout == R.layout.widget_prayer_wide
         val highlight = if (listStyle) R.drawable.widget_current_row_bg else R.drawable.widget_highlight_bg
         val hi = clockNext
         for (i in 0 until 6) {
-            val col = root.findViewById<LinearLayout>(ids("strip_col_", i)) ?: continue
+            val col = root.findViewById<LinearLayout>(ids("strip_col_", i)) ?: continue // compact/glance: no strip
             val label = root.findViewById<TextView>(ids("strip_label_", i))
             val time = root.findViewById<TextView>(ids("strip_time_", i))
             label.text = prayers[i].label
@@ -146,7 +149,7 @@ class WidgetPreviewTest {
                 }
                 hi in 0..5 && i < hi -> {
                     col.setBackgroundColor(Color.TRANSPARENT)
-                    label.setTextColor(0x59FFFFFF); time.setTextColor(0x66FFFFFF)
+                    label.setTextColor(0x80FFFFFF.toInt()); time.setTextColor(0x8CFFFFFF.toInt())
                 }
                 else -> {
                     col.setBackgroundColor(Color.TRANSPARENT)
@@ -161,8 +164,11 @@ class WidgetPreviewTest {
 
     private fun View.text(id: Int, s: String) { findViewById<TextView>(id)?.text = s }
 
+    private var use24 = false
+
     private fun clock(ms: Long, ampm: Boolean = false): String {
         val c = Calendar.getInstance(tz).apply { timeInMillis = ms }
+        if (use24) return "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
         val h = c.get(Calendar.HOUR).let { if (it == 0) 12 else it }
         val m = "%02d".format(c.get(Calendar.MINUTE))
         return if (ampm) "$h:$m ${if (c.get(Calendar.AM_PM) == 0) "AM" else "PM"}" else "$h:$m"
