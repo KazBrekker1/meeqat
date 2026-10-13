@@ -470,6 +470,15 @@ func (c *cache) getMonth(p *params, year, month int) ([]dayTimings, error) {
 
 // ---- ICS building ----
 
+// A prayer's calendar block: it starts a little after the athan (roughly when the
+// congregation stands) and is long enough to pray. Sunrise is a moment, not a
+// prayer, and stays where it is.
+const (
+	prayerStartsAfterAthan = 10 * time.Minute
+	prayerBlock            = 30 * time.Minute
+	sunriseBlock           = 20 * time.Minute
+)
+
 func buildICS(p *params, loc *time.Location, days []dayTimings) string {
 	var b strings.Builder
 
@@ -513,7 +522,11 @@ func buildICS(p *params, loc *time.Location, days []dayTimings) string {
 				continue
 			}
 
-			start := time.Date(d.year, time.Month(d.month), d.day, hour, min, 0, 0, loc).UTC()
+			athan := time.Date(d.year, time.Month(d.month), d.day, hour, min, 0, 0, loc).UTC()
+			start, end := athan.Add(prayerStartsAfterAthan), athan.Add(prayerStartsAfterAthan+prayerBlock)
+			if prayer == "Sunrise" {
+				start, end = athan, athan.Add(sunriseBlock)
+			}
 			dateStr := fmt.Sprintf("%04d-%02d-%02d", d.year, d.month, d.day)
 
 			summary := prayer
@@ -527,13 +540,14 @@ func buildICS(p *params, loc *time.Location, days []dayTimings) string {
 			write("UID:" + uid)
 			write("DTSTAMP:" + formatUTC(time.Now()))
 			write("DTSTART:" + formatUTC(start))
-			write("DTEND:" + formatUTC(start.Add(20*time.Minute)))
+			write("DTEND:" + formatUTC(end))
 			write("SUMMARY:" + icsEscape(summary))
 			write("TRANSP:TRANSPARENT")
 			write("BEGIN:VALARM")
 			write("ACTION:DISPLAY")
 			write("DESCRIPTION:" + icsEscape(summary))
-			write(fmt.Sprintf("TRIGGER:-PT%dM", p.alert))
+			// The reminder stays relative to the athan, not to the block's start.
+			write(fmt.Sprintf("TRIGGER:-PT%dM", p.alert+int(start.Sub(athan).Minutes())))
 			write("END:VALARM")
 			write("END:VEVENT")
 		}

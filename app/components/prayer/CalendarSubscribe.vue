@@ -3,7 +3,7 @@
     <p class="text-[11px] uppercase tracking-wider text-muted mb-1.5">Add to calendar</p>
     <div class="rounded-xl bg-elevated border border-default p-3 space-y-3">
       <p class="text-xs text-muted">
-        Prayer times appear in your calendar with a reminder 10 minutes before each prayer, and stay up to date.
+        Each prayer appears in your calendar as a 30-minute block starting 10 minutes after the athan, with a reminder 10 minutes before the athan, and stays up to date.
       </p>
       <div class="flex flex-wrap gap-2">
         <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openApple">

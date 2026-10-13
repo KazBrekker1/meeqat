@@ -219,12 +219,26 @@ func TestEventsCarryAnExplicitEnd(t *testing.T) {
 	p.tz = "Asia/Qatar"
 	ics := buildICS(p, loc, []dayTimings{{year: 2026, month: 10, day: 13, timings: map[string]string{"Fajr": "04:13"}}})
 
-	for _, want := range []string{"DTSTART:20261013T011300Z\r\n", "DTEND:20261013T013300Z\r\n", "X-WR-TIMEZONE:Asia/Qatar\r\n"} {
+	// Fajr 04:13 Doha = 01:13Z: the block is 01:23–01:53, the reminder 10 min before the athan.
+	for _, want := range []string{"DTSTART:20261013T012300Z\r\n", "DTEND:20261013T015300Z\r\n", "TRIGGER:-PT20M\r\n", "X-WR-TIMEZONE:Asia/Qatar\r\n"} {
 		if !strings.Contains(ics, want) {
 			t.Errorf("feed is missing %q", want)
 		}
 	}
 	if strings.Contains(ics, "DURATION:PT20M") {
 		t.Errorf("events should end with DTEND, not DURATION")
+	}
+}
+
+func TestSunriseIsNotShifted(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Qatar")
+	p := testParams(25.285, 51.531)
+	p.tz, p.sunrise = "Asia/Qatar", true
+	ics := buildICS(p, loc, []dayTimings{{year: 2026, month: 10, day: 13, timings: map[string]string{"Sunrise": "05:31"}}})
+
+	for _, want := range []string{"DTSTART:20261013T023100Z\r\n", "DTEND:20261013T025100Z\r\n", "TRIGGER:-PT10M\r\n"} {
+		if !strings.Contains(ics, want) {
+			t.Errorf("feed is missing %q", want)
+		}
 	}
 }
