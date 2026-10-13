@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getSettingsStore } from "@/utils/store";
 import { isNative } from "@/utils/platform";
 import { isMoonStyle, type MoonStyle } from "@/utils/moon/styles";
@@ -40,7 +41,6 @@ export async function saveMoonStylePreference(style: MoonStyle): Promise<void> {
     await store.set(PREF_KEY, style);
     if (store.save) await store.save();
     if (isNative()) {
-      const { emit } = await import("@tauri-apps/api/event");
       await emit(CHANGED_EVENT, style);
     }
   } catch (e) {
@@ -56,7 +56,6 @@ export async function watchMoonStylePreference(): Promise<void> {
   await loadMoonStylePreference();
   if (isNative()) {
     try {
-      const { listen } = await import("@tauri-apps/api/event");
       await listen<string>(CHANGED_EVENT, ({ payload }) => {
         if (isMoonStyle(payload)) moonStyle.value = payload;
       });

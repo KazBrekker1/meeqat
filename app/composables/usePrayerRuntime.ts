@@ -3,11 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { getCityCoordinates, getCityTimezone } from "@/constants/cities";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
-import {
-  formatGregorianVerbose,
-  formatHijriVerbose,
-} from "@/composables/prayer/usePrayerDisplay";
+import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
+import { formatGregorianVerbose } from "@/utils/format";
+import { formatHijriVerbose } from "@/utils/hijri";
 import { getPlatform } from "@/utils/platform";
 import {
   pad2,
@@ -101,7 +99,7 @@ function createPrayerRuntime() {
     });
 
   // Update Android home screen widgets
-  const { isAndroid } = usePrayerService({
+  usePrayerService({
     timingsList,
     hijriDate: hijriDateVerbose,
     gregorianDate: gregorianDateVerbose,
@@ -202,22 +200,10 @@ function createPrayerRuntime() {
           // Times not loaded yet: wait for them rather than sending the tray an empty list.
           if (!list.length) return;
 
-          let nextLine = "Next: --";
-          if (nextPrayerLabel.value && countdownToNext.value) {
-            nextLine = `${nextPrayerLabel.value} in \t\t ${countdownToNext.value}`;
-          }
-
-          let sinceLine = "Last: --";
-          if (previousPrayerLabel.value && timeSincePrevious.value) {
-            sinceLine = `${previousPrayerLabel.value} since \t ${timeSincePrevious.value}`;
-          }
-
           // Rust keeps this snapshot and hands it to the tray popover on load, so the
           // popover never depends on having caught a one-off event.
           await invoke("set_tray_snapshot", { payload: {
             dateLine,
-            nextLine,
-            sinceLine,
             hijriDate: hijriDateVerbose.value,
             gregorianDate: gregorianDateVerbose.value,
             nextPrayerLabel: nextPrayerLabel.value,
@@ -255,7 +241,6 @@ function createPrayerRuntime() {
     prefsLoaded,
     send,
     notificationSettings,
-    isAndroid,
   };
 }
 

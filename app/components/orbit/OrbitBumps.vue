@@ -6,7 +6,7 @@
     <!-- centre (overridable) -->
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
       <slot>
-        <PrototypesCelestialMoonPhase :phase="moonPhase" :size="Math.round(size * 0.42)" halo halo-color="#cdd6ff" />
+        <CelestialMoonPhase :phase="moonPhase" :size="Math.round(size * 0.42)" halo halo-color="#cdd6ff" />
       </slot>
     </div>
 
@@ -150,7 +150,7 @@
 
 <script lang="ts" setup>
 import { ref, reactive, computed, watch, onBeforeUnmount, useId } from "vue";
-import { contourPath, ptAt, frac, toMin, bracket, urgencyColor, fmtDur, type BumpPrayer } from "./bump";
+import { contourPath, ptAt, frac, toMin, bracket, urgencyColor, fmtDur, type BumpPrayer } from "@/utils/orbit/bump";
 import { sunAltitudeDeg, cotD, gnomonWeights, sunInk, mixRgb, rgb, armPath, MOONLIGHT } from "@/utils/moon/gnomon";
 
 const props = withDefaults(

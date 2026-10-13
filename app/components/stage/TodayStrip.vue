@@ -5,7 +5,7 @@
     class="grid grid-cols-[1fr_1.22fr_1fr] gap-1.5 w-full"
   >
     <div :class="chip" class="px-2 py-[7px] gap-[7px]">
-      <PrototypesCelestialMoonSphere :phase="moon.phase" :lat="lat" :lng="lng" :size="22" :disc="0.92" :glow="false" />
+      <CelestialMoonSphere :phase="moon.phase" :lat="lat" :lng="lng" :size="22" :disc="0.92" :glow="false" />
       <div class="min-w-0">
         <div :class="mainText" class="text-xs">{{ moonPercent }}%</div>
         <div :class="subText" class="text-[10px] truncate">{{ moonName.replace("Waxing ", "Wax. ").replace("Waning ", "Wan. ") }}</div>
@@ -30,7 +30,7 @@
   <div v-else class="flex gap-2.5 justify-center flex-wrap">
     <div :class="chip" class="py-2 pl-2.5 pr-3.5 gap-2.5">
       <span class="size-7 grid place-items-center shrink-0">
-        <PrototypesCelestialMoonSphere :phase="moon.phase" :lat="lat" :lng="lng" :size="24" :disc="0.92" :glow="false" />
+        <CelestialMoonSphere :phase="moon.phase" :lat="lat" :lng="lng" :size="24" :disc="0.92" :glow="false" />
       </span>
       <div>
         <div :class="mainText" class="text-[13px]">{{ moonName }}</div>
@@ -57,7 +57,7 @@
 <script lang="ts" setup>
 import { h, type FunctionalComponent } from "vue";
 import { compassPoint } from "@/utils/qibla";
-import { moonPhaseName } from "@/components/prototypes/celestial/lunar";
+import { moonPhaseName } from "@/utils/moon/lunar";
 
 const props = defineProps<{
   /** From moonView: phase 0..1 and illuminated fraction 0..1. */

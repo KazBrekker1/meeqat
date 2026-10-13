@@ -237,20 +237,44 @@ export function useTogether() {
     return run;
   }
 
+  /** Establishes the session and reports the outcome in `status`. */
+  async function connect(): Promise<boolean> {
+    errorMessage.value = null;
+    try {
+      const ok = await establish();
+      status.value = ok ? "ready" : "signed-out";
+      return ok;
+    } catch {
+      status.value = "error";
+      errorMessage.value = UNREACHABLE;
+      return false;
+    }
+  }
+
   async function ensureSession(): Promise<boolean> {
     if (ensuring) return ensuring;
     return exclusive(async () => {
       if (!(verified && pb().authStore.isValid)) status.value = "connecting";
-      errorMessage.value = null;
-      try {
-        const ok = await establish();
-        status.value = ok ? "ready" : "signed-out";
-        return ok;
-      } catch {
-        status.value = "error";
-        errorMessage.value = UNREACHABLE;
-        return false;
-      }
+      return connect();
+    });
+  }
+
+  /**
+   * Desktop: the Rust listener found the server no longer accepts the session
+   * (`together:session-expired`) and stopped. Check it again from here, quietly:
+   * a session the server still renews goes back to the listener; one it rejects
+   * is cleared, which leaves the app signed out.
+   */
+  function recoverExpiredSession(expiredUserId?: string): Promise<boolean> {
+    return exclusive(async () => {
+      const current = pb().authStore.record?.id;
+      // About an account that has since been replaced: nothing to recover.
+      if (expiredUserId && current && expiredUserId !== current) return status.value === "ready";
+      verified = false;
+      // The listener dropped its copy: hand over whatever session comes next,
+      // even if the token turns out to be the same.
+      lastNotifiedToken = null;
+      return connect();
     });
   }
 
@@ -388,6 +412,7 @@ export function useTogether() {
     redeem,
     signOut,
     onSessionChange,
+    recoverExpiredSession,
   };
 }
 

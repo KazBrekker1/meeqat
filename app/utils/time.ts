@@ -1,4 +1,5 @@
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { prayerClock } from "@/utils/prayerClock";
 
 // --- Basic helpers ---
 
@@ -22,6 +23,32 @@ export function resetToMidnight(d: Date): Date {
 
 export function getUserTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// --- Time-of-day parsing ---
+
+/**
+ * Minutes after midnight from "HH:MM" (anything after it, such as " (+03)", is
+ * ignored) or "h:mm AM/PM"; null when it is neither. The app's only parser for
+ * a time of day.
+ */
+export function parseTimeToMinutes(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.trim();
+  const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let hours = Number(ampmMatch[1]);
+    const minutes = Number(ampmMatch[2]);
+    const isPM = ampmMatch[3]?.toUpperCase() === "PM";
+    if (hours === 12) hours = 0;
+    return (isPM ? hours + 12 : hours) * 60 + minutes;
+  }
+  const parts = cleaned.match(/^(\d{1,2}):(\d{2})/);
+  if (!parts) return null;
+  const h = Number(parts[1]);
+  const m = Number(parts[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
 }
 
 // --- Date key formatting ---
@@ -104,13 +131,7 @@ export function computePreviousPrayerInfo(
     .filter((t) => typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key))
     .sort((a, b) => (a.minutes as number) - (b.minutes as number));
 
-  if (!list.length) return null;
-
-  const currentMinutes = getMinutesOfDay(now);
-  let nextIdx = list.findIndex((t) => (t.minutes as number) > currentMinutes);
-  if (nextIdx === -1) nextIdx = 0;
-
-  const prev = list[(nextIdx - 1 + list.length) % list.length];
+  const prev = prayerClock(list, getSecondsOfDay(now)).previous;
   if (!prev || typeof prev.minutes !== "number") return null;
 
   const prevDate = resetToMidnight(now);

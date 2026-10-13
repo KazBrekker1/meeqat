@@ -9,8 +9,8 @@ import {
   type DateValue,
 } from "@internationalized/date";
 import type { Ref } from "vue";
-import { ISLAMIC_MONTHS } from "@/constants/prayers";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
+import { formatHijriDate, formatHijriMonthYear } from "@/utils/hijri";
+import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
 
 /**
  * Astronomical moon phase (0 = new, 0.5 = full) for a calendar day → tiny moon
@@ -66,31 +66,9 @@ export function useHijriCalendar(todayKey?: Ref<string>) {
     year: "numeric",
   });
 
-  /**
-   * Format an Islamic date using hardcoded month names. This avoids
-   * Intl.DateTimeFormat issues on Android WebViews which don't properly
-   * support Islamic calendar locales.
-   */
-  function formatIslamicDate(date: DateValue): string {
-    const islamic =
-      date.calendar instanceof IslamicUmalquraCalendar
-        ? date
-        : toCalendar(date, new IslamicUmalquraCalendar());
-    const monthName = ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
-    return `${islamic.day} ${monthName} ${islamic.year} AH`;
-  }
-
   const calendarHeading = computed(() => {
     const date = calendarPlaceholder.value;
-    if (calendarSystem.value === "islamic") {
-      const islamic =
-        date.calendar instanceof IslamicUmalquraCalendar
-          ? date
-          : toCalendar(date, new IslamicUmalquraCalendar());
-      const monthName =
-        ISLAMIC_MONTHS[islamic.month - 1] || `Month ${islamic.month}`;
-      return `${monthName} ${islamic.year}`;
-    }
+    if (calendarSystem.value === "islamic") return formatHijriMonthYear(date);
     const greg =
       date.calendar instanceof GregorianCalendar
         ? date
@@ -105,7 +83,7 @@ export function useHijriCalendar(todayKey?: Ref<string>) {
       return gregorianFormatter.format(greg.toDate(timeZone));
     }
     // When viewing Gregorian calendar, tooltip shows Islamic date
-    return formatIslamicDate(date);
+    return formatHijriDate(date);
   }
 
   // Re-read at the day change (see the watcher below); a computed alone would
@@ -171,8 +149,6 @@ export function useHijriCalendar(todayKey?: Ref<string>) {
     calendarDate,
     calendarPlaceholder,
     calendarHeading,
-    isToday,
-    formatIslamicDate,
     formatTooltip,
     toggleCalendarSystem,
     selectToday,

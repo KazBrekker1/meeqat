@@ -24,6 +24,7 @@
 </template>
 
 <script lang="ts" setup>
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getUserTimezone } from "@/utils/time";
 import { getPlatform } from "@/utils/platform";
 import { cue } from "@/utils/sounds";
@@ -62,7 +63,6 @@ const googleUrl = computed(
 async function openExternal(url: string): Promise<void> {
   try {
     if (getPlatform() !== "web") {
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(url);
     } else {
       window.open(url, "_blank");

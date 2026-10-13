@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getPlatform } from "@/utils/platform";
 
 /**
@@ -37,7 +38,6 @@ export function useMockTime() {
     // Sync with Android widget
     if (getPlatform() === "android") {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         await invoke("plugin:prayer-service|set_mock_time_offset", { offsetMs });
       } catch (e) {
         console.error("Failed to sync time offset with Android:", e);
@@ -65,7 +65,6 @@ export function useMockTime() {
   async function loadOffset(): Promise<void> {
     if (import.meta.dev && getPlatform() === "android") {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke<{ offsetMs: number }>(
           "plugin:prayer-service|get_mock_time_offset"
         );

@@ -32,9 +32,7 @@ export function formatTime(
   try {
     return getCachedFormatter(options).format(date).replace(/^24:/, "00:");
   } catch {
-    return date
-      .toLocaleTimeString(undefined, options as any)
-      .replace(/^24:/, "00:");
+    return date.toLocaleTimeString(undefined, options).replace(/^24:/, "00:");
   }
 }
 
@@ -53,6 +51,20 @@ export function formatMinutesLocal(
   const base = resetToMidnight(new Date());
   base.setMinutes(minutes);
   return formatTime(base, is24Hour);
+}
+
+/** "October 13, 2026" for a local calendar day. */
+export function formatGregorianVerbose(date: Date): string | null {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      calendar: "gregory",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(date);
+  } catch {
+    return null;
+  }
 }
 
 /** "12.4 MB" — download sizes for the updater. */
