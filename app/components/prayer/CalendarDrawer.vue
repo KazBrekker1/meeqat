@@ -37,7 +37,7 @@
             <UTooltip :text="formatTooltip(day)" :delay-duration="0">
               <span class="relative grid place-items-center w-full h-full">
                 {{ day.day }}
-                <PrototypesCelestialMoonPhase
+                <CelestialMoonPhase
                   :phase="lunarPhaseOfDay(day)"
                   :size="10"
                   :glow="false"
@@ -52,7 +52,7 @@
 
         <!-- Selected day detail -->
         <div class="rounded-xl bg-elevated border border-default p-3 flex items-center gap-3">
-          <PrototypesCelestialMoonPhase :phase="selectedPhase" :size="52" halo halo-color="#cdd6ff" />
+          <CelestialMoonPhase :phase="selectedPhase" :size="52" halo halo-color="#cdd6ff" />
           <div class="leading-tight min-w-0">
             <p v-if="hijriDateVerbose" class="text-sm font-semibold truncate">{{ hijriDateVerbose }}</p>
             <p v-if="gregorianDateVerbose" class="text-xs text-muted truncate">{{ gregorianDateVerbose }}</p>
@@ -87,7 +87,7 @@
 
 <script lang="ts" setup>
 import type { DateValue, CalendarDate } from "@internationalized/date";
-import { moonIllumination, moonPhaseName } from "@/components/prototypes/celestial/lunar";
+import { moonIllumination, moonPhaseName } from "@/utils/moon/lunar";
 import { lunarPhaseOfDay } from "@/composables/useHijriCalendar";
 
 const open = defineModel<boolean>("open", { default: false });

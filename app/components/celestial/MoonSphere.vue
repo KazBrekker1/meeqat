@@ -2,7 +2,7 @@
   <div class="relative shrink-0" :style="{ width: size + 'px', height: size + 'px' }">
     <!-- Flat SVG moon while the map loads (or if canvas/decoding fails) -->
     <div v-if="!ready" class="absolute inset-0 grid place-items-center">
-      <PrototypesCelestialMoonPhase
+      <CelestialMoonPhase
         :phase="phase"
         :size="fallbackSize"
         :halo="glow"

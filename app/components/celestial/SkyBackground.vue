@@ -10,7 +10,7 @@
       class="absolute inset-0 opacity-80"
       :style="maskStyle"
     >
-      <PrototypesCelestialStarField :count="stars" :seed="seed" />
+      <CelestialStarField :count="stars" :seed="seed" />
     </div>
 
     <!-- Aurora horizon -->

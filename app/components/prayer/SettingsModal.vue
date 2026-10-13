@@ -136,7 +136,7 @@
                   :class="moonStyle === opt.value ? 'bg-primary/15 ring-1 ring-primary/40' : 'hover:bg-accented/50'"
                   @click="pickMoonStyle(opt.value)"
                 >
-                  <PrototypesCelestialMoonSphere
+                  <CelestialMoonSphere
                     :variant="opt.value"
                     :phase="pickerPhase"
                     :lat="calendarLat ?? null"
@@ -534,7 +534,7 @@ import { useMockTime } from '@/composables/useMockTime';
 import { getPlatform } from '@/utils/platform';
 import { cue, saveSoundsPreference, soundsEnabled } from '@/utils/sounds';
 import { MOON_STYLE_OPTIONS, moonStyle, saveMoonStylePreference, type MoonStyle } from '@/utils/moonStyle';
-import { moonPhase as lunarPhase } from '@/components/prototypes/celestial/lunar';
+import { moonPhase as lunarPhase } from '@/utils/moon/lunar';
 
 // Check if running on Android
 const isAndroid = ref(false);

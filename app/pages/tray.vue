@@ -2,7 +2,7 @@
   <!-- Height follows the content: fitWindowToContent() resizes the popover window, so
        nothing ever scrolls (Tauri has no native fit-to-content window option). -->
   <div ref="rootEl" class="w-full">
-    <PrototypesCelestialSkyBackground :stars="34" :seed="11" scrim="top">
+    <CelestialSkyBackground :stars="34" :seed="11" scrim="top">
       <div class="flex flex-col gap-2 p-3 text-white">
         <!-- Header (draggable): place · Hijri date, close -->
         <div class="flex items-center gap-1.5 cursor-move select-none" @mousedown="startDrag">
@@ -14,7 +14,7 @@
 
         <!-- Orbit (unchanged component) -->
         <div class="flex justify-center">
-          <PrototypesOrbitBumps
+          <OrbitBumps
             v-if="orbitPrayers.length"
             :prayers="orbitPrayers"
             :time="nowHHMM"
@@ -25,11 +25,11 @@
             :lng="coords.lng"
           >
             <!-- Flat moon until the map is decoded (after first paint), then the real one -->
-            <PrototypesCelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" />
-          </PrototypesOrbitBumps>
+            <CelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" />
+          </OrbitBumps>
           <div v-else class="flex flex-col items-center gap-2 py-2 text-center">
             <!-- 112 px canvas (glow room) in the old 72 px box: same layout, same 66 px disc -->
-            <PrototypesCelestialMoonSphere class="-m-5" :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="112" :disc="66 / 112" />
+            <CelestialMoonSphere class="-m-5" :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="112" :disc="66 / 112" />
             <p class="text-xs text-white/60 max-w-[200px]">Choose a location in Meeqat to see prayer times here.</p>
           </div>
         </div>
@@ -76,7 +76,7 @@
           <UButton icon="lucide:power" size="sm" color="neutral" variant="ghost" class="text-white/55" aria-label="Quit Meeqat" @click="quitApp" />
         </div>
       </div>
-    </PrototypesCelestialSkyBackground>
+    </CelestialSkyBackground>
   </div>
 </template>
 
@@ -96,7 +96,7 @@ import { currentMonitor } from "@tauri-apps/api/window";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
+import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
 import { pad2 } from "@/utils/time";
 import { hidePopover } from "@/composables/useTrayPopover";
 import type { PrayerTimingItem, TrayUpdatePayload } from "@/utils/types";

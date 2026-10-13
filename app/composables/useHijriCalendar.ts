@@ -10,7 +10,7 @@ import {
 } from "@internationalized/date";
 import type { Ref } from "vue";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
+import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
 
 /**
  * Astronomical moon phase (0 = new, 0.5 = full) for a calendar day → tiny moon

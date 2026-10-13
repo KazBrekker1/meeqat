@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { getCityCoordinates, getCityTimezone } from "@/constants/cities";
 import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
+import { moonPhase as lunarPhase } from "@/utils/moon/lunar";
 import {
   formatGregorianVerbose,
   formatHijriVerbose,

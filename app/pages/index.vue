@@ -1,6 +1,6 @@
 <template>
   <div class="h-screen w-full relative">
-    <PrototypesCelestialSkyBackground class="h-full" :stars="70" :seed="11">
+    <CelestialSkyBackground class="h-full" :stars="70" :seed="11">
       <div class="h-full flex flex-col text-white">
         <!-- App bar -->
         <header class="flex items-center justify-between px-3 sm:px-4 min-h-12 shrink-0 border-b border-white/10 bg-black/20 backdrop-blur-sm pt-safe">
@@ -37,7 +37,7 @@
         <div class="flex-1 min-h-0 overflow-y-auto scroll-celestial pb-safe md:pb-0 md:overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_380px]">
           <!-- LEFT: the stage — orbit + moon, date, today strip -->
           <section ref="stageEl" class="flex flex-col items-center justify-center gap-2 px-4 pt-6 pb-3 md:py-6 md:gap-3.5 min-h-0">
-            <PrototypesOrbitBumps
+            <OrbitBumps
               v-if="orbitPrayers.length"
               :key="orbitSize"
               :prayers="orbitPrayers"
@@ -49,15 +49,15 @@
               :lng="activeCoords?.lng ?? null"
             >
               <!-- Same disc size as the orbit's default flat moon (0.42 × 0.92 of the orbit) -->
-              <PrototypesCelestialMoonSphere
+              <CelestialMoonSphere
                 :phase="moonPhase"
                 :lat="activeCoords?.lat ?? null"
                 :lng="activeCoords?.lng ?? null"
                 :size="Math.round(orbitSize * 0.6)"
                 :disc="ORBIT_MOON_DISC"
               />
-            </PrototypesOrbitBumps>
-            <PrototypesCelestialMoonSphere
+            </OrbitBumps>
+            <CelestialMoonSphere
               v-else
               :phase="moonPhase"
               :lat="activeCoords?.lat ?? null"
@@ -186,7 +186,7 @@
                 <template #day="{ day }">
                   <span class="relative grid place-items-center w-full h-full">
                     {{ day.day }}
-                    <PrototypesCelestialMoonPhase
+                    <CelestialMoonPhase
                       :phase="lunarPhaseOf(day)"
                       :size="10"
                       :glow="false"
@@ -266,7 +266,7 @@
           </button>
         </footer>
       </div>
-    </PrototypesCelestialSkyBackground>
+    </CelestialSkyBackground>
 
     <!-- Calendar Drawer -->
     <PrayerCalendarDrawer
@@ -351,7 +351,7 @@ import { getCountryByCode } from "@/constants/countries";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { pad2, getSecondsOfDay } from "@/utils/time";
 import { MAIN_PRAYER_KEYS_SET, PRAYER_ORDER } from "@/constants/prayers";
-import { iconFor } from "@/components/prototypes/celestial/prayerIcons";
+import { iconFor } from "@/constants/prayerIcons";
 import { CalendarDate, GregorianCalendar, IslamicUmalquraCalendar, toCalendar } from "@internationalized/date";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
 import { qiblaBearing } from "@/utils/qibla";
