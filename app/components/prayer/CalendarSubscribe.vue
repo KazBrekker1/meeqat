@@ -87,12 +87,16 @@ function openGoogle(): void {
 }
 
 async function copyLink(): Promise<void> {
-  await navigator.clipboard.writeText(feedUrl.value);
-  cue("copied");
-  toast.add({
-    title: "Link copied",
-    color: "success",
-    icon: "heroicons:check-circle-20-solid",
-  });
+  try {
+    await navigator.clipboard.writeText(feedUrl.value);
+    cue("copied");
+    toast.add({
+      title: "Link copied",
+      color: "success",
+      icon: "heroicons:check-circle-20-solid",
+    });
+  } catch {
+    toast.add({ title: "Couldn't copy the link", description: feedUrl.value, color: "error" });
+  }
 }
 </script>

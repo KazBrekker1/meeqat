@@ -82,7 +82,7 @@
         Pick on the map
       </UButton>
       <template #content>
-        <PrayerLocationMapPicker
+        <LazyPrayerLocationMapPicker
           class="mt-2"
           :lat="currentLat"
           :lng="currentLng"

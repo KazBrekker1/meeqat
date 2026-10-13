@@ -46,6 +46,16 @@ export function createWebFallbackStore(localKey = "settings.bin"): TauriStore {
     async clear() {
       window.localStorage.removeItem(storageKey);
     },
+    async keys() {
+      return Object.keys(readAll());
+    },
+    async delete(key: string) {
+      const all = readAll();
+      if (!(key in all)) return false;
+      delete all[key];
+      await writeAll(all);
+      return true;
+    },
   } as TauriStore;
 }
 
@@ -80,6 +90,8 @@ export const getCacheStore = loadStore("cache.bin");
 
 // --- Cache store key helper (used by prayer/usePrayerCache.ts) ---
 
+export const CACHE_KEY_PREFIX = "prayerCache:";
+
 export function cacheStoreKey(optionsKey: string): string {
-  return `prayerCache:${optionsKey}`;
+  return `${CACHE_KEY_PREFIX}${optionsKey}`;
 }

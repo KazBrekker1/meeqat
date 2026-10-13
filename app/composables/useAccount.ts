@@ -1,5 +1,3 @@
-import { createAuthClient } from "better-auth/client";
-import { passkeyClient } from "@better-auth/passkey/client";
 import { getPlatform } from "@/utils/platform";
 import { createTokenCache } from "@/utils/sanadToken";
 
@@ -10,21 +8,30 @@ export interface AccountUser {
   image?: string | null;
 }
 
-function makeClient(baseURL: string) {
+// better-auth is loaded on first use: only the web build signs in this way, and
+// even there not before the account is first looked at.
+async function makeClient(baseURL: string) {
+  const [{ createAuthClient }, { passkeyClient }] = await Promise.all([
+    import("better-auth/client"),
+    import("@better-auth/passkey/client"),
+  ]);
   // meeqat.sanad.ink → auth.sanad.ink is cross-origin but same-site: the shared
   // `.sanad.ink` session cookie only travels on credentialed requests.
   return createAuthClient({ baseURL, fetchOptions: { credentials: "include" }, plugins: [passkeyClient()] });
 }
-type AuthClient = ReturnType<typeof makeClient>;
+type AuthClient = Awaited<ReturnType<typeof makeClient>>;
 
 // Module-level singletons: one client, one session state, one token cache per page.
-let client: AuthClient | null = null;
+let client: Promise<AuthClient> | null = null;
 let tokens: ReturnType<typeof createTokenCache> | null = null;
 const user = ref<AccountUser | null>(null);
 const status = ref<"unknown" | "signed-out" | "signed-in">("unknown");
 
-function authClient(baseURL: string): AuthClient {
-  client ??= makeClient(baseURL);
+function authClient(baseURL: string): Promise<AuthClient> {
+  client ??= makeClient(baseURL).catch((err) => {
+    client = null; // a failed load (offline) is retried on the next call
+    throw err;
+  });
   return client;
 }
 
@@ -42,7 +49,7 @@ export function useAccount() {
       return;
     }
     try {
-      const { data } = await authClient(authUrl).getSession();
+      const { data } = await (await authClient(authUrl)).getSession();
       user.value = (data?.user as AccountUser | undefined) ?? null;
     } catch {
       user.value = null;
@@ -54,7 +61,7 @@ export function useAccount() {
   async function signInWithGoogle(): Promise<void> {
     // Absolute URL: a relative callbackURL would resolve against auth.sanad.ink.
     // Keeps the query (e.g. /native-login's challenge and state).
-    await authClient(authUrl).signIn.social({
+    await (await authClient(authUrl)).signIn.social({
       provider: "google",
       callbackURL: window.location.origin + window.location.pathname + window.location.search,
     });
@@ -62,14 +69,14 @@ export function useAccount() {
 
   /** Passkeys are registered for rpID `sanad.ink`, so they work on any Sanad subdomain. */
   async function signInWithPasskey(): Promise<boolean> {
-    const res = await authClient(authUrl).signIn.passkey();
+    const res = await (await authClient(authUrl)).signIn.passkey();
     if (res?.error) return false;
     await refresh();
     return status.value === "signed-in";
   }
 
   async function signOut(): Promise<void> {
-    await authClient(authUrl).signOut();
+    await (await authClient(authUrl)).signOut();
     tokens?.clear();
     user.value = null;
     status.value = "signed-out";

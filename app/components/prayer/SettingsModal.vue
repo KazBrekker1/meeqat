@@ -38,7 +38,7 @@
             leave-from-class="opacity-100 translate-y-0"
             leave-to-class="opacity-0 -translate-y-2"
           >
-            <PrayerLocationMapPicker
+            <LazyPrayerLocationMapPicker
               v-if="locationMode === 'gps'"
               class="mt-3"
               :lat="gpsLat"
@@ -673,8 +673,8 @@ const emit = defineEmits<{
   (e: 'update:notificationSettings', value: NotificationSettings): void;
 }>();
 
-// Show dev tools in development mode or on Android (for testing time mocking)
-const isDev = computed(() => import.meta.dev || isAndroid.value);
+// Developer tools (test notification, time mocking) are for development builds only.
+const isDev = import.meta.dev;
 
 const isOpen = computed({
   get: () => props.modelValue,

@@ -1,13 +1,17 @@
+import { getPlatform } from "@/utils/platform";
+
 /**
  * Composable for debug time mocking.
  * Allows shifting time forward/backward for testing purposes.
  * The offset is shared across all components and synced with the Android widget.
+ *
+ * Development builds only: in production the offset is never set or loaded, so
+ * it is always 0 and getNow() is the real time.
  */
-
-// Global state shared across all component instances
-const mockTimeOffsetMs = useState("mockTimeOffsetMs", () => 0);
-
 export function useMockTime() {
+  // Global state shared across all component instances
+  const mockTimeOffsetMs = useState("mockTimeOffsetMs", () => 0);
+
   /**
    * Get the current time with mock offset applied.
    */
@@ -27,10 +31,11 @@ export function useMockTime() {
    * Also syncs with Android widget if available.
    */
   async function setOffset(offsetMs: number): Promise<void> {
+    if (!import.meta.dev) return;
     mockTimeOffsetMs.value = offsetMs;
 
     // Sync with Android widget
-    if (import.meta.client) {
+    if (getPlatform() === "android") {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("plugin:prayer-service|set_mock_time_offset", { offsetMs });
@@ -58,7 +63,7 @@ export function useMockTime() {
    * Load the offset from Android (call on mount).
    */
   async function loadOffset(): Promise<void> {
-    if (import.meta.client) {
+    if (import.meta.dev && getPlatform() === "android") {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke<{ offsetMs: number }>(

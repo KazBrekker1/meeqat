@@ -10,7 +10,7 @@
       class="absolute inset-0 opacity-80"
       :style="maskStyle"
     >
-      <PrototypesCelestialStarField :count="stars" :seed="seed" :shooting-star="shooting" />
+      <PrototypesCelestialStarField :count="stars" :seed="seed" />
     </div>
 
     <!-- Aurora horizon -->
@@ -36,7 +36,6 @@ withDefaults(
   defineProps<{
     stars?: number;
     seed?: number;
-    shooting?: boolean;
     aurora?: boolean;
     scrim?: "top" | "full" | "none";
     rounded?: string;
@@ -45,7 +44,6 @@ withDefaults(
   {
     stars: 60,
     seed: 11,
-    shooting: true,
     aurora: true,
     scrim: "top",
     rounded: "",

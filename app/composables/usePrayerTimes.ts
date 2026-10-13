@@ -22,6 +22,7 @@ export function usePrayerTimes() {
   const {
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
+    fetchSelectedDay,
     refreshInBackground,
     getNextDayFirstPrayer,
     getUpcomingDays,
@@ -34,26 +35,33 @@ export function usePrayerTimes() {
     online,
     (isOnline) => {
       state.isOffline.value = !isOnline;
-      if (isOnline && state.isStale.value) refreshInBackground();
+      // No-op unless cached data is waiting for a refresh.
+      if (isOnline) void refreshInBackground();
     },
     { immediate: true },
   );
 
-  // --- Midnight rollover: auto-refetch when date changes ---
-  watch(display.todayDateKey, () => {
+  /** Fetch today's times for the chosen place (GPS point or city); no-op without one. */
+  function refetchToday(): Promise<void> | undefined {
     if (
       state.locationMode.value === "gps" &&
       state.gpsLat.value != null &&
       state.gpsLng.value != null
     ) {
-      fetchByCoordinates(state.gpsLat.value, state.gpsLng.value);
-    } else if (state.selectedCity.value && state.selectedCountry.value) {
-      fetchPrayerTimingsByCity(
+      return fetchByCoordinates(state.gpsLat.value, state.gpsLng.value);
+    }
+    if (state.selectedCity.value && state.selectedCountry.value) {
+      return fetchPrayerTimingsByCity(
         state.selectedCity.value,
         state.selectedCountry.value,
         { methodId: state.selectedMethodId.value },
       );
     }
+  }
+
+  // --- Midnight rollover: auto-refetch when date changes ---
+  watch(display.todayDateKey, () => {
+    void refetchToday();
   });
 
   // --- Preferences load/save ---
@@ -191,6 +199,8 @@ export function usePrayerTimes() {
     showAdditionalTimes: state.showAdditionalTimes,
     isStale: state.isStale,
     isOffline: state.isOffline,
+    selectedDay: state.selectedDay,
+    cacheVersion: state.cacheVersion,
     locationMode: state.locationMode,
     gpsLat: state.gpsLat,
     gpsLng: state.gpsLng,
@@ -198,6 +208,7 @@ export function usePrayerTimes() {
 
     // display (from usePrayerDisplay)
     timingsList: display.timingsList,
+    todayDateKey: display.todayDateKey,
     currentTimeString: display.currentTimeString,
     hijriDateVerbose: display.hijriDateVerbose,
     gregorianDateVerbose: display.gregorianDateVerbose,
@@ -211,6 +222,8 @@ export function usePrayerTimes() {
     // actions
     fetchPrayerTimingsByCity,
     fetchByCoordinates,
+    fetchSelectedDay,
+    refetchToday,
     getNextDayFirstPrayer,
     getUpcomingDays,
     loadPreferences,

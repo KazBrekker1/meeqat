@@ -149,7 +149,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, computed, onBeforeUnmount, useId } from "vue";
+import { ref, reactive, computed, watch, onBeforeUnmount, useId } from "vue";
 import { contourPath, ptAt, frac, toMin, bracket, urgencyColor, fmtDur, type BumpPrayer } from "./bump";
 import { sunAltitudeDeg, cotD, gnomonWeights, sunInk, mixRgb, rgb, armPath, MOONLIGHT } from "@/utils/moon/gnomon";
 
@@ -193,7 +193,9 @@ const hot = props.size * 0.16;
 const baseA = props.size * props.baseAmp;
 const hoverA = props.size * props.hoverAmp;
 
-const fracs = props.prayers.map((p) => frac(p.time));
+// Where each prayer sits on the dial. Computed: a new place or day moves the dots,
+// bumps and hotspots with it.
+const fracs = computed(() => props.prayers.map((p) => frac(p.time)));
 
 const root = ref<HTMLElement>();
 const hovered = ref<string | null>(null);
@@ -211,6 +213,18 @@ const amps = reactive(props.prayers.map(() => baseA));
 const vel = props.prayers.map(() => 0);
 const targets = props.prayers.map(() => baseA);
 const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+// One spring per prayer: if the number of prayers on the dial changes, start them afresh.
+watch(
+  () => props.prayers.length,
+  (n) => {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    hovered.value = null;
+    amps.splice(0, amps.length, ...Array.from({ length: n }, () => baseA));
+    vel.splice(0, vel.length, ...Array.from({ length: n }, () => 0));
+    targets.splice(0, targets.length, ...Array.from({ length: n }, () => baseA));
+  },
+);
 
 let raf = 0;
 function loop() {
@@ -246,13 +260,14 @@ onBeforeUnmount(() => cancelAnimationFrame(raf));
 
 const sig2 = 2 * props.sigma * props.sigma;
 function lobe(t: number, i: number) {
-  let d = Math.abs(t - fracs[i]!);
+  let d = Math.abs(t - fracs.value[i]!);
   d = Math.min(d, 1 - d);
   return Math.exp(-(d * d) / sig2);
 }
 function outerR(t: number) {
   let r = Ro;
-  for (let i = 0; i < fracs.length; i++) r += amps[i]! * lobe(t, i);
+  const n = fracs.value.length;
+  for (let i = 0; i < n; i++) r += (amps[i] ?? baseA) * lobe(t, i);
   return r;
 }
 
@@ -267,11 +282,11 @@ const clip = computed(() => `path(evenodd, '${outerPath.value} ${innerPath}')`);
 
 const points = computed(() =>
   props.prayers.map((p, i) => {
-    const t = fracs[i]!;
+    const t = fracs.value[i]!;
     return { ...p, ...ptAt(t, outerR(t) - props.size * 0.016, C, C) };
   })
 );
-const hotspot = (i: number) => ptAt(fracs[i]!, Ro + baseA, C, C);
+const hotspot = (i: number) => ptAt(fracs.value[i]!, Ro + baseA, C, C);
 
 const nowSecNorm = computed(() =>
   props.nowSeconds == null ? null : ((props.nowSeconds % 86400) + 86400) % 86400

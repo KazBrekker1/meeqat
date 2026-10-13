@@ -8,6 +8,7 @@ import {
   type CalendarDate,
   type DateValue,
 } from "@internationalized/date";
+import type { Ref } from "vue";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
 import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
 
@@ -27,8 +28,11 @@ export function lunarPhaseOfDay(day: DateValue) {
  * Encapsulates the selected date, the visible month placeholder, calendar-system
  * switching and the date/tooltip formatters so pages (index, tray) and the
  * CalendarDrawer can share one source of truth instead of duplicating ~120 lines.
+ *
+ * Pass `todayKey` (a value that changes when the local date does) so "today"
+ * follows midnight instead of staying on the day the page was opened.
  */
-export function useHijriCalendar() {
+export function useHijriCalendar(todayKey?: Ref<string>) {
   const timeZone = getLocalTimeZone();
 
   const islamicDate = shallowRef(
@@ -104,8 +108,12 @@ export function useHijriCalendar() {
     return formatIslamicDate(date);
   }
 
+  // Re-read at the day change (see the watcher below); a computed alone would
+  // keep the date it first saw.
+  const currentDay = shallowRef(today(timeZone));
+
   const isToday = computed(() => {
-    const baseToday = today(timeZone);
+    const baseToday = currentDay.value;
     const todayInSystem = toCalendar(
       baseToday,
       calendarSystem.value === "islamic"
@@ -145,6 +153,16 @@ export function useHijriCalendar() {
       gregorianDate.value = todayInSystem;
     }
     calendarPlaceholder.value = todayInSystem as CalendarDate;
+  }
+
+  // The date rolled over: if the calendar was sitting on (what was) today, move
+  // it to the new today; a date the user picked is left alone.
+  if (todayKey) {
+    watch(todayKey, () => {
+      const wasOnToday = isToday.value;
+      currentDay.value = today(timeZone);
+      if (wasOnToday) selectToday();
+    });
   }
 
   return {

@@ -125,3 +125,43 @@ export function computePreviousPrayerInfo(
     timeSince: formatTimeDiff(diff),
   };
 }
+
+// --- Timezones ---
+
+/** Minutes east of UTC for an IANA timezone at an instant; null if the zone is unknown here. */
+export function getUtcOffsetMinutes(tz: string, at: Date): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(at);
+    const part = (type: string) =>
+      Number(parts.find((p) => p.type === type)?.value);
+    const wallClock = Date.UTC(
+      part("year"),
+      part("month") - 1,
+      part("day"),
+      part("hour"),
+      part("minute"),
+    );
+    const offset = Math.round(
+      (wallClock - Math.floor(at.getTime() / 60_000) * 60_000) / 60_000,
+    );
+    return Number.isFinite(offset) ? offset : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "GMT+3", "GMT-3:30" */
+export function formatUtcOffset(minutes: number): string {
+  const abs = Math.abs(minutes);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `GMT${minutes < 0 ? "-" : "+"}${h}${m ? `:${pad2(m)}` : ""}`;
+}

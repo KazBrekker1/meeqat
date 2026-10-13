@@ -1,11 +1,24 @@
 import type { PrayerTimingItem } from "@/utils/types";
 import type { Ref } from "vue";
+import type { UpcomingDay } from "@/composables/prayer/usePrayerFetch";
 import { getPlatform } from "@/utils/platform";
+import { getDateKey } from "@/utils/time";
+
+// How many days (today included) the widget is given, so it can roll over to the
+// next day by itself while the app stays closed.
+const UPCOMING_DAYS = 7;
 
 interface PrayerTimeData {
   prayerName: string;
   prayerTime: number; // Unix timestamp in milliseconds
   label: string;
+}
+
+/** One day of the widget's look-ahead window (same shapes as the top-level fields). */
+interface UpcomingDayData {
+  prayers: PrayerTimeData[];
+  hijriDate?: string;
+  gregorianDate?: string;
 }
 
 interface UpdatePrayerTimesOptions extends Record<string, unknown> {
@@ -19,6 +32,8 @@ interface UpdatePrayerTimesOptions extends Record<string, unknown> {
   city?: string;
   countryCode?: string;
   use24Hour?: boolean;
+  /** Ascending, starting with today, consecutive days only. */
+  upcomingDays?: UpcomingDayData[];
 }
 
 // Dynamic imports to avoid issues on non-Android platforms
@@ -112,8 +127,28 @@ export function usePrayerService(options: {
     prayerTime: number;
     label: string;
   } | null>;
+  /** Resolves the cached days from today on, for the given times (real per-day times). */
+  getUpcomingDays?: (
+    days: number,
+    wanted: readonly { key: string; label: string }[],
+  ) => Promise<UpcomingDay[]>;
+  /** The same date strings as `hijriDate`/`gregorianDate`, for another day. */
+  formatDates?: (date: Date) => { hijriDate?: string; gregorianDate?: string };
+  /** Changes when the cached days behind `getUpcomingDays` change. */
+  dataVersion?: Ref<number>;
 }) {
-  const { timingsList, hijriDate, gregorianDate, city, countryCode, is24Hour, getNextDayPrayer } = options;
+  const {
+    timingsList,
+    hijriDate,
+    gregorianDate,
+    city,
+    countryCode,
+    is24Hour,
+    getNextDayPrayer,
+    getUpcomingDays,
+    formatDates,
+    dataVersion,
+  } = options;
 
   const isAndroid = ref(false);
 
@@ -133,6 +168,64 @@ export function usePrayerService(options: {
   });
 
   /**
+   * Today (as sent at the top level) followed by the cached days after it. Stops
+   * at the first day missing from the cache, so the entries are always consecutive.
+   */
+  async function buildUpcomingDays(
+    today: PrayerTimeData[],
+  ): Promise<UpcomingDayData[]> {
+    const out: UpcomingDayData[] = [
+      {
+        prayers: today,
+        hijriDate: hijriDate?.value ?? undefined,
+        gregorianDate: gregorianDate?.value ?? undefined,
+      },
+    ];
+    if (!getUpcomingDays) return out;
+
+    const wanted = timingsList.value
+      .filter((t) => typeof t.minutes === "number")
+      .map((t) => ({ key: t.key, label: t.label }));
+    let cached: UpcomingDay[] = [];
+    try {
+      cached = await getUpcomingDays(UPCOMING_DAYS, wanted);
+    } catch {
+      cached = [];
+    }
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    for (let i = 1; i < UPCOMING_DAYS; i++) {
+      const date = new Date(
+        start.getFullYear(),
+        start.getMonth(),
+        start.getDate() + i,
+      );
+      const day = cached.find((d) => d.dateKey === getDateKey(date));
+      if (!day) break;
+      out.push({
+        prayers: day.prayers
+          .map((p) => {
+            // Local wall-clock time on that day; setMinutes keeps it DST-correct.
+            const prayerTime = new Date(date);
+            prayerTime.setMinutes(p.minutes);
+            return {
+              prayerName: p.key,
+              prayerTime: prayerTime.getTime(),
+              label: p.label,
+            };
+          })
+          .sort((a, b) => a.prayerTime - b.prayerTime),
+        ...formatDates?.(date),
+      });
+    }
+    return out;
+  }
+
+  // Updates overlap when two changes land close together; only the latest is sent.
+  let updateSeq = 0;
+
+  /**
    * Update widget data. Call this whenever prayer times change.
    */
   async function update(): Promise<void> {
@@ -144,6 +237,7 @@ export function usePrayerService(options: {
       return;
     }
 
+    const seq = ++updateSeq;
     try {
       const api = await getPluginApi();
       if (!api) return;
@@ -158,6 +252,8 @@ export function usePrayerService(options: {
       const nextDay = fallbackNextDay
         ? ((await getNextDayPrayer?.()) ?? fallbackNextDay)
         : null;
+      const upcomingDays = await buildUpcomingDays(prayers);
+      if (seq !== updateSeq) return;
 
       await api.updatePrayerTimes({
         prayers,
@@ -172,6 +268,7 @@ export function usePrayerService(options: {
           nextDayPrayerTime: nextDay.prayerTime,
           nextDayPrayerLabel: nextDay.label,
         }),
+        upcomingDays,
       });
 
       console.log("[PrayerService] Widget data updated");
@@ -189,7 +286,7 @@ export function usePrayerService(options: {
 
   // Single watch: fires only when prayer data, dates, or location actually change
   watch(
-    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, is24Hour, isAndroid],
+    [prayerDataKey, hijriDate, gregorianDate, city, countryCode, is24Hour, isAndroid, () => dataVersion?.value],
     async () => {
       if (!isAndroid.value || !timingsList.value.length) return;
       await update();

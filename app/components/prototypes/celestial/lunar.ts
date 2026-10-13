@@ -1,13 +1,14 @@
 // Astronomically-accurate moon phase from a real date — independent of which
 // calendar (Hijri/Gregorian) is being displayed. 0 = new, 0.5 = full.
-
-const SYNODIC = 29.530588853; // mean synodic month (days)
-const NEW_MOON_REF = Date.UTC(2000, 0, 6, 18, 14, 0); // a known new moon
+//
+// One model for the whole app: this is the Meeus phase the rendered Moon and the
+// "% illuminated" chip use (utils/moon/sphere.ts), so the calendar glyphs, the
+// orbit and the chip can't disagree. The phase is geocentric — the same from
+// every place — so no position is needed.
+import { moonView } from "@/utils/moon/sphere";
 
 export function moonPhase(date: Date): number {
-  let p = ((date.getTime() - NEW_MOON_REF) / 86400000 / SYNODIC) % 1;
-  if (p < 0) p += 1;
-  return p;
+  return moonView(date, 0, 0, { orientation: "north" }).phase;
 }
 
 export function moonIllumination(phase: number): number {

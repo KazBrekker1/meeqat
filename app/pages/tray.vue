@@ -2,7 +2,7 @@
   <!-- Height follows the content: fitWindowToContent() resizes the popover window, so
        nothing ever scrolls (Tauri has no native fit-to-content window option). -->
   <div ref="rootEl" class="w-full">
-    <PrototypesCelestialSkyBackground :stars="34" :seed="11" :shooting="false" scrim="top">
+    <PrototypesCelestialSkyBackground :stars="34" :seed="11" scrim="top">
       <div class="flex flex-col gap-2 p-3 text-white">
         <!-- Header (draggable): place · Hijri date, close -->
         <div class="flex items-center gap-1.5 cursor-move select-none" @mousedown="startDrag">
@@ -46,6 +46,9 @@
             <div class="text-[13px] font-semibold tabular-nums leading-snug" :class="prayer.isNext && 'text-amber-300'">{{ prayer.time }}</div>
           </div>
         </div>
+
+        <!-- Only when the chosen city's UTC offset differs from this device's -->
+        <p v-if="timezoneNote && decoratedPrayers.length" class="text-[10px] leading-tight text-white/40 text-center">{{ timezoneNote }}</p>
 
         <!-- Pray Together: the most relevant active call (pushed by the Rust listener) -->
         <div v-if="call" class="flex flex-col gap-1.5 rounded-lg bg-white/[0.06] p-2 ring-1 ring-inset ring-white/10">
@@ -106,6 +109,7 @@ const hijriDate = ref<string>("");
 const receivedMoonPhase = ref<number | null>(null);
 const city = ref<string>("");
 const countryCode = ref<string>("");
+const timezoneNote = ref<string>("");
 const prayers = ref<PrayerTimingItem[]>([]);
 const coords = ref<{ lat: number | null; lng: number | null }>({ lat: null, lng: null });
 
@@ -315,7 +319,11 @@ function applyPayload(payload: TrayUpdatePayload) {
   // An empty list means "not loaded yet" (the main window can report the place and
   // date before the times arrive) — never let it wipe the times already shown.
   const incoming = payload.timingsList?.filter((p) => MAIN_PRAYER_KEYS_SET.has(p.key));
-  if (incoming?.length) prayers.value = incoming;
+  if (incoming?.length) {
+    prayers.value = incoming;
+    // Sent with every full snapshot (null when it doesn't apply).
+    timezoneNote.value = payload.timezoneNote ?? "";
+  }
   // Fallback: parse Hijri date from dateLine if individual field not provided
   if (payload.dateLine && !payload.hijriDate) {
     for (const part of payload.dateLine.split(" | ")) {

@@ -13,6 +13,15 @@ export function usePrayerState() {
   const isFetching = useState("prayer:isFetching", () => false);
   const isStale = useState("prayer:isStale", () => false);
   const isOffline = useState("prayer:isOffline", () => false);
+  // A date picked in the calendar (not today). Kept apart from `timings`, which
+  // only ever holds today: the countdown, tray, widget and notifications run on it.
+  const selectedDay = useState<{
+    dateKey: string;
+    timings: Record<string, string>;
+  } | null>("prayer:selectedDay", () => null);
+  // Bumped when the cached days behind today change (new place/method, or the
+  // month prefetch landing), so notifications and the widget re-read them.
+  const cacheVersion = useState("prayer:cacheVersion", () => 0);
 
   const selectedMethodId = useState("prayer:methodId", () => 4);
   const selectedCity = useState("prayer:city", () => "");
@@ -43,6 +52,8 @@ export function usePrayerState() {
     isFetching,
     isStale,
     isOffline,
+    selectedDay,
+    cacheVersion,
     selectedMethodId,
     selectedCity,
     selectedCountry,

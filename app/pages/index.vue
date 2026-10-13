@@ -133,6 +133,8 @@
             <!-- Schedule -->
             <div>
               <h2 class="text-[11px] uppercase tracking-wider text-white/45 mb-1.5 px-1">Today's prayers</h2>
+              <!-- Only when the chosen city's UTC offset differs from this device's -->
+              <p v-if="timezoneNote && timingsList.length" class="text-[10px] text-white/35 -mt-1 mb-1.5 px-1">{{ timezoneNote }}</p>
               <PrayerSkeleton v-if="isLoading && !timingsList.length" :count="6" />
               <ul v-else-if="timingsList.length" class="rounded-xl bg-white/[0.06] border border-white/10 divide-y divide-white/[0.07] overflow-hidden">
                 <li
@@ -195,6 +197,16 @@
                   </span>
                 </template>
               </UCalendar>
+              <!-- Times for the picked date; today's stay in the list above -->
+              <div v-if="selectedDayTimes.length" class="mt-2 rounded-xl bg-white/[0.04] border border-white/10 px-2 py-1.5">
+                <p class="text-[11px] text-white/45 mb-1 px-1">Prayer times · {{ selectedDayLabel }}</p>
+                <div class="grid grid-cols-3 gap-1 text-center">
+                  <div v-for="t in selectedDayTimes" :key="t.key">
+                    <div class="text-[10px] text-white/45">{{ t.label }}</div>
+                    <div class="text-xs tabular-nums font-mono text-white/80">{{ t.time }}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Desktop: reminder under the calendar, then Pray Together -->
@@ -266,6 +278,8 @@
       :hijri-date-verbose="hijriDateVerbose || undefined"
       :gregorian-date-verbose="gregorianDateVerbose || undefined"
       :format-tooltip="formatTooltip"
+      :selected-day-label="selectedDayLabel"
+      :selected-day-times="selectedDayTimes"
       @toggle-calendar-system="toggleCalendarSystem"
       @select-today="selectToday"
     />
@@ -334,37 +348,20 @@
 
 <script lang="ts" setup>
 import { getCountryByCode } from "@/constants/countries";
-import { getCityCoordinates } from "@/constants/cities";
 import { METHOD_OPTIONS, type MethodOption } from "@/constants/methods";
 import { pad2, getSecondsOfDay } from "@/utils/time";
-import { MAIN_PRAYER_KEYS_SET } from "@/constants/prayers";
+import { MAIN_PRAYER_KEYS_SET, PRAYER_ORDER } from "@/constants/prayers";
 import { iconFor } from "@/components/prototypes/celestial/prayerIcons";
-import { moonPhase as lunarPhase } from "@/components/prototypes/celestial/lunar";
 import { CalendarDate, GregorianCalendar, IslamicUmalquraCalendar, toCalendar } from "@internationalized/date";
 import { ISLAMIC_MONTHS } from "@/constants/prayers";
 import { qiblaBearing } from "@/utils/qibla";
 import { moonView } from "@/utils/moon/sphere";
-import { emit } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import { watchDebounced, watchThrottled } from "@vueuse/core";
 import { getPlatform } from "@/utils/platform";
 import { cue } from "@/utils/sounds";
 import { nextTick } from "vue";
 import type { NotificationSettings } from "@/composables/useNotifications";
 import type { FavoriteLocation } from "@/composables/useFavoriteLocations";
-import type { TrayUpdatePayload } from "@/utils/types";
-
-// Dual Hijri/Gregorian calendar state + formatting (shared composable).
-const {
-  calendarSystem,
-  calendarDate,
-  calendarPlaceholder,
-  calendarHeading,
-  formatTooltip,
-  toggleCalendarSystem,
-  selectToday,
-  lunarPhaseOf,
-} = useHijriCalendar();
+import { formatGregorianVerbose } from "@/composables/prayer/usePrayerDisplay";
 
 const isWeb = getPlatform() === "web";
 const callAlerts = useCallAlerts();
@@ -377,6 +374,8 @@ const showQiblaModal = shallowRef(false);
 
 const { confirm } = useConfirm();
 
+// Today's times, notifications, tray and widget sync run at app level (see
+// usePrayerRuntime); this page reads that state and drives it.
 const {
   isLoading,
   fetchError,
@@ -387,14 +386,10 @@ const {
   selectedMethodId,
   selectedCity,
   selectedCountry,
-  loadPreferences,
   selectedExtraTimezone,
   userTimezone,
   hijriDateVerbose,
-  nextPrayerLabel,
   countdownToNext,
-  previousPrayerLabel,
-  timeSincePrevious,
   clearTimings,
   clearCache,
   timeFormat,
@@ -406,41 +401,36 @@ const {
   gpsLng,
   gpsCity,
   fetchByCoordinates,
-  getNextDayFirstPrayer,
-  getUpcomingDays,
+  fetchSelectedDay,
+  selectedDay,
+  todayDateKey,
   upcomingKey,
-} = usePrayerTimes();
+  hasLocation,
+  activeCoords,
+  locationDisplayName,
+  nowHHMM,
+  moonPhase,
+  timezoneNote,
+  prefsLoaded,
+  send,
+  notificationSettings,
+} = usePrayerRuntime();
+
+// Dual Hijri/Gregorian calendar state + formatting (shared composable).
+const {
+  calendarSystem,
+  calendarDate,
+  calendarPlaceholder,
+  calendarHeading,
+  formatTooltip,
+  toggleCalendarSystem,
+  selectToday,
+  lunarPhaseOf,
+} = useHijriCalendar(todayDateKey);
 
 function openLocation() {
   showLocationModal.value = true;
 }
-
-// A place is chosen (city, or picked coordinates). False on first run.
-const hasLocation = computed(() =>
-  locationMode.value === "gps"
-    ? gpsLat.value != null && gpsLng.value != null
-    : !!selectedCity.value && !!selectedCountry.value
-);
-
-// Active coordinates for the Qibla compass: GPS position in GPS mode, otherwise
-// the selected city's coordinates from the curated list.
-const activeCoords = computed<{ lat: number; lng: number } | null>(() => {
-  if (locationMode.value === "gps") {
-    return gpsLat.value != null && gpsLng.value != null
-      ? { lat: gpsLat.value, lng: gpsLng.value }
-      : null;
-  }
-  if (selectedCity.value && selectedCountry.value) {
-    return getCityCoordinates(selectedCountry.value, selectedCity.value) ?? null;
-  }
-  return null;
-});
-
-// City label for the "add to calendar" feed: the curated city name, or the
-// reverse-geocoded GPS label when available.
-const locationDisplayName = computed(() =>
-  locationMode.value === "gps" ? gpsCity.value : selectedCity.value,
-);
 
 const { reverseGeocode } = useGeolocation();
 
@@ -449,13 +439,6 @@ const { getNow } = useMockTime();
 // --- Celestial redesign ---
 useHead({ htmlAttrs: { class: "dark" } });
 
-// Real moon phase for the current moment (mock-time aware).
-const moonPhase = computed(() => {
-  void countdownToNext.value;
-  return lunarPhase(getNow());
-});
-
-// Current time as 24h HH:MM for the orbit's "now" position (ticks each second).
 // App version for the footer (from package.json via runtimeConfig).
 const appVersion = useRuntimeConfig().public.version;
 
@@ -478,12 +461,6 @@ const updatePillLabel = computed(() => {
     case "error": return "Update failed";
     default: return `Update to v${latestVersion.value}`;
   }
-});
-
-const nowHHMM = computed(() => {
-  void countdownToNext.value;
-  const m = Math.floor(getSecondsOfDay(getNow()) / 60);
-  return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 });
 
 // Sub-minute now for the orbit comet, so it advances smoothly each tick in sync
@@ -583,23 +560,6 @@ const nextMainPrayer = computed(() => {
 // Short "in MM:SS"/"in HH:MM" badge next to the next prayer in the list.
 const shortCountdown = computed(() => (countdownToNext.value || "").split(":").slice(0, 2).join(":"));
 
-// Start notifications scheduler with custom settings
-const { startPrayerNotifications, stopPrayerNotifications, send, settings: notificationSettings } =
-  useNotifications({
-    timingsList,
-    getUpcomingDays,
-  });
-
-// Update Android home screen widgets
-const { isAndroid } = usePrayerService({
-  timingsList,
-  hijriDate: hijriDateVerbose,
-  gregorianDate: gregorianDateVerbose,
-  city: selectedCity,
-  countryCode: selectedCountry,
-  is24Hour: computed(() => timeFormat.value === "24h"),
-});
-
 // Favorite locations
 const {
   favorites,
@@ -652,12 +612,16 @@ function onPlaceSelect(place: { lat: number; lng: number; label?: string }) {
   showLocationModal.value = false;
   locationMode.value = "gps";
   void onGpsLocationUpdate(place)?.then(cueLocationSet);
-  if (place.label) gpsCity.value = place.label;
 }
+
+// Each new point takes the next number, so a slow place-name lookup for an
+// earlier point can't overwrite the label of the current one.
+let placeNameSeq = 0;
 
 /** Returns the fetch when one starts, so callers can react to it. */
 function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string } | null): Promise<void> | undefined {
   let fetching: Promise<void> | undefined;
+  const seq = ++placeNameSeq;
   if (coords) {
     gpsLat.value = coords.lat;
     gpsLng.value = coords.lng;
@@ -668,7 +632,7 @@ function onGpsLocationUpdate(coords: { lat: number; lng: number; label?: string 
     gpsCity.value = coords.label ?? null;
     if (!coords.label) {
       reverseGeocode(coords.lat, coords.lng).then((name) => {
-        gpsCity.value = name;
+        if (seq === placeNameSeq) gpsCity.value = name;
       });
     }
   } else {
@@ -766,17 +730,16 @@ async function onClearCache() {
   }
 }
 
-onMounted(async () => {
-  await loadPreferences();
-  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
-    fetchByCoordinates(gpsLat.value, gpsLng.value);
-  } else if (selectedCity.value && selectedCountry.value) {
-    onFetchByCity();
-  } else {
-    // First run (or location cleared): nothing to show until a place is chosen.
-    showLocationModal.value = true;
-  }
-  startPrayerNotifications();
+// First run (or location cleared): nothing to show until a place is chosen.
+watch(
+  prefsLoaded,
+  (loaded) => {
+    if (loaded && !hasLocation.value) showLocationModal.value = true;
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
   // Quietly check for a newer release; the footer pill appears only if one exists.
   startUpdateChecks();
 
@@ -805,131 +768,30 @@ watch(isUpdateAvailable, (available) => {
   }
 });
 
-watch(selectedMethodId, () => {
-  clearTimings();
-  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
-    fetchByCoordinates(gpsLat.value, gpsLng.value);
-  } else {
-    onFetchByCity();
-  }
+// --- Times for a date picked in the calendar ---
+// They live in their own state and their own block: "Today's prayers", the
+// countdown, orbit, tray, widget and notifications always stay on today.
+const selectedDateKey = computed(() => {
+  const greg = toCalendar(calendarDate.value, new GregorianCalendar());
+  return `${greg.year}-${pad2(greg.month)}-${pad2(greg.day)}`;
 });
-
-watch(calendarPlaceholder, (newPlaceholder) => {
-  const greg = toCalendar(newPlaceholder, new GregorianCalendar());
-  const dateParam = `${pad2(greg.day)}-${pad2(greg.month)}-${greg.year}`;
-  if (locationMode.value === 'gps' && gpsLat.value != null && gpsLng.value != null) {
-    fetchByCoordinates(gpsLat.value, gpsLng.value, { date: dateParam });
-  } else if (selectedCity.value && selectedCountry.value) {
-    fetchPrayerTimingsByCity(selectedCity.value, selectedCountry.value, {
-      methodId: selectedMethodId.value,
-      date: dateParam,
-    });
-  }
+watch(
+  [selectedDateKey, todayDateKey, prefsLoaded, selectedMethodId, locationMode, selectedCity, selectedCountry, gpsLat, gpsLng],
+  () => void fetchSelectedDay(selectedDateKey.value),
+  { immediate: true },
+);
+const selectedDayTimes = computed(() => {
+  const day = selectedDay.value;
+  if (!day || day.dateKey !== selectedDateKey.value) return [];
+  return PRAYER_ORDER.flatMap(([key, label]) => {
+    const m = String(day.timings[key] ?? "").match(/(\d{1,2}):(\d{2})/);
+    if (!m) return [];
+    return [{ key, label, time: formatMinutesLocal(Number(m[1]) * 60 + Number(m[2]), timeFormat.value === "24h") }];
+  });
 });
-
-// Tray title + countdown update — throttle 1s (countdown changes every second)
-watchThrottled(
-  [nextPrayerLabel, countdownToNext, previousPrayerLabel, timeSincePrevious],
-  async () => {
-    try {
-      const titleCountdown = (countdownToNext.value ?? "")
-        .split(":")
-        .slice(0, 2)
-        .join(":");
-      const title =
-        nextPrayerLabel.value && titleCountdown
-          ? `${nextPrayerLabel.value} in ${titleCountdown}`
-          : null;
-
-      await emit("meeqat:tray:update", {
-        title,
-        moonPhase: moonPhase.value,
-        now: nowHHMM.value,
-        nextPrayerLabel: nextPrayerLabel.value,
-        countdown: countdownToNext.value,
-        sincePrayerLabel: previousPrayerLabel.value ?? "",
-        sinceTime: timeSincePrevious.value ?? "",
-      } satisfies TrayUpdatePayload);
-    } catch {
-      // ignore emit errors in non-tauri/web
-    }
-  },
-  { throttle: 1000 },
-);
-
-// Tray full data update. Debounced, not throttled: a 30s throttle held back the
-// snapshot with the prayer times, leaving the tray on a bare moon for up to 30s.
-watchDebounced(
-  [
-    gregorianDateVerbose,
-    hijriDateVerbose,
-    timingsList,
-    () => locationMode.value === "gps" ? (gpsCity.value ?? "GPS") : selectedCity.value,
-    () => locationMode.value === "gps" ? "" : selectedCountry.value,
-    activeCoords,
-  ],
-  async () => {
-    try {
-      const dateLineParts: string[] = [];
-      if (hijriDateVerbose.value)
-        dateLineParts.push(`Hijri: ${hijriDateVerbose.value}`);
-      if (gregorianDateVerbose.value)
-        dateLineParts.push(`Gregorian: ${gregorianDateVerbose.value}`);
-      const dateLine = dateLineParts.join(" | ");
-
-      const list = (timingsList.value || [])
-        .filter(
-          (t) =>
-            typeof t.minutes === "number" && MAIN_PRAYER_KEYS_SET.has(t.key),
-        )
-        .sort((a, b) => a.minutes! - b.minutes!);
-      // Times not loaded yet: wait for them rather than sending the tray an empty list.
-      if (!list.length) return;
-
-      let nextLine = "Next: --";
-      if (nextPrayerLabel.value && countdownToNext.value) {
-        nextLine = `${nextPrayerLabel.value} in \t\t ${countdownToNext.value}`;
-      }
-
-      let sinceLine = "Last: --";
-      if (previousPrayerLabel.value && timeSincePrevious.value) {
-        sinceLine = `${previousPrayerLabel.value} since \t ${timeSincePrevious.value}`;
-      }
-
-      // Rust keeps this snapshot and hands it to the tray popover on load, so the
-      // popover never depends on having caught a one-off event.
-      await invoke("set_tray_snapshot", { payload: {
-        dateLine,
-        nextLine,
-        sinceLine,
-        hijriDate: hijriDateVerbose.value,
-        gregorianDate: gregorianDateVerbose.value,
-        nextPrayerLabel: nextPrayerLabel.value,
-        countdown: countdownToNext.value,
-        sincePrayerLabel: previousPrayerLabel.value ?? "",
-        sinceTime: timeSincePrevious.value ?? "",
-        timingsList: list,
-        city:
-          locationMode.value === "gps"
-            ? (gpsCity.value ?? "GPS")
-            : selectedCity.value,
-        countryCode:
-          locationMode.value === "gps" ? "" : selectedCountry.value,
-        // The tray draws the Moon as seen from here.
-        lat: activeCoords.value?.lat ?? null,
-        lng: activeCoords.value?.lng ?? null,
-      } satisfies TrayUpdatePayload });
-    } catch {
-      // ignore emit errors in non-tauri/web
-    }
-  },
-  { debounce: 250 },
-);
-
-onBeforeUnmount(() => {
-  stopPrayerNotifications();
-  // Note: We intentionally do NOT stop the prayer service here
-  // The foreground service should continue running even when the app is closed
+const selectedDayLabel = computed(() => {
+  const greg = toCalendar(calendarDate.value, new GregorianCalendar());
+  return formatGregorianVerbose(new Date(greg.year, greg.month - 1, greg.day)) ?? "";
 });
 </script>
 

@@ -6,8 +6,8 @@
 import { ref, onMounted, onBeforeUnmount } from "vue";
 
 const props = withDefaults(
-  defineProps<{ count?: number; seed?: number; shootingStar?: boolean; nebula?: boolean }>(),
-  { count: 60, seed: 7, shootingStar: false, nebula: true }
+  defineProps<{ count?: number; seed?: number; nebula?: boolean }>(),
+  { count: 60, seed: 7, nebula: true }
 );
 
 const cv = ref<HTMLCanvasElement>();
@@ -83,25 +83,27 @@ void main(){
 
 let gl: WebGLRenderingContext | null = null;
 let raf = 0;
+let timer = 0;
 let start = 0;
 let visible = true;
 let ro: ResizeObserver | null = null;
 let io: IntersectionObserver | null = null;
 let uRes: WebGLUniformLocation | null = null;
 let uTime: WebGLUniformLocation | null = null;
-let lastDraw = 0;
 
 // The twinkle runs a full-screen fragment shader every frame, which pins the GPU
 // behind the whole UI — far too costly on phones. On touch devices (and when the
 // user prefers reduced motion) render the star-field ONCE and stop; on desktop
-// animate but cap to ~30fps. Mobile also drops to 1x pixel density.
+// animate at ~10fps (the twinkle is a slow fade, and every frame also re-runs the
+// backdrop blurs above it) and not at all while the window is hidden. Mobile also
+// drops to 1x pixel density.
 const mql = (q: string) =>
   typeof window !== "undefined" && window.matchMedia ? window.matchMedia(q).matches : false;
 const coarse = mql("(pointer: coarse)");
 const reduceMotion = mql("(prefers-reduced-motion: reduce)");
 const animate = !coarse && !reduceMotion;
 const maxDpr = coarse ? 1 : 1.5;
-const FRAME_MS = 1000 / 30;
+const FRAME_MS = 1000 / 10;
 
 function compile(g: WebGLRenderingContext, type: number, src: string) {
   const sh = g.createShader(type)!;
@@ -137,22 +139,36 @@ function draw(timeSec: number) {
 function frame(t: number) {
   if (!gl || !cv.value) return;
   if (!start) start = t;
-  if (t - lastDraw >= FRAME_MS) {
-    lastDraw = t;
-    draw((t - start) / 1000);
+  draw((t - start) / 1000);
+  // Wait out the frame interval on a timer rather than waking every display frame.
+  if (visible && animate && !document.hidden) {
+    timer = window.setTimeout(() => {
+      raf = requestAnimationFrame(frame);
+    }, FRAME_MS);
   }
-  if (visible && animate) raf = requestAnimationFrame(frame);
+}
+
+function pause() {
+  cancelAnimationFrame(raf);
+  clearTimeout(timer);
 }
 
 function play() {
   if (!visible) return;
-  cancelAnimationFrame(raf);
+  pause();
   if (!animate) {
     // Static render — one frame at a fixed phase so the twinkle looks settled.
     draw(8);
     return;
   }
+  if (document.hidden) return;
   raf = requestAnimationFrame(frame);
+}
+
+// Window hidden/minimised (or the tab in the background): stop drawing until it shows again.
+function onVisibilityChange() {
+  if (document.hidden) pause();
+  else play();
 }
 
 onMounted(() => {
@@ -189,8 +205,9 @@ onMounted(() => {
   gl.uniform1f(gl.getUniformLocation(prog, "u_nebula"), props.nebula ? 1 : 0);
 
   resize();
-  // On animate, the next frame repaints after a resize; on static, repaint here.
-  ro = new ResizeObserver(() => (animate ? resize() : play()));
+  // Resizing clears the canvas: repaint right away (the next timed frame can be
+  // 100ms off, which would flicker while the window is being dragged larger).
+  ro = new ResizeObserver(() => play());
   ro.observe(c);
 
   // Only animate while on screen — keeps the gallery (many canvases) light.
@@ -199,17 +216,19 @@ onMounted(() => {
       if (!e) return;
       visible = e.isIntersecting;
       if (visible) play();
-      else cancelAnimationFrame(raf);
+      else pause();
     },
     { threshold: 0.01 }
   );
   io.observe(c);
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   play();
 });
 
 onBeforeUnmount(() => {
-  cancelAnimationFrame(raf);
+  pause();
+  document.removeEventListener("visibilitychange", onVisibilityChange);
   ro?.disconnect();
   io?.disconnect();
   const lose = gl?.getExtension("WEBGL_lose_context");

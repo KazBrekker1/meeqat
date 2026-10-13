@@ -41,7 +41,8 @@ const PRAYER_CHANNEL_SILENT_ID = "prayer-notifications-silent";
 const MAX_HORIZON_DAYS = 7;
 // iOS silently drops scheduled notifications past 64 pending. Cap below that and
 // keep the SOONEST ones, so the most imminent alerts are never the ones dropped.
-const MAX_PENDING = 60;
+// Only iOS has the limit: everywhere else the whole window is scheduled.
+const MAX_PENDING_IOS = 60;
 
 // Notification timing options (in minutes)
 export const NOTIFICATION_TIMING_OPTIONS = [0, 5, 10, 15, 20, 30] as const;
@@ -107,6 +108,11 @@ type UseNotificationsOptions = {
    * falls back to scheduling today only from `timingsList`.
    */
   getUpcomingDays?: (days: number) => Promise<UpcomingDay[]>;
+  /**
+   * Changes when the cached days behind `getUpcomingDays` change (e.g. the month
+   * prefetch landing after only today was available) — triggers a reschedule.
+   */
+  dataVersion?: Ref<number>;
 };
 
 export function useNotifications(options?: UseNotificationsOptions) {
@@ -114,9 +120,10 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const permissionGranted = ref(false);
   const isRunning = ref(false);
   let lastScheduledDateKey = "";
-  let lastTimingsHash = ""; // Track timings to detect actual changes
   let isInitialLoad = true; // Track if we're in initial load phase
   let isScheduling = false; // Prevent concurrent scheduling
+  let rescheduleQueued = false; // A request arrived mid-run: run once more after it
+  let started = false; // startPrayerNotifications() was called
 
   if (!options?.timingsList) {
     throw new Error('[useNotifications] timingsList option is required');
@@ -156,7 +163,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
   watch(settings, () => {
     if (isInitialLoad) return; // Don't reschedule during initial settings load
     void saveNotificationSettings();
-    if (isRunning.value) {
+    if (started) {
       void schedulePrayerNotifications(true); // settings changed → relay window
     }
   }, { deep: true });
@@ -211,8 +218,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
 
   /**
    * Build the full set of candidate notifications across the rolling window from
-   * real per-day prayer times, drop past ones, and return them soonest-first,
-   * capped at MAX_PENDING. Falls back to today-only from `timingsList` when
+   * real per-day prayer times, drop past ones, and return them soonest-first
+   * (capped at MAX_PENDING_IOS on iOS). Falls back to today-only from `timingsList` when
    * `getUpcomingDays` isn't wired or the cache has no upcoming days yet.
    */
   async function buildScheduledNotifications(
@@ -279,7 +286,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
     }
 
     out.sort((a, b) => a.time.getTime() - b.time.getTime());
-    return out.slice(0, MAX_PENDING);
+    return getPlatform() === "ios" ? out.slice(0, MAX_PENDING_IOS) : out;
   }
 
   /**
@@ -289,30 +296,39 @@ export function useNotifications(options?: UseNotificationsOptions) {
    * resume and when timings/settings change).
    */
   async function schedulePrayerNotifications(force = false): Promise<void> {
+    // The flag is set before the first await, so two calls can never both get
+    // through. A call that arrives mid-run isn't dropped: the run repeats once
+    // when it finishes, with whatever the times/settings are by then.
     if (isScheduling) {
-      console.log("[useNotifications] Scheduling already in progress, skipping");
+      rescheduleQueued = true;
       return;
     }
-
-    if (!settings.value.enabled) {
-      // Turning reminders off must also clear the ones already scheduled.
-      await stopPrayerNotifications();
-      return;
-    }
-
-    const ok = await ensurePermission();
-    if (!ok) return;
-
-    const now = new Date();
-    const dateKey = getDateKey(now);
-
-    if (!force && dateKey === lastScheduledDateKey) {
-      console.log("[useNotifications] Already scheduled for today, skipping");
-      return;
-    }
-
     isScheduling = true;
     try {
+      // Browsers can't schedule: `schedule` is ignored there and the whole window
+      // would be shown at once.
+      if (getPlatform() === "web") return;
+
+      // Never schedule from the defaults while the saved settings are still loading.
+      await settingsLoaded;
+
+      if (!settings.value.enabled) {
+        // Turning reminders off must also clear the ones already scheduled.
+        await cancelScheduled();
+        return;
+      }
+
+      const ok = await ensurePermission();
+      if (!ok) return;
+
+      const now = new Date();
+      const dateKey = getDateKey(now);
+
+      if (!force && dateKey === lastScheduledDateKey) {
+        console.log("[useNotifications] Already scheduled for today, skipping");
+        return;
+      }
+
       await ensureNotificationChannels();
 
       const desktop = usesRustScheduler();
@@ -359,7 +375,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
             sound,
             title: n.title,
             body: n.body,
-            schedule: Schedule.at(n.time),
+            // allowWhileIdle: without it Android holds the alarm back in Doze.
+            schedule: Schedule.at(n.time, false, true),
           });
         } catch {
           // ignore scheduling errors
@@ -370,17 +387,18 @@ export function useNotifications(options?: UseNotificationsOptions) {
         `[useNotifications] Scheduled ${scheduled.length} notifications across up to ${MAX_HORIZON_DAYS} days`,
       );
       lastScheduledDateKey = dateKey;
-      lastTimingsHash = (timingsList.value ?? [])
-        .filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key))
-        .map((t) => `${t.key}:${t.minutes}`)
-        .join("|");
       isRunning.value = true;
     } finally {
       isScheduling = false;
+      if (rescheduleQueued) {
+        rescheduleQueued = false;
+        void schedulePrayerNotifications(true);
+      }
     }
   }
 
   async function startPrayerNotifications(): Promise<void> {
+    started = true;
     // First, cancel any stale notifications from previous sessions
     if (usesRustScheduler()) {
       void schedulePrayerNotifications();
@@ -399,6 +417,12 @@ export function useNotifications(options?: UseNotificationsOptions) {
   }
 
   async function stopPrayerNotifications(): Promise<void> {
+    started = false;
+    await cancelScheduled();
+  }
+
+  /** Cancel everything pending. Reminders stay "started": turning them back on reschedules. */
+  async function cancelScheduled(): Promise<void> {
     if (usesRustScheduler()) {
       try {
         await invoke("cancel_notifications");
@@ -421,39 +445,34 @@ export function useNotifications(options?: UseNotificationsOptions) {
     isRunning.value = false;
   }
 
-  // Re-schedule when timings actually change (not just reactive updates)
-  watch(
-    timingsList,
-    (newTimings) => {
-      if (!isRunning.value || isInitialLoad) return;
-
-      // Create a simple hash of the timings to detect actual changes
-      const hash = newTimings
-        ?.filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key))
-        .map((t) => `${t.key}:${t.minutes}`)
-        .join("|") ?? "";
-
-      if (hash && hash !== lastTimingsHash) {
-        console.log("[useNotifications] Timings changed, rescheduling");
-        lastTimingsHash = hash;
-        void schedulePrayerNotifications(true);
-      }
-    },
-    { deep: true }
-  );
+  // Re-schedule when the times actually change, or when more cached days arrive
+  // (the month prefetch landing after a first run or a city change). A string
+  // key, so this doesn't fire on every reactive update of the list.
+  const scheduleKey = computed(() => {
+    const hash = (timingsList.value ?? [])
+      .filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key))
+      .map((t) => `${t.key}:${t.minutes}`)
+      .join("|");
+    return hash ? `${hash}#${options.dataVersion?.value ?? 0}` : "";
+  });
+  watch(scheduleKey, (key) => {
+    if (!started || !key) return;
+    console.log("[useNotifications] Timings changed, rescheduling");
+    void schedulePrayerNotifications(true);
+  });
 
   // Refill the rolling window when the app returns to the foreground. The OS may
   // have killed the app, and days that have since rolled into the window won't be
   // scheduled yet. Cancel + reschedule is idempotent and cheap.
   const documentVisibility = useDocumentVisibility();
   watch(documentVisibility, (v) => {
-    if (v === "visible" && settings.value.enabled && !isInitialLoad) {
+    if (v === "visible" && started && settings.value.enabled && !isInitialLoad) {
       void schedulePrayerNotifications(true);
     }
   });
 
   // Load settings on init
-  void loadNotificationSettings();
+  const settingsLoaded = loadNotificationSettings();
 
   return {
     permissionGranted,

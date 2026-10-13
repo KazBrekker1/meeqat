@@ -506,7 +506,7 @@ function formatDay(day?: string): string {
 }
 
 // --- Start a call ---
-const prayerTimes = usePrayerTimes();
+const prayerTimes = usePrayerRuntime();
 const isFriday = computed(() => (room.value ? weekdayIn(room.value.tz) === 5 : false));
 const prayerChoices = computed<PrayerId[]>(() => PRAYERS.filter((p) => p !== "jumuah" || isFriday.value));
 

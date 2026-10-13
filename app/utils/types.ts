@@ -37,6 +37,8 @@ export interface TrayUpdatePayload {
   /** The chosen place's coordinates (null: none yet), so the tray draws the Moon as seen from there. */
   lat?: number | null;
   lng?: number | null;
+  /** Set when the place's UTC offset differs from this device's (times are in device time). */
+  timezoneNote?: string | null;
   timingsList?: PrayerTimingItem[];
 }
 
@@ -45,6 +47,8 @@ export type TauriStore = {
   set(key: string, value: unknown): Promise<void>;
   clear: () => Promise<void>;
   save?: () => Promise<void>;
+  keys?: () => Promise<string[]>;
+  delete?: (key: string) => Promise<boolean>;
 };
 
 export type CachedDay = {

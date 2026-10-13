@@ -16,6 +16,12 @@ import { getPlatform } from "@/utils/platform";
 
 const route = useRoute();
 
+// Prayer times, notification scheduling, tray sync and the Android widget push run
+// here, at app level, so they keep going on every route. The desktop tray popover
+// is a second webview on the same app: it only displays what the main window sends.
+const isTrayPopover = getPlatform() === "desktop" && getCurrentWindow().label !== "main";
+if (!isTrayPopover) usePrayerRuntime();
+
 onMounted(async () => {
   // Skip close handler for tray window
   if (route.path === '/tray') return;

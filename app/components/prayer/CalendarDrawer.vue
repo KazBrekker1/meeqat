@@ -60,6 +60,17 @@
           </div>
         </div>
 
+        <!-- Prayer times for the selected day (not shown for today: the home list has them) -->
+        <div v-if="selectedDayTimes?.length" class="rounded-xl bg-elevated border border-default p-3">
+          <p class="text-xs text-muted mb-2">Prayer times · {{ selectedDayLabel }}</p>
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div v-for="t in selectedDayTimes" :key="t.key">
+              <div class="text-[11px] text-muted">{{ t.label }}</div>
+              <div class="text-sm tabular-nums font-mono">{{ t.time }}</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Jump to today -->
         <UButton
           block
@@ -89,6 +100,8 @@ defineProps<{
   hijriDateVerbose?: string;
   gregorianDateVerbose?: string;
   formatTooltip: (day: DateValue) => string;
+  selectedDayLabel?: string;
+  selectedDayTimes?: { key: string; label: string; time: string }[];
 }>();
 
 defineEmits<{

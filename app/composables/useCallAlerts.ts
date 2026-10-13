@@ -17,6 +17,8 @@ const REMIND_BEFORE_MS = 5 * 60 * 1000;
 // components ask for alerts.
 let starting: Promise<void> | null = null;
 let watchingSession = false;
+// Stops the realtime subscriptions of the current session (null: none running).
+let stopLive: (() => void) | null = null;
 const reminders = new Map<string, { at: string; timer: ReturnType<typeof setTimeout> }>();
 
 const CALLS_CHANNEL_ID = "together-calls";
@@ -156,6 +158,9 @@ export function useCallAlerts() {
       onSessionChange((session) => {
         if (session) return;
         starting = null;
+        // Or the next sign-in would subscribe again on top of these: double toasts.
+        stopLive?.();
+        stopLive = null;
         for (const r of reminders.values()) clearTimeout(r.timer);
         reminders.clear();
       });
@@ -165,7 +170,8 @@ export function useCallAlerts() {
         starting = null; // try again once signed in
         return;
       }
-      live(
+      stopLive?.();
+      stopLive = live(
         [
           { collection: "calls", expand: "room,organizer", onEvent: onCall },
           {
