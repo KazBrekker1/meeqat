@@ -27,8 +27,9 @@ import kotlin.math.sqrt
  * Mirrors the web orbit (OrbitBumps + the "glass" moon style): dial top = midnight,
  * clockwise; the ring's conic sky gradient is keyed to the day's sunrise/sunset.
  *
- * Bitmaps are cached per (size, kind) and only re-rendered when the minute, next
- * prayer, or moon phase changes — so the per-second widget tick reuses one bitmap.
+ * Bitmaps are cached per (size, kind) and only re-rendered when the minute, the
+ * day's prayers, next prayer, caption or moon phase changes — so several widgets of
+ * one size share a render.
  */
 object MeeqatOrbit {
 
@@ -51,30 +52,28 @@ object MeeqatOrbit {
     }
 
     /**
-     * Index of the next prayer by clock time alone: the first one later today, else
-     * the first of the list (tomorrow's Fajr). The dial is a 24h clock face, so this
-     * stays right after Isha and on a morning when yesterday's list is still loaded —
-     * cases where the timestamp-based next index is stuck on the last prayer.
+     * Cached orbit (drawOrbit=true) or moon-only (false) bitmap, sized sizePx².
+     * [caption] is the text of the pill at the dial's bottom ("Asr in 3h 08m", or a
+     * status message); the provider builds it from the real next-prayer time.
+     *
+     * Synchronized: widget redraws arrive on the main thread (receivers) and on the
+     * Tauri command thread (data pushes), and both go through this cache.
      */
-    fun nextByClock(prayers: List<PrayerTimeData>, nowMs: Long): Int {
-        val nowM = minutesOfDay(nowMs)
-        return prayers.indexOfFirst { minutesOfDay(it.prayerTime) > nowM }.coerceAtLeast(0)
-    }
-
-    /** Cached orbit (drawOrbit=true) or moon-only (false) bitmap, sized sizePx². */
+    @Synchronized
     fun bitmap(
         sizePx: Int,
         prayers: List<PrayerTimeData>,
         nextIndex: Int,
         nowMs: Long,
-        drawOrbit: Boolean
+        drawOrbit: Boolean,
+        caption: String? = null
     ): Bitmap {
         val phase = moonPhase(nowMs)
         val minute = nowMs / 60000L
         val slot = "$sizePx|$drawOrbit"
-        val contentKey = "$minute|$nextIndex|${prayers.size}|${(phase * 1000).toInt()}"
+        val contentKey = "$minute|$nextIndex|${prayers.hashCode()}|${(phase * 1000).toInt()}|$caption"
         cache[slot]?.let { (k, bmp) -> if (k == contentKey && !bmp.isRecycled) return bmp }
-        val bmp = render(sizePx, prayers, nextIndex, nowMs, phase, drawOrbit)
+        val bmp = render(sizePx, prayers, nextIndex, nowMs, phase, drawOrbit, caption)
         cache[slot] = contentKey to bmp
         return bmp
     }
@@ -85,7 +84,8 @@ object MeeqatOrbit {
         nextIndex: Int,
         nowMs: Long,
         phase: Float,
-        drawOrbit: Boolean
+        drawOrbit: Boolean,
+        caption: String?
     ): Bitmap {
         val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
@@ -100,17 +100,11 @@ object MeeqatOrbit {
         }
         // Inside the orbit the moon stays clear of the caption band beneath it.
         drawMoon(c, cx, cy, if (drawOrbit) r * 0.46f else r * 0.66f, phase)
-        if (drawOrbit && prayers.isNotEmpty()) {
-            drawBottomBanner(c, cx, cy, r, prayers, nextIndex, nowMs)
+        // The caption also stands in for the ring when there is no data yet ("Open Meeqat").
+        if (drawOrbit && caption != null) {
+            drawBottomBanner(c, cx, cy, r, caption)
         }
         return bmp
-    }
-
-    private fun fmtDur(min: Int): String {
-        val m = if (min < 0) 0 else min
-        val h = m / 60
-        val r = m % 60
-        return if (h > 0) "${h}h ${r}m" else "${r}m"
     }
 
     /** A point on the dial at fraction `fc` (0 = top / midnight, clockwise). */
@@ -130,20 +124,10 @@ object MeeqatOrbit {
      */
     private const val SPAN_CAP = 0.30f
 
-    private fun drawBottomBanner(
-        c: Canvas, cx: Float, cy: Float, r: Float,
-        prayers: List<PrayerTimeData>, nextIndex: Int, nowMs: Long
-    ) {
-        val nowM = minutesOfDay(nowMs)
-        val nextIdx = nextIndex.coerceIn(0, prayers.size - 1)
-        val nextM = minutesOfDay(prayers[nextIdx].prayerTime)
-        var untilMin = nextM - nowM; if (untilMin < 0) untilMin += 1440
-
+    private fun drawBottomBanner(c: Canvas, cx: Float, cy: Float, r: Float, text: String) {
         // Next prayer only ("Asr in 3h 08m", the first line of the web caption):
         // short enough to stay large AND gently curved. The widget's list/strip
         // shows every prayer's clock time.
-        val text = "${prayers[nextIdx].label} in ${fmtDur(untilMin)}"
-
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.DEFAULT

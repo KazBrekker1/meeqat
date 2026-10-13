@@ -1,19 +1,15 @@
 "$schema" = "schemas/schema.json"
 
+# The mock-time commands (set/get/clear-mock-time-offset) are deliberately NOT part
+# of the default set: grant them explicitly in a debug-only capability if needed.
 [default]
 description = "Default permissions for the prayer service plugin"
 permissions = [
-    "allow-start-service",
-    "allow-stop-service",
     "allow-update-prayer-times",
-    "allow-is-service-running",
     "allow-check-notification-permission",
     "allow-request-notification-permission",
     "allow-check-battery-optimization",
     "allow-request-battery-optimization-exemption",
     "allow-open-app-settings",
-    "allow-set-mock-time-offset",
-    "allow-get-mock-time-offset",
-    "allow-clear-mock-time-offset",
     "allow-install-apk",
 ]

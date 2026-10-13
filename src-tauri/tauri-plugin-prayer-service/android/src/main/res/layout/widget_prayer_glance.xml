@@ -22,15 +22,18 @@
         android:maxLines="1"
         android:ellipsize="end" />
 
-    <TextView
+    <!-- Live: the system ticks it down (H:MM:SS, or MM:SS inside the last hour). -->
+    <Chronometer
         android:id="@+id/countdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:countDown="true"
         android:text="1:12:40"
         android:textColor="#FFFFFFFF"
         android:textSize="22sp"
         android:textStyle="bold"
-        android:fontFamily="monospace"
+        android:fontFamily="sans-serif"
+        android:fontFeatureSettings="tnum"
         android:maxLines="1" />
 
     <ProgressBar

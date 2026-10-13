@@ -11,9 +11,8 @@ pub mod models;
 pub use error::{Error, Result};
 pub use models::{
     PrayerTimeData,
-    StartServiceArgs,
+    UpcomingDay,
     UpdatePrayerTimesArgs,
-    ServiceStatus,
     NotificationPermissionStatus,
     BatteryOptimizationStatus,
     SetMockTimeOffsetArgs,
@@ -38,10 +37,7 @@ impl<R: Runtime, T: Manager<R>> PrayerServiceExt<R> for T {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("prayer-service")
         .invoke_handler(tauri::generate_handler![
-            commands::start_service,
-            commands::stop_service,
             commands::update_prayer_times,
-            commands::is_service_running,
             commands::open_app_settings,
             commands::check_notification_permission,
             commands::request_notification_permission,

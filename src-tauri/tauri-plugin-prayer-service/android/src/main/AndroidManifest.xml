@@ -1,22 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permissions for widget updates -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Re-arm the widget's update alarms after a reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- Permissions for exact alarms (widget updates even in Doze mode) -->
+    <!-- Exact alarm at each prayer time, so the widget flips to the next prayer on time -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-
-    <!-- Permission for countdown foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Permission for in-app APK updates (download + install the new release) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application>
-        <!-- Boot Receiver to restart widget updates after device reboot -->
+        <!-- Boot Receiver: re-arm widget updates after reboot, redraw on clock/timezone changes -->
         <receiver
             android:name=".BootReceiver"
             android:exported="true"
@@ -44,24 +39,14 @@
                 android:resource="@xml/prayer_widget_info" />
         </receiver>
 
-        <!-- Widget Update Receiver - safety net to restart CountdownService if killed -->
+        <!-- Widget Update Receiver - prayer-boundary + periodic redraw alarms -->
         <receiver
             android:name=".WidgetUpdateReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.meeqat.plugin.prayerservice.UPDATE_WIDGET" />
+                <action android:name="com.meeqat.plugin.prayerservice.PERIODIC_UPDATE" />
             </intent-filter>
         </receiver>
-
-        <!-- Countdown Service - persistent per-second widget updates -->
-        <service
-            android:name=".CountdownService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="prayer_countdown" />
-        </service>
     </application>
 </manifest>

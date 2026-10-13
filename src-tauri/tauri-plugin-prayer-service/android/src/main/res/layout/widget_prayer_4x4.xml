@@ -29,7 +29,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="end">
-            <TextView android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2:30 PM" android:textColor="#99FFFFFF" android:textSize="11sp" />
+            <TextClock android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:format12Hour="h:mm a" android:format24Hour="HH:mm" android:textColor="#99FFFFFF" android:textSize="11sp" />
             <TextView android:id="@+id/gregorian_date" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Jun 28, 2026" android:textColor="#8CFFFFFF" android:textSize="11sp" />
         </LinearLayout>
     </LinearLayout>

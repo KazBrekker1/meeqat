@@ -6,6 +6,13 @@ export interface PrayerTimeData {
   label: string;
 }
 
+/** One day of the widget's look-ahead window. */
+export interface UpcomingDay {
+  prayers: PrayerTimeData[];
+  hijriDate?: string;
+  gregorianDate?: string;
+}
+
 export interface UpdatePrayerTimesOptions {
   prayers: PrayerTimeData[];
   nextPrayerIndex: number;
@@ -16,6 +23,9 @@ export interface UpdatePrayerTimesOptions {
   nextDayPrayerLabel?: string;
   city?: string;
   countryCode?: string;
+  use24Hour?: boolean;
+  /** Ascending, starting with today (up to 7 days); lets the widget roll over days on its own. */
+  upcomingDays?: UpcomingDay[];
 }
 
 /**

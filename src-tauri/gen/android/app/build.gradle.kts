@@ -32,7 +32,8 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            // armeabi-v7a: the manifest advertises Android TV, and many TV boxes are 32-bit.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
         // Set base name for APK/AAB output files
         base.archivesName.set("meeqat-v${versionName}")

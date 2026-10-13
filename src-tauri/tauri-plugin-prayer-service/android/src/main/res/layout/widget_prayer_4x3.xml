@@ -15,7 +15,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
         <TextView android:id="@+id/hijri_date" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="13 Muharram 1448" android:textColor="#F2FFFFFF" android:textSize="13sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
-        <TextView android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2:30 PM" android:textColor="#99FFFFFF" android:textSize="11sp" />
+        <TextClock android:id="@+id/now_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:format12Hour="h:mm a" android:format24Hour="HH:mm" android:textColor="#99FFFFFF" android:textSize="11sp" />
         <TextView android:id="@+id/location_text" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
         <TextView android:id="@+id/gregorian_date" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
     </LinearLayout>

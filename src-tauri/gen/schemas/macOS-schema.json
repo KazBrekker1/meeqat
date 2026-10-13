@@ -2763,52 +2763,10 @@
           "markdownDescription": "Denies the version command without any pre-configured scope."
         },
         {
-          "description": "Allows the moveWindow and handleIconState APIs\n#### This default permission set includes:\n\n- `allow-move-window`\n- `allow-move-window-constrained`\n- `allow-set-tray-icon-state`",
-          "type": "string",
-          "const": "positioner:default",
-          "markdownDescription": "Allows the moveWindow and handleIconState APIs\n#### This default permission set includes:\n\n- `allow-move-window`\n- `allow-move-window-constrained`\n- `allow-set-tray-icon-state`"
-        },
-        {
-          "description": "Enables the move_window command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:allow-move-window",
-          "markdownDescription": "Enables the move_window command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the move_window_constrained command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:allow-move-window-constrained",
-          "markdownDescription": "Enables the move_window_constrained command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the set_tray_icon_state command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:allow-set-tray-icon-state",
-          "markdownDescription": "Enables the set_tray_icon_state command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the move_window command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:deny-move-window",
-          "markdownDescription": "Denies the move_window command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the move_window_constrained command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:deny-move-window-constrained",
-          "markdownDescription": "Denies the move_window_constrained command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the set_tray_icon_state command without any pre-configured scope.",
-          "type": "string",
-          "const": "positioner:deny-set-tray-icon-state",
-          "markdownDescription": "Denies the set_tray_icon_state command without any pre-configured scope."
-        },
-        {
-          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`\n- `allow-install-apk`",
+          "description": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-update-prayer-times`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-install-apk`",
           "type": "string",
           "const": "prayer-service:default",
-          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-start-service`\n- `allow-stop-service`\n- `allow-update-prayer-times`\n- `allow-is-service-running`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-set-mock-time-offset`\n- `allow-get-mock-time-offset`\n- `allow-clear-mock-time-offset`\n- `allow-install-apk`"
+          "markdownDescription": "Default permissions for the prayer service plugin\n#### This default permission set includes:\n\n- `allow-update-prayer-times`\n- `allow-check-notification-permission`\n- `allow-request-notification-permission`\n- `allow-check-battery-optimization`\n- `allow-request-battery-optimization-exemption`\n- `allow-open-app-settings`\n- `allow-install-apk`"
         },
         {
           "description": "Enables the check_battery_optimization command without any pre-configured scope.",
@@ -2841,12 +2799,6 @@
           "markdownDescription": "Enables the install_apk command without any pre-configured scope."
         },
         {
-          "description": "Enables the is_service_running command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:allow-is-service-running",
-          "markdownDescription": "Enables the is_service_running command without any pre-configured scope."
-        },
-        {
           "description": "Enables the open_app_settings command without any pre-configured scope.",
           "type": "string",
           "const": "prayer-service:allow-open-app-settings",
@@ -2869,18 +2821,6 @@
           "type": "string",
           "const": "prayer-service:allow-set-mock-time-offset",
           "markdownDescription": "Enables the set_mock_time_offset command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the start_service command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:allow-start-service",
-          "markdownDescription": "Enables the start_service command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the stop_service command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:allow-stop-service",
-          "markdownDescription": "Enables the stop_service command without any pre-configured scope."
         },
         {
           "description": "Enables the update_prayer_times command without any pre-configured scope.",
@@ -2919,12 +2859,6 @@
           "markdownDescription": "Denies the install_apk command without any pre-configured scope."
         },
         {
-          "description": "Denies the is_service_running command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:deny-is-service-running",
-          "markdownDescription": "Denies the is_service_running command without any pre-configured scope."
-        },
-        {
           "description": "Denies the open_app_settings command without any pre-configured scope.",
           "type": "string",
           "const": "prayer-service:deny-open-app-settings",
@@ -2947,18 +2881,6 @@
           "type": "string",
           "const": "prayer-service:deny-set-mock-time-offset",
           "markdownDescription": "Denies the set_mock_time_offset command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the start_service command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:deny-start-service",
-          "markdownDescription": "Denies the start_service command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the stop_service command without any pre-configured scope.",
-          "type": "string",
-          "const": "prayer-service:deny-stop-service",
-          "markdownDescription": "Denies the stop_service command without any pre-configured scope."
         },
         {
           "description": "Denies the update_prayer_times command without any pre-configured scope.",

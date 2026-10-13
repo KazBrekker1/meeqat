@@ -1,8 +1,6 @@
 package com.meeqat.plugin.prayerservice
 
 import android.app.Activity
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -27,23 +25,6 @@ class SetMockTimeOffsetArgs {
     var offsetMs: Long = 0
 }
 
-// Note: StartServiceArgs and UpdatePrayerTimesArgs are intentionally identical.
-// Tauri's @InvokeArg annotation and parseArgs() deserialize by class type,
-// so we cannot unify them via typealias or inheritance.
-@InvokeArg
-class StartServiceArgs {
-    lateinit var prayers: Array<PrayerArg>
-    var nextPrayerIndex: Int = 0
-    var hijriDate: String? = null
-    var gregorianDate: String? = null
-    var nextDayPrayerName: String? = null
-    var nextDayPrayerTime: Long? = null
-    var nextDayPrayerLabel: String? = null
-    var city: String? = null
-    var countryCode: String? = null
-    var use24Hour: Boolean? = null
-}
-
 @InvokeArg
 class UpdatePrayerTimesArgs {
     lateinit var prayers: Array<PrayerArg>
@@ -56,6 +37,15 @@ class UpdatePrayerTimesArgs {
     var city: String? = null
     var countryCode: String? = null
     var use24Hour: Boolean? = null
+    // Today first, ascending, up to a week. Null from frontends that predate it.
+    var upcomingDays: Array<UpcomingDayArg>? = null
+}
+
+@InvokeArg
+class UpcomingDayArg {
+    var prayers: Array<PrayerArg>? = null
+    var hijriDate: String? = null
+    var gregorianDate: String? = null
 }
 
 @InvokeArg
@@ -83,35 +73,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         private const val PROGRESS_INTERVAL_MS = 150L
         // useAppUpdate.ts matches this marker to show "allow installs" rather than a failure.
         private const val ERR_INSTALL_PERMISSION = "[install-permission]"
-    }
-
-    /**
-     * Save prayer data to SharedPreferences and trigger widget update.
-     * This replaces the old foreground service - now widgets work independently.
-     */
-    @Command
-    fun startService(invoke: Invoke) {
-        try {
-            Log.d(TAG, "startService called (widget-only mode)")
-
-            val args = invoke.parseArgs(StartServiceArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode, args.use24Hour)
-
-            refreshWidgets()
-            invoke.resolve()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving prayer data: ${e.message}", e)
-            invoke.reject("Failed to save prayer data: ${e.message}")
-        }
-    }
-
-    /**
-     * No-op - widgets continue to run independently via CountdownService.
-     */
-    @Command
-    fun stopService(invoke: Invoke) {
-        Log.d(TAG, "stopService called (no-op, widgets continue independently)")
-        invoke.resolve()
+        // The only place an update APK may come from: this app's GitHub release assets.
+        private const val UPDATE_HOST = "github.com"
+        private const val UPDATE_PATH_PREFIX = "/KazBrekker1/meeqat/releases/download/"
+        private const val MAX_REDIRECTS = 5
     }
 
     /**
@@ -123,7 +88,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Log.d(TAG, "updatePrayerTimes called")
 
             val args = invoke.parseArgs(UpdatePrayerTimesArgs::class.java)
-            savePrayerData(args.prayers, args.nextPrayerIndex, args.hijriDate, args.gregorianDate, args.nextDayPrayerName, args.nextDayPrayerTime, args.nextDayPrayerLabel, args.city, args.countryCode, args.use24Hour)
+            savePrayerData(args)
 
             refreshWidgets()
 
@@ -131,30 +96,6 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         } catch (e: Exception) {
             Log.e(TAG, "Error updating prayer times: ${e.message}", e)
             invoke.reject("Failed to update prayer times: ${e.message}")
-        }
-    }
-
-    /**
-     * Check if widgets are active (replaces service running check).
-     */
-    @Command
-    fun isServiceRunning(invoke: Invoke) {
-        try {
-            // Check if there are any active widgets
-            val appWidgetManager = AppWidgetManager.getInstance(appContext)
-            val widgetIds = appWidgetManager.getAppWidgetIds(
-                ComponentName(appContext, PrayerWidgetProvider::class.java)
-            )
-            val hasWidgets = widgetIds.isNotEmpty()
-
-            Log.d(TAG, "isServiceRunning: hasWidgets=$hasWidgets")
-
-            val result = JSObject()
-            result.put("isRunning", hasWidgets)
-            invoke.resolve(result)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking widget status: ${e.message}", e)
-            invoke.reject("Failed to check widget status: ${e.message}")
         }
     }
 
@@ -262,28 +203,19 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Update all widgets and ensure per-second service + safety nets are active.
+     * Redraw all widgets and (re)aim their update alarms at the new data. Both are
+     * no-ops when no widget is placed — nothing is started for a user without one.
      */
     private fun refreshWidgets() {
-        PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
+        PrayerWidgetProvider.updateAllWidgets(appContext)
         WidgetUpdateReceiver.ensureUpdatesActive(appContext)
     }
 
     /**
      * Save prayer data to SharedPreferences for widget access.
      */
-    private fun savePrayerData(
-        prayers: Array<PrayerArg>,
-        nextPrayerIndex: Int,
-        hijriDate: String?,
-        gregorianDate: String?,
-        nextDayPrayerName: String? = null,
-        nextDayPrayerTime: Long? = null,
-        nextDayPrayerLabel: String? = null,
-        city: String? = null,
-        countryCode: String? = null,
-        use24Hour: Boolean? = null
-    ) {
+    private fun savePrayerData(args: UpdatePrayerTimesArgs) {
+        val prayers = args.prayers
         if (prayers.isEmpty()) {
             Log.w(TAG, "savePrayerData called with empty prayers array, skipping save")
             return
@@ -300,20 +232,29 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             Context.MODE_PRIVATE
         )
 
-        val prayersJson = prayersToJson(prayers)
-        Log.d(TAG, "Saving ${prayers.size} prayers, next index: $nextPrayerIndex, nextDayPrayer: $nextDayPrayerName")
+        val prayersJson = prayersToJson(prayers).toString()
+        val upcomingDaysJson = upcomingDaysToJson(args.upcomingDays)
+        Log.d(TAG, "Saving ${prayers.size} prayers, ${args.upcomingDays?.size ?: 0} upcoming days, nextDayPrayer: ${args.nextDayPrayerName}")
+
+        val hijriDate = args.hijriDate
+        val gregorianDate = args.gregorianDate
+        val city = args.city
+        val countryCode = args.countryCode
+        val use24Hour = args.use24Hour
+        val nextDayPrayerName = args.nextDayPrayerName
+        val nextDayPrayerTime = args.nextDayPrayerTime
+        val nextDayPrayerLabel = args.nextDayPrayerLabel
 
         prefs.edit().apply {
             putString(PrayerWidgetProvider.KEY_PRAYERS_JSON, prayersJson)
-            putInt(PrayerWidgetProvider.KEY_NEXT_PRAYER_INDEX, nextPrayerIndex)
+            // Always written or cleared, so a window from an earlier push can't outlive
+            // the single-day list it belonged to.
+            if (upcomingDaysJson != null) putString(PrayerWidgetProvider.KEY_UPCOMING_DAYS_JSON, upcomingDaysJson) else remove(PrayerWidgetProvider.KEY_UPCOMING_DAYS_JSON)
             if (hijriDate != null) putString(PrayerWidgetProvider.KEY_HIJRI_DATE, hijriDate) else remove(PrayerWidgetProvider.KEY_HIJRI_DATE)
             if (gregorianDate != null) putString(PrayerWidgetProvider.KEY_GREGORIAN_DATE, gregorianDate) else remove(PrayerWidgetProvider.KEY_GREGORIAN_DATE)
             if (city != null) putString(PrayerWidgetProvider.KEY_CITY, city) else remove(PrayerWidgetProvider.KEY_CITY)
             if (countryCode != null) putString(PrayerWidgetProvider.KEY_COUNTRY_CODE, countryCode) else remove(PrayerWidgetProvider.KEY_COUNTRY_CODE)
             if (use24Hour != null) putBoolean(PrayerWidgetProvider.KEY_USE_24_HOUR, use24Hour) else remove(PrayerWidgetProvider.KEY_USE_24_HOUR)
-
-            // Record when data was last saved (real time, not debug time)
-            putLong("data_timestamp", System.currentTimeMillis())
 
             // Save or clear next-day prayer fields
             if (nextDayPrayerName != null && nextDayPrayerTime != null && nextDayPrayerLabel != null) {
@@ -326,6 +267,10 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
                 remove(PrayerWidgetProvider.KEY_NEXT_DAY_PRAYER_LABEL)
             }
 
+            // No longer read: the widget works the next prayer out from the times itself.
+            remove("next_prayer_index")
+            remove("data_timestamp")
+
             // synchronous commit() is intentional: Tauri plugin commands run on a background
             // thread, and we need data written before the widget reads it. Do NOT use apply().
             commit()
@@ -333,11 +278,30 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * Convert prayers array to JSON string.
+     * The look-ahead window as JSON, or null when the frontend didn't send one.
+     * Days that are empty or carry an invalid time are dropped rather than stored.
+     */
+    private fun upcomingDaysToJson(days: Array<UpcomingDayArg>?): String? {
+        if (days == null) return null
+        val jsonArray = JSONArray()
+        for (day in days) {
+            val prayers = day.prayers
+            if (prayers == null || prayers.isEmpty() || prayers.any { it.prayerTime <= 0 }) continue
+            jsonArray.put(JSONObject().apply {
+                put("prayers", prayersToJson(prayers))
+                day.hijriDate?.let { put("hijriDate", it) }
+                day.gregorianDate?.let { put("gregorianDate", it) }
+            })
+        }
+        return if (jsonArray.length() > 0) jsonArray.toString() else null
+    }
+
+    /**
+     * Convert prayers array to JSON.
      * Lets exceptions propagate so callers report errors to the frontend
      * instead of silently wiping prayer data with "[]".
      */
-    private fun prayersToJson(prayers: Array<PrayerArg>): String {
+    private fun prayersToJson(prayers: Array<PrayerArg>): JSONArray {
         val jsonArray = JSONArray()
         for (prayer in prayers) {
             val obj = JSONObject().apply {
@@ -347,12 +311,13 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
             }
             jsonArray.put(obj)
         }
-        return jsonArray.toString()
+        return jsonArray
     }
 
     /**
      * Set a mock time offset for debugging.
      * Positive values move time forward, negative values move time backward.
+     * Ignored in release builds (see [DebugTimeProvider]).
      */
     @Command
     fun setMockTimeOffset(invoke: Invoke) {
@@ -362,8 +327,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
             DebugTimeProvider.setOffset(appContext, args.offsetMs)
 
-            // Trigger widget refresh to show new time
-            PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
+            // Redraw at the shifted time and re-aim the alarms at it
+            refreshWidgets()
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -400,8 +365,8 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
 
             DebugTimeProvider.clearOffset(appContext)
 
-            // Trigger widget refresh to show real time
-            PrayerWidgetProvider.updateAllWidgets(appContext, forceFull = true)
+            // Redraw at real time and re-aim the alarms at it
+            refreshWidgets()
 
             invoke.resolve()
         } catch (e: Exception) {
@@ -423,6 +388,12 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
     fun installApk(invoke: Invoke) {
         try {
             val args = invoke.parseArgs(InstallApkArgs::class.java)
+
+            if (!isTrustedUpdateUrl(args.url)) {
+                Log.w(TAG, "installApk: refusing untrusted URL")
+                invoke.reject("Update failed: untrusted download URL")
+                return
+            }
 
             // Android 8+ (API 26): require the per-app "install unknown apps" grant.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
@@ -461,6 +432,48 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         })
     }
 
+    /**
+     * Only an https link to one of this repo's GitHub release assets may be
+     * downloaded and handed to the installer — never an arbitrary URL from JS.
+     */
+    private fun isTrustedUpdateUrl(url: String): Boolean {
+        val uri = try { java.net.URI(url) } catch (e: Exception) { return false }
+        val path = uri.path ?: return false // decoded, so "%2e%2e" is seen as ".."
+        return uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals(UPDATE_HOST, ignoreCase = true) &&
+            uri.userInfo == null &&
+            (uri.port == -1 || uri.port == 443) &&
+            path.startsWith(UPDATE_PATH_PREFIX) &&
+            // no dot segments, so the prefix can't be climbed back out of
+            path.split('/').none { it == ".." || it == "." }
+    }
+
+    /**
+     * Open [url], following redirects by hand so every hop is checked: GitHub sends
+     * release downloads on to its asset CDN (objects / release-assets
+     * .githubusercontent.com), and that is fine — but only ever over https.
+     */
+    private fun openHttps(url: String): java.net.HttpURLConnection {
+        var current = java.net.URL(url)
+        repeat(MAX_REDIRECTS + 1) {
+            if (!current.protocol.equals("https", ignoreCase = true)) {
+                throw java.io.IOException("insecure redirect")
+            }
+            val connection = (current.openConnection() as java.net.HttpURLConnection).apply {
+                instanceFollowRedirects = false
+                connectTimeout = 30_000
+                readTimeout = 60_000
+                connect()
+            }
+            if (connection.responseCode !in 300..399) return connection
+            val location = connection.getHeaderField("Location")
+            connection.disconnect()
+            if (location == null) throw java.io.IOException("redirect without a location")
+            current = java.net.URL(current, location)
+        }
+        throw java.io.IOException("too many redirects")
+    }
+
     private fun downloadApk(url: String, progress: Channel): java.io.File {
         val outFile = java.io.File(appContext.cacheDir, "meeqat-update.apk")
         val prefs = appContext.getSharedPreferences(PrayerWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
@@ -473,12 +486,7 @@ class PrayerServicePlugin(private val activity: Activity) : Plugin(activity) {
         }
         prefs.edit().remove(KEY_UPDATE_APK_URL).apply()
 
-        val connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 30_000
-            readTimeout = 60_000
-            connect()
-        }
+        val connection = openHttps(url)
         try {
             if (connection.responseCode !in 200..299) {
                 throw java.io.IOException("HTTP ${connection.responseCode}")

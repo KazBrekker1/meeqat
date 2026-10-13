@@ -1,6 +1,7 @@
 package com.meeqat.plugin.prayerservice
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 
 /**
  * Centralized time provider that supports debug time offset.
@@ -8,6 +9,9 @@ import android.content.Context
  *
  * The offset approach allows time to still flow naturally (seconds tick) while shifted.
  * Setting offset to +3600000 means "pretend it's 1 hour later".
+ *
+ * Debug builds only: in a release build the offset is always 0 and is never stored,
+ * so an offset persisted by an earlier build can't shift a production user's widget.
  */
 object DebugTimeProvider {
     private const val PREFS_NAME = "debug_prefs"
@@ -29,6 +33,7 @@ object DebugTimeProvider {
      * Returns 0 if no offset is set.
      */
     fun getOffset(context: Context): Long {
+        if (!isDebuggable(context)) return 0L
         val cached = cachedOffset
         if (cached != null) return cached
         synchronized(this) {
@@ -48,12 +53,16 @@ object DebugTimeProvider {
      * @param offsetMs The offset to apply to all time calculations
      */
     fun setOffset(context: Context, offsetMs: Long) {
+        if (!isDebuggable(context)) return
         synchronized(this) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putLong(KEY_OFFSET_MS, offsetMs).commit()
             cachedOffset = offsetMs
         }
     }
+
+    private fun isDebuggable(context: Context): Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     /**
      * Clear the debug time offset (reset to real time).

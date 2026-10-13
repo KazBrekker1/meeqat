@@ -1,8 +1,6 @@
 package com.meeqat.plugin.prayerservice
 
-import android.appwidget.AppWidgetManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -12,10 +10,13 @@ import android.util.Log
  * and refreshes widgets when the system time, date, or timezone changes.
  *
  * Handles:
- * - BOOT_COMPLETED / QUICKBOOT_POWERON: resume alarms after reboot
- * - DATE_CHANGED: midnight rollover, stale prayer data from previous day
+ * - BOOT_COMPLETED / QUICKBOOT_POWERON: alarms don't survive a reboot
+ * - DATE_CHANGED: midnight rollover (also covered by the boundary alarm)
  * - TIME_SET: user manually changed clock or NTP sync
- * - TIMEZONE_CHANGED: user changed timezone (prayer times shift)
+ * - TIMEZONE_CHANGED: the day, the clock times and the next midnight all shift
+ *
+ * Each one redraws every widget in full and re-aims the alarms: the countdown's
+ * base and the boundary alarm were both computed from the old clock.
  */
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -24,46 +25,21 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
-
-        when (action) {
+        when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
-            ACTION_QUICKBOOT_POWERON -> {
-                Log.d(TAG, "Boot completed, resuming widget updates")
-                refreshWidgetsIfActive(context)
-            }
-            Intent.ACTION_DATE_CHANGED -> {
-                Log.d(TAG, "Date changed, refreshing widgets for new day")
-                refreshWidgetsIfActive(context)
-            }
-            Intent.ACTION_TIME_CHANGED -> {
-                Log.d(TAG, "System time changed, refreshing widgets")
-                refreshWidgetsIfActive(context)
-            }
+            ACTION_QUICKBOOT_POWERON,
+            Intent.ACTION_DATE_CHANGED,
+            Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED -> {
-                Log.d(TAG, "Timezone changed, refreshing widgets")
-                refreshWidgetsIfActive(context)
+                Log.d(TAG, "${intent.action}: refreshing widgets")
+                try {
+                    // Both are no-ops (and schedule nothing) when no widget is placed.
+                    PrayerWidgetProvider.updateAllWidgets(context)
+                    WidgetUpdateReceiver.ensureUpdatesActive(context)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error refreshing widgets: ${e.message}", e)
+                }
             }
-        }
-    }
-
-    private fun refreshWidgetsIfActive(context: Context) {
-        try {
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-            val widgetIds = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, PrayerWidgetProvider::class.java)
-            )
-
-            if (widgetIds.isNotEmpty()) {
-                Log.d(TAG, "Found ${widgetIds.size} active widgets, refreshing")
-
-                // Resume per-second updates and all safety nets
-                WidgetUpdateReceiver.ensureUpdatesActive(context)
-            } else {
-                Log.d(TAG, "No active widgets found, skipping refresh")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in refreshWidgetsIfActive: ${e.message}", e)
         }
     }
 }

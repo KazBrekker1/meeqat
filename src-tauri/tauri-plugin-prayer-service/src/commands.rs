@@ -1,31 +1,8 @@
 use tauri::{command, AppHandle, Runtime};
 
-use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, PrayerTimeData, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
+use crate::models::{UpdatePrayerTimesArgs, PrayerTimeData, UpcomingDay, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
 use crate::error::Result;
 use crate::PrayerServiceExt;
-
-#[command]
-pub fn start_service<R: Runtime>(
-    app: AppHandle<R>,
-    prayers: Vec<PrayerTimeData>,
-    next_prayer_index: usize,
-    hijri_date: Option<String>,
-    gregorian_date: Option<String>,
-    next_day_prayer_name: Option<String>,
-    next_day_prayer_time: Option<i64>,
-    next_day_prayer_label: Option<String>,
-    city: Option<String>,
-    country_code: Option<String>,
-    use_24_hour: Option<bool>,
-) -> Result<()> {
-    let args = StartServiceArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label, city, country_code, use_24_hour };
-    app.prayer_service().start_service(args)
-}
-
-#[command]
-pub fn stop_service<R: Runtime>(app: AppHandle<R>) -> Result<()> {
-    app.prayer_service().stop_service()
-}
 
 #[command]
 pub fn update_prayer_times<R: Runtime>(
@@ -40,14 +17,10 @@ pub fn update_prayer_times<R: Runtime>(
     city: Option<String>,
     country_code: Option<String>,
     use_24_hour: Option<bool>,
+    upcoming_days: Option<Vec<UpcomingDay>>,
 ) -> Result<()> {
-    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label, city, country_code, use_24_hour };
+    let args = UpdatePrayerTimesArgs { prayers, next_prayer_index, hijri_date, gregorian_date, next_day_prayer_name, next_day_prayer_time, next_day_prayer_label, city, country_code, use_24_hour, upcoming_days };
     app.prayer_service().update_prayer_times(args)
-}
-
-#[command]
-pub fn is_service_running<R: Runtime>(app: AppHandle<R>) -> Result<ServiceStatus> {
-    app.prayer_service().is_service_running()
 }
 
 #[command]

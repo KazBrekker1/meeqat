@@ -4,18 +4,12 @@ Default permissions for the prayer service plugin
 
 #### This default permission set includes the following:
 
-- `allow-start-service`
-- `allow-stop-service`
 - `allow-update-prayer-times`
-- `allow-is-service-running`
 - `allow-check-notification-permission`
 - `allow-request-notification-permission`
 - `allow-check-battery-optimization`
 - `allow-request-battery-optimization-exemption`
 - `allow-open-app-settings`
-- `allow-set-mock-time-offset`
-- `allow-get-mock-time-offset`
-- `allow-clear-mock-time-offset`
 - `allow-install-apk`
 
 ## Permission Table
@@ -160,32 +154,6 @@ Denies the install_apk command without any pre-configured scope.
 <tr>
 <td>
 
-`prayer-service:allow-is-service-running`
-
-</td>
-<td>
-
-Enables the is_service_running command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`prayer-service:deny-is-service-running`
-
-</td>
-<td>
-
-Denies the is_service_running command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
 `prayer-service:allow-open-app-settings`
 
 </td>
@@ -283,58 +251,6 @@ Enables the set_mock_time_offset command without any pre-configured scope.
 <td>
 
 Denies the set_mock_time_offset command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`prayer-service:allow-start-service`
-
-</td>
-<td>
-
-Enables the start_service command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`prayer-service:deny-start-service`
-
-</td>
-<td>
-
-Denies the start_service command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`prayer-service:allow-stop-service`
-
-</td>
-<td>
-
-Enables the stop_service command without any pre-configured scope.
-
-</td>
-</tr>
-
-<tr>
-<td>
-
-`prayer-service:deny-stop-service`
-
-</td>
-<td>
-
-Denies the stop_service command without any pre-configured scope.
 
 </td>
 </tr>

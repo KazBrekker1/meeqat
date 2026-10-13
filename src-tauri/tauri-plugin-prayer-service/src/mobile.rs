@@ -7,7 +7,7 @@ use tauri::{
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-use crate::models::{ServiceStatus, StartServiceArgs, UpdatePrayerTimesArgs, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
+use crate::models::{UpdatePrayerTimesArgs, NotificationPermissionStatus, BatteryOptimizationStatus, SetMockTimeOffsetArgs, MockTimeOffsetResult, InstallApkArgs};
 use crate::error::{Error, Result};
 
 #[cfg(target_os = "android")]
@@ -69,10 +69,7 @@ pub struct PrayerService<R: Runtime>(PluginHandle<R>);
 pub struct PrayerService<R: Runtime>(std::marker::PhantomData<fn() -> R>);
 
 impl<R: Runtime> PrayerService<R> {
-    platform_method!(start_service, "startService", StartServiceArgs);
-    platform_method!(stop_service, "stopService");
     platform_method!(update_prayer_times, "updatePrayerTimes", UpdatePrayerTimesArgs);
-    platform_method!(is_service_running, "isServiceRunning" => ServiceStatus, ServiceStatus { is_running: false });
     platform_method!(open_app_settings, "openAppSettings");
     platform_method!(check_notification_permission, "checkNotificationPermission" => NotificationPermissionStatus, NotificationPermissionStatus { granted: true });
     platform_method!(request_notification_permission, "requestNotificationPermission");

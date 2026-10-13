@@ -2,7 +2,7 @@
 name = "tauri-plugin-prayer-service"
 version = "0.1.0"
 edition = "2021"
-description = "Tauri plugin for Android foreground service with prayer time notifications"
+description = "Tauri plugin for the Android prayer-times widget, permission helpers and in-app updates"
 license = "MIT"
 links = "tauri-plugin-prayer-service"
 

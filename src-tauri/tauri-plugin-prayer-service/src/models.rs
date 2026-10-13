@@ -8,9 +8,21 @@ pub struct PrayerTimeData {
     pub label: String,
 }
 
+/// One day of the widget's look-ahead window: that day's prayers plus its
+/// pre-formatted header dates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StartServiceArgs {
+pub struct UpcomingDay {
+    pub prayers: Vec<PrayerTimeData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hijri_date: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gregorian_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePrayerTimesArgs {
     pub prayers: Vec<PrayerTimeData>,
     pub next_prayer_index: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,14 +41,9 @@ pub struct StartServiceArgs {
     pub country_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_24_hour: Option<bool>,
-}
-
-pub type UpdatePrayerTimesArgs = StartServiceArgs;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServiceStatus {
-    pub is_running: bool,
+    /// Ascending, starting with today (up to 7 days). Absent from older frontends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upcoming_days: Option<Vec<UpcomingDay>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

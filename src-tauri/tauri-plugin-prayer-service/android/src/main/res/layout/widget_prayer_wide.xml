@@ -43,7 +43,6 @@
             android:layout_weight="1"
             android:layout_marginTop="4dp" />
 
-        <TextView android:id="@+id/now_clock" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
         <TextView android:id="@+id/gregorian_date" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
     </LinearLayout>
 

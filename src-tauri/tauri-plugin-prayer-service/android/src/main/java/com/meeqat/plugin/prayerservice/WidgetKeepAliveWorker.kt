@@ -1,7 +1,5 @@
 package com.meeqat.plugin.prayerservice
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -12,9 +10,9 @@ import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
 
 /**
- * WorkManager safety net that ensures CountdownService stays running.
- * Runs every 15 minutes (WorkManager minimum) and restarts the service
- * if it was killed by the system or OEM battery optimizations.
+ * WorkManager safety net behind the alarms in [WidgetUpdateReceiver].
+ * Runs every 15 minutes (WorkManager minimum), redraws the widgets and re-arms
+ * the alarms in case the system or an OEM battery optimization dropped them.
  */
 class WidgetKeepAliveWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
 
@@ -37,17 +35,9 @@ class WidgetKeepAliveWorker(ctx: Context, params: WorkerParameters) : Worker(ctx
     }
 
     override fun doWork(): Result {
-        val widgetIds = AppWidgetManager.getInstance(applicationContext)
-            .getAppWidgetIds(ComponentName(applicationContext, PrayerWidgetProvider::class.java))
-
-        if (widgetIds.isEmpty()) {
-            Log.d(TAG, "No active widgets, skipping")
-            return Result.success()
-        }
-
-        Log.d(TAG, "Keep-alive: ensuring CountdownService is running for ${widgetIds.size} widgets")
-
         try {
+            // Both are no-ops without a widget; ensureUpdatesActive then also cancels this worker.
+            PrayerWidgetProvider.updateAllWidgets(applicationContext)
             WidgetUpdateReceiver.ensureUpdatesActive(applicationContext)
         } catch (e: Exception) {
             Log.e(TAG, "Error in keep-alive: ${e.message}", e)
