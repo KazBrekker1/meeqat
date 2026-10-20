@@ -50,6 +50,7 @@
       <section class="space-y-2">
         <h2 class="text-lg font-semibold">Credits</h2>
         <p class="text-white/80">Moon imagery: NASA/LRO LROC (public domain) — the colour map and the greyscale albedo map behind the illustrated moon styles — from NASA's Scientific Visualization Studio <a class="underline" href="https://svs.gsfc.nasa.gov/4720" target="_blank" rel="noopener">CGI Moon Kit</a>. Both ship with Meeqat, so drawing the Moon contacts no other service.</p>
+        <p class="text-white/80">Star map: star positions, constellation figures and names from <a class="underline" href="https://github.com/ofrohn/d3-celestial" target="_blank" rel="noopener">d3-celestial</a> (Olaf Frohn, BSD licence), built from the XHIP catalogue (Anderson &amp; Francis 2012, CDS VizieR V/137D) and the IAU's constellations; Arabic star names from Stellarium's sky-culture translations. Planet positions use NASA JPL's approximate orbital elements (E. M. Standish). All of it ships with Meeqat.</p>
       </section>
 
       <p class="text-sm text-white/50">Questions? Open an issue on <a class="underline" href="https://github.com/KazBrekker1/meeqat/issues">GitHub</a>.</p>

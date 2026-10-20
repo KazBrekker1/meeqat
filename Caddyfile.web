@@ -1,10 +1,11 @@
 :80 {
 	root * /srv
 	encode zstd gzip
-	# Hashed build assets, and the Moon map (public/moon — rename the file if it ever changes).
-	@assets path /_nuxt/* /moon/*
+	# Hashed build assets, the Moon map and the star catalogue (public/moon, public/sky — rename a
+	# file if it ever changes).
+	@assets path /_nuxt/* /moon/* /sky/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
-	@html not path /_nuxt/* /moon/*
+	@html not path /_nuxt/* /moon/* /sky/*
 	header @html Cache-Control "no-cache"
 	# SPA: unknown paths (/rooms, /r/<code>, /privacy …) fall back to the app shell.
 	# {path}/index.html (not {path}/) so prerendered routes serve directly without
