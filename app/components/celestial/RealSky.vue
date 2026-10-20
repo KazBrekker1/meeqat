@@ -15,6 +15,9 @@
       @pointerleave="onLeave"
       @wheel.prevent="onWheel"
     />
+    <!-- Opening and closing explore only: the explore frame cross-fading out, and the Moon flying -->
+    <canvas ref="snapCanvas" class="pointer-events-none absolute inset-0 hidden h-full w-full" aria-hidden="true" />
+    <canvas ref="flyer" class="pointer-events-none absolute hidden" aria-hidden="true" />
   </div>
 </template>
 
@@ -22,14 +25,14 @@
 import { skyAt, type SkyState } from "@/utils/sky/astro";
 import { loadSkyCatalog, type SkyCatalog } from "@/utils/sky/catalog";
 import { directionOf, figureOf, type SkyPick } from "@/utils/sky/describe";
-import { drawOverlay, moonRadiusPx, type OverlayBody } from "@/utils/sky/overlay";
-import { createSkyRenderer, type SkyRenderer } from "@/utils/sky/renderer";
-import { camera, fovForK, kForFov, pan, pick, project, projectAll, zoomAt, type Camera } from "@/utils/sky/view";
+import { drawOverlay, moonRadiusPx, type OverlayBody, type OverlayInput, type OverlayMoon } from "@/utils/sky/overlay";
+import { createSkyRenderer, type SkyFrame, type SkyRenderer } from "@/utils/sky/renderer";
+import { camera, fovForK, kForFov, onScreen, pan, pick, project, projectAll, zoomAt, type Camera } from "@/utils/sky/view";
 import { RAD, altAzOf, clamp, mulVec } from "@/utils/sky/vec";
 import { qiblaBearing } from "@/utils/qibla";
 import { loadStyleMap } from "@/utils/moon/map";
 import type { MoonMap } from "@/utils/moon/sphere";
-import { renderStyle, type GreyChain, type MoonStyle } from "@/utils/moon/styles";
+import { renderStyle, STYLE_GLOW, type GreyChain, type MoonStyle } from "@/utils/moon/styles";
 import { moonStyle } from "@/utils/moonStyle";
 import type { SkyStatus } from "@/composables/useSkyExplore";
 
@@ -43,6 +46,8 @@ const MAX_DPR = 2;
 const root = ref<HTMLElement | null>(null);
 const glCanvas = ref<HTMLCanvasElement | null>(null);
 const textCanvas = ref<HTMLCanvasElement | null>(null);
+const snapCanvas = ref<HTMLCanvasElement | null>(null);
+const flyer = ref<HTMLCanvasElement | null>(null);
 
 const { getNow, getOffset } = useMockTime();
 const explore = useSkyExplore();
@@ -110,32 +115,21 @@ function anchorPoint(w: number, h: number, dpr: number) {
 // ── The Moon in the user's style, for explore ───────────────────────────────
 let spriteCanvas: HTMLCanvasElement | null = null;
 let spriteKey = "";
+let spriteSize = 0;
 let spriteMap: MoonMap | GreyChain | null = null;
 let spriteStyle: MoonStyle | null = null;
 let spriteLoading: MoonStyle | null = null;
 
-/** Re-rendered only when the minute, its size or the style changes; the old style shows until the new map loads. */
+/**
+ * Re-rendered only when the minute or the style changes, or when it must grow; smaller sizes are
+ * drawn scaled, so the open/close morph renders it once. The old style shows until the new map loads.
+ */
 function moonSprite(s: SkyState, R: number): HTMLCanvasElement | null {
-  const want = moonStyle.value;
-  if (spriteStyle !== want && spriteLoading !== want) {
-    spriteLoading = want;
-    loadStyleMap(want)
-      .then((m) => {
-        if (disposed || moonStyle.value !== want) return;
-        spriteMap = m;
-        spriteStyle = want;
-        spriteKey = "";
-        requestFrame();
-      })
-      .catch((err) => console.warn("[sky] moon map unavailable", err))
-      .finally(() => {
-        if (spriteLoading === want) spriteLoading = null;
-      });
-  }
+  ensureSpriteMap();
   if (!spriteMap || !spriteStyle) return null;
   const size = Math.max(8, Math.ceil((2 * R) / 0.9));
-  const key = `${skyKey}|${size}|${spriteStyle}`;
-  if (key !== spriteKey) {
+  const key = `${skyKey}|${spriteStyle}`;
+  if (key !== spriteKey || size > spriteSize) {
     spriteCanvas ??= document.createElement("canvas");
     spriteCanvas.width = spriteCanvas.height = size;
     const ctx = spriteCanvas.getContext("2d")!;
@@ -143,8 +137,28 @@ function moonSprite(s: SkyState, R: number): HTMLCanvasElement | null {
     renderStyle(spriteStyle, img, spriteMap, { subLon: v.libLon, subLat: v.libLat, poleAngle: v.poleAngle, phaseAngle: v.phaseAngle, limbAngle: v.limbAngle, disc: 0.9 });
     ctx.putImageData(img, 0, 0);
     spriteKey = key;
+    spriteSize = size;
   }
   return spriteCanvas;
+}
+
+/** Loads the map for the user's style (shared with MoonSphere), once per style. */
+function ensureSpriteMap() {
+  const want = moonStyle.value;
+  if (spriteStyle === want || spriteLoading === want) return;
+  spriteLoading = want;
+  loadStyleMap(want)
+    .then((m) => {
+      if (disposed || moonStyle.value !== want) return;
+      spriteMap = m;
+      spriteStyle = want;
+      spriteKey = "";
+      requestFrame();
+    })
+    .catch((err) => console.warn("[sky] moon map unavailable", err))
+    .finally(() => {
+      if (spriteLoading === want) spriteLoading = null;
+    });
 }
 
 // ── Drawing ─────────────────────────────────────────────────────────────────
@@ -161,24 +175,36 @@ function frame() {
   const moon = altAzOf(s.moon.dir);
   let cam: Camera;
   if (props.interactive) {
-    const v = explore.view.value, t = explore.centre.value;
-    cam = camera(v.alt, v.az, kForFov(v.fovDeg, w), a.x + (w / 2 - a.x) * t, a.y + (h / 2 - a.y) * t, w, h);
+    const v = explore.view.value;
+    cam = camera(v.alt, v.az, kForFov(v.fovDeg, w), a.x, a.y, w, h);
   } else {
     cam = camera(moon.alt, moon.az, kHome, a.x, a.y, w, h);
     Object.assign(explore.backdrop, { alt: moon.alt, az: moon.az, fovDeg: fovForK(kHome, w) });
   }
+  // Explore draws the Moon itself, except while the flying copy is on its way.
+  let moonDraw: OverlayMoon | null = null;
+  if (props.interactive && !flying) {
+    const R = moonRadiusPx(cam, dpr);
+    moonDraw = {
+      sprite: moonSprite(s, R),
+      radius: R,
+      alpha: s.moon.dir[2] < 0 ? 0.55 : 1,
+      labelAlpha: 1,
+      glowRgb: STYLE_GLOW[spriteStyle ?? moonStyle.value],
+    };
+  }
   const selected = figureOf(explore.selection.value, cat);
   const figure = props.interactive ? (selected >= 0 ? selected : explore.hoverFigure.value) : -1;
   const fov = fovForK(cam.k, w);
-  renderer.draw({
+  const frameArgs: SkyFrame = {
     rot: s.rot,
     cam,
     figure,
     lineAlpha: props.interactive ? 0.32 : 0.14,
     lineWidth: (props.interactive ? 1 : 0.7) * dpr,
     starScale: dpr * (props.interactive ? clamp(Math.sqrt(100 / fov), 0.85, 2.2) : 0.9),
-  });
-  bodies = drawOverlay(textCtx, {
+  };
+  const overlayArgs: OverlayInput = {
     cam,
     sky: s,
     cat,
@@ -186,8 +212,11 @@ function frame() {
     explore: !!props.interactive,
     figure,
     qiblaAz: props.interactive ? qiblaBearing(props.lat, props.lng) * RAD : null,
-    moonSprite: props.interactive ? moonSprite(s, moonRadiusPx(cam, dpr)) : null,
-  });
+    moon: moonDraw,
+  };
+  renderer.draw(frameArgs);
+  bodies = drawOverlay(textCtx, overlayArgs);
+  if (props.interactive) lastExplore = { frame: frameArgs, overlay: overlayArgs };
   lastCam = cam;
   lastSky = s;
   if (import.meta.dev) devRecord(performance.now() - t0, dpr);
@@ -195,6 +224,102 @@ function frame() {
 
 function requestFrame() {
   if (!queued && !disposed) queued = requestAnimationFrame(frame);
+}
+
+// ── Opening and closing explore: moved by the compositor, nothing redrawn while it moves ─────────
+/** The flight in progress (the Moon copy's animation). */
+let flying: Animation | null = null;
+/** The last explore frame, redrawn once on close to freeze it for the cross-fade. */
+let lastExplore: { frame: SkyFrame; overlay: OverlayInput } | null = null;
+const EASE = "cubic-bezier(0.3, 0.7, 0.2, 1)";
+
+/** The orbit's Moon (MoonSphere's canvas), once its picture is drawn. */
+function orbitMoonCanvas(): HTMLCanvasElement | null {
+  const c = anchor.value?.el.querySelector("canvas");
+  return c && c.width > 0 && c.classList.contains("opacity-100") ? c : null;
+}
+
+/** A copy of the orbit's Moon (its pixels, halo included) exactly over it; returns its centre and disc radius (CSS px). */
+function placeFlyer(src: HTMLCanvasElement) {
+  const f = flyer.value!, r = src.getBoundingClientRect(), base = root.value!.getBoundingClientRect();
+  f.width = src.width;
+  f.height = src.height;
+  f.getContext("2d")!.drawImage(src, 0, 0);
+  Object.assign(f.style, { left: `${r.left - base.left}px`, top: `${r.top - base.top}px`, width: `${r.width}px`, height: `${r.height}px`, display: "block" });
+  return { x: r.left + r.width / 2 - base.left, y: r.top + r.height / 2 - base.top, r: anchor.value!.moonRadius };
+}
+
+function endFlight() {
+  const f = flying;
+  flying = null;
+  f?.cancel();
+  if (flyer.value) flyer.value.style.display = "none";
+}
+
+/** Opening: explore starts on the home sky, so the sky stays put; the Moon shrinks in place to its sky size. */
+function flyOpen() {
+  explore.leaving.value = false;
+  const src = orbitMoonCanvas();
+  if (!src || !lastCam || !root.value) return requestFrame();
+  const from = placeFlyer(src), dpr = dprNow();
+  const anim = flyer.value!.animate([{ transform: "none" }, { transform: `scale(${moonRadiusPx(lastCam, dpr) / dpr / from.r})` }], { duration: 450, easing: EASE, fill: "forwards" });
+  flying = anim;
+  // The labels come in once the page has faded, so no blurred panel has to follow them.
+  textCanvas.value!.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 250, delay: 250, fill: "backwards" });
+  requestFrame();
+  anim.finished.then(() => {
+    if (flying !== anim) return;
+    endFlight();
+    requestFrame();
+  }, () => {});
+}
+
+/**
+ * Closing: the explore frame is frozen on a canvas over the home sky (drawn now, underneath) and
+ * fades out while the page is still hidden; the Moon flies back and grows into the orbit's Moon.
+ */
+function flyClose() {
+  endFlight();
+  const snap = snapCanvas.value!, gl = glCanvas.value!, text = textCanvas.value!, dpr = dprNow();
+  let moonAt: { x: number; y: number; r: number } | null = null;
+  const canFreeze = renderer && !renderer.lost && textCtx && lastExplore;
+  if (canFreeze) {
+    const { frame: f, overlay: o } = lastExplore!;
+    renderer!.draw(f);
+    drawOverlay(textCtx!, { ...o, moon: null });
+    snap.width = gl.width;
+    snap.height = gl.height;
+    const sctx = snap.getContext("2d")!;
+    sctx.drawImage(gl, 0, 0);
+    sctx.drawImage(text, 0, 0);
+    snap.style.display = "block";
+    const p = [0, 0];
+    if (o.moon && project(f.cam, o.sky.moon.dir, p) && onScreen(f.cam, p[0]!, p[1]!)) moonAt = { x: p[0]! / dpr, y: p[1]! / dpr, r: o.moon.radius / dpr };
+  }
+  lastExplore = null;
+  frame(); // the home sky, under the frozen frame
+  if (canFreeze) {
+    snap.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, easing: "ease-out", fill: "forwards" }).finished.then(() => {
+      snap.style.display = "none";
+      snap.width = snap.height = 0;
+      explore.leaving.value = false;
+    }, () => {});
+  } else explore.leaving.value = false;
+
+  const src = orbitMoonCanvas();
+  if (!src || !root.value) {
+    explore.moonHidden.value = false;
+    return;
+  }
+  const to = placeFlyer(src);
+  const from = moonAt ? `translate(${moonAt.x - to.x}px, ${moonAt.y - to.y}px) scale(${moonAt.r / to.r})` : "scale(0.4)";
+  const anim = flyer.value!.animate([{ transform: from, opacity: moonAt ? 1 : 0 }, { transform: "none", opacity: 1 }], { duration: 500, easing: EASE, fill: "forwards" });
+  flying = anim;
+  anim.finished.then(() => {
+    if (flying !== anim) return;
+    endFlight();
+    explore.moonHidden.value = false;
+  }, () => {});
 }
 
 /** Dev only: frame count and CPU ms for tests/e2e/sky.mjs, and where a named star is on screen. */
@@ -254,6 +379,7 @@ async function start() {
   if (!renderer) return setStatus("no-webgl");
   textCtx = textCanvas.value!.getContext("2d");
   setStatus("ready");
+  ensureSpriteMap();
   requestFrame();
 }
 
@@ -276,9 +402,12 @@ onBeforeUnmount(() => {
   ro?.disconnect();
   window.removeEventListener("scroll", onScroll, { capture: true });
   document.removeEventListener("visibilitychange", onVisibility);
+  endFlight();
   renderer?.dispose();
   renderer = null;
   explore.available.value = false;
+  explore.moonHidden.value = false;
+  explore.leaving.value = false;
 });
 
 watch(
@@ -290,17 +419,23 @@ watch(
   },
 );
 watch(
-  [() => props.lat, () => props.lng, () => props.interactive, () => getOffset(), explore.view, explore.centre, explore.time, explore.selection, explore.hoverFigure, moonStyle],
+  [() => props.lat, () => props.lng, () => props.interactive, () => getOffset(), explore.view, explore.time, explore.selection, explore.hoverFigure, moonStyle],
   () => requestFrame(),
 );
 watch(
   () => props.interactive,
   (on) => {
-    if (on) return;
     pointers.clear();
     gesture = null;
     cancelAnimationFrame(inertiaFrame);
     if (textCanvas.value) textCanvas.value.style.cursor = "";
+    if (!renderer || !cat) {
+      explore.moonHidden.value = false;
+      explore.leaving.value = false;
+      return;
+    }
+    if (on) flyOpen();
+    else flyClose();
   },
 );
 
@@ -319,6 +454,10 @@ function onDown(e: PointerEvent) {
   if (!props.interactive) return;
   textCanvas.value!.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (flying) {
+    endFlight();
+    requestFrame();
+  }
   explore.stopGlide();
   cancelAnimationFrame(inertiaFrame);
   if (pointers.size === 1) gesture = { x0: e.clientX, y0: e.clientY, moved: false, t: e.timeStamp, vx: 0, vy: 0 };

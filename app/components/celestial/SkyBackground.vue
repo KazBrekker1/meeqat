@@ -33,11 +33,11 @@
     />
 
     <!-- Scrim to guarantee text contrast -->
-    <div v-if="scrim === 'top'" class="sky-ui absolute inset-x-0 top-[40%] bottom-0" :class="exploring && 'exploring'" style="background: linear-gradient(180deg, transparent 0%, #0a0e22 26%, #0a0e22 72%, transparent 100%);" />
-    <div v-else-if="scrim === 'full'" class="sky-ui absolute inset-0" :class="exploring && 'exploring'" style="background: linear-gradient(180deg, rgba(8,11,28,0.86), rgba(8,11,28,0.96));" />
+    <div v-if="scrim === 'top'" class="sky-ui absolute inset-x-0 top-[40%] bottom-0" :class="pageHidden && 'exploring'" style="background: linear-gradient(180deg, transparent 0%, #0a0e22 26%, #0a0e22 72%, transparent 100%);" />
+    <div v-else-if="scrim === 'full'" class="sky-ui absolute inset-0" :class="pageHidden && 'exploring'" style="background: linear-gradient(180deg, rgba(8,11,28,0.86), rgba(8,11,28,0.96));" />
 
     <!-- Content (faded out and hidden while exploring the sky) -->
-    <div class="sky-ui relative h-full" :class="exploring && 'exploring'">
+    <div class="sky-ui relative h-full" :class="pageHidden && 'exploring'">
       <slot />
     </div>
   </div>
@@ -80,6 +80,8 @@ watch(hasPlace, (has) => {
 // (without WebGL neither can draw: the gradient alone shows).
 const showStarField = computed(() => !hasPlace.value || skyStatus.value === "loading" || skyStatus.value === "catalog-failed");
 const exploring = computed(() => hasPlace.value && explore.isOpen.value);
+// Closing explore keeps the page hidden a moment longer, while the sky cross-fades back.
+const pageHidden = computed(() => hasPlace.value && (explore.isOpen.value || explore.leaving.value));
 
 const maskStyle =
   "-webkit-mask-image: linear-gradient(to bottom, black 0%, black 30%, transparent 48%); mask-image: linear-gradient(to bottom, black 0%, black 30%, transparent 48%);";

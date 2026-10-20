@@ -76,24 +76,25 @@ watch(explore.closeRequests, () => {
   if (isOpen.value) requestClose();
 });
 
+// Explore opens on exactly the home sky, so nothing is redrawn while the page fades and the
+// Moon shrinks to its sky size; closing cross-fades the sky back. RealSky runs both (on the GPU).
 function open() {
   const b = explore.backdrop;
+  explore.stopGlide();
   explore.view.value = { alt: b.alt, az: b.az, fovDeg: b.fovDeg };
-  explore.centre.value = 0;
   time.value = null;
   selection.value = null;
+  explore.moonHidden.value = true;
   isOpen.value = true;
-  explore.glide({ centre: 1 });
 }
 
 function close() {
-  time.value = null;
+  explore.stopGlide();
   selection.value = null;
   explore.hoverFigure.value = -1;
-  const m = altAzOf(skyAt(getNow(), props.lat, props.lng).moon.dir);
-  explore.glide({ alt: m.alt, az: m.az, fovDeg: explore.backdrop.fovDeg, centre: 0 }, 450, () => {
-    isOpen.value = false;
-  });
+  explore.leaving.value = true;
+  isOpen.value = false;
+  time.value = null;
 }
 
 /** Leaves through the router, so the history entry that opened explore is consumed. */
@@ -108,6 +109,8 @@ onBeforeUnmount(() => {
   isOpen.value = false;
   time.value = null;
   selection.value = null;
+  explore.moonHidden.value = false;
+  explore.leaving.value = false;
 });
 
 // ── Time slider ────────────────────────────────────────────────────────────
@@ -157,7 +160,7 @@ useEventListener(window, "keydown", (e: KeyboardEvent) => {
     explore.stopGlide();
     explore.view.value = pan(v, step[0], step[1], window.innerWidth);
   } else if (e.key === "+" || e.key === "=") explore.view.value = { ...v, fovDeg: Math.max(FOV_MIN, v.fovDeg * 0.8) };
-  else if (e.key === "-" || e.key === "_") explore.view.value = { ...v, fovDeg: Math.min(FOV_MAX, v.fovDeg * 1.25) };
+  else if (e.key === "-" || e.key === "_") explore.view.value = { ...v, fovDeg: Math.min(Math.max(FOV_MAX, v.fovDeg), v.fovDeg * 1.25) };
   else return;
   e.preventDefault();
 });

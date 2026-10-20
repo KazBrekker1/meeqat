@@ -1,7 +1,7 @@
 // Text and markers drawn over the WebGL sky on a 2D canvas: the horizon with compass letters and the
 // planets everywhere; in explore mode also the labels, the Sun, the Moon and the Qibla marker (or an
 // arrow at the screen edge pointing to it). Returns what can be tapped, with screen positions.
-import type { MoonView } from "../moon/sphere";
+import { moonGlow, type MoonView } from "../moon/sphere";
 import type { SkyState } from "./astro";
 import type { SkyCatalog } from "./catalog";
 import type { PlanetKey } from "./planets";
@@ -11,6 +11,18 @@ import { RAD, mulVec, vecFromAltAz, wrapPi } from "./vec";
 export type OverlayBody =
   | { kind: "planet"; key: PlanetKey; x: number; y: number }
   | { kind: "moon" | "sun" | "qibla"; x: number; y: number };
+
+/** The Moon as explore draws it (with the orbit Moon's halo proportions, so the two match). */
+export interface OverlayMoon {
+  /** the Moon in the user's style (disc = 0.9 of the image); null → a flat disc */
+  sprite: CanvasImageSource | null;
+  /** disc radius, px */
+  radius: number;
+  alpha: number;
+  labelAlpha: number;
+  /** halo colour of the style (styles.ts STYLE_GLOW) */
+  glowRgb: [number, number, number];
+}
 
 export interface OverlayInput {
   cam: Camera;
@@ -23,8 +35,8 @@ export interface OverlayInput {
   figure: number;
   /** Qibla bearing, radians; explore only */
   qiblaAz: number | null;
-  /** the Moon in the user's style (disc = 0.9 of the image); null → a flat disc */
-  moonSprite: CanvasImageSource | null;
+  /** explore only; null → not drawn */
+  moon: OverlayMoon | null;
 }
 
 const FONT = "ui-sans-serif, system-ui, -apple-system, sans-serif";
@@ -68,6 +80,23 @@ function kaaba(ctx: CanvasRenderingContext2D, x: number, y: number, dpr: number)
   ctx.lineWidth = dpr;
   ctx.strokeStyle = "rgba(255,255,255,.6)";
   ctx.strokeRect(x - s / 2, y - s, s, s);
+}
+
+/** The orbit's Moon sits on a canvas 1 / 0.644 of its diameter: drawing the halo on that box matches it. */
+const ORBIT_DISC = (0.42 * 0.92) / 0.6;
+
+function drawMoon(ctx: CanvasRenderingContext2D, x: number, y: number, m: OverlayMoon, v: Pick<MoonView, "fraction" | "limbAngle" | "phaseAngle">) {
+  const R = m.radius, W = (2 * R) / ORBIT_DISC, g = moonGlow(W, ORBIT_DISC, v.phaseAngle, v.limbAngle, m.glowRgb);
+  const gx = x - W / 2 + g.cx, gy = y - W / 2 + g.cy, halo = ctx.createRadialGradient(gx, gy, g.r0, gx, gy, g.r1);
+  for (const [o, c] of g.stops) halo.addColorStop(o, c);
+  ctx.globalAlpha = m.alpha;
+  ctx.fillStyle = halo;
+  ctx.fillRect(x - W / 2, y - W / 2, W, W);
+  if (m.sprite) {
+    const S = (2 * R) / 0.9;
+    ctx.drawImage(m.sprite, x - S / 2, y - S / 2, S, S);
+  } else drawFlatMoon(ctx, x, y, R, v);
+  ctx.globalAlpha = 1;
 }
 
 function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fill: string) {
@@ -144,15 +173,10 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, o: OverlayInput): Ove
     label(ctx, "Sun", p[0]! + R + 5 * dpr, p[1]!, "rgba(255,226,170,.85)");
     bodies.push({ kind: "sun", x: p[0]!, y: p[1]! });
   }
-  if (at(sky.moon.dir, 30)) {
-    const R = moonRadiusPx(cam, dpr), x = p[0]!, y = p[1]!;
-    ctx.globalAlpha = sky.moon.dir[2] < 0 ? 0.55 : 1;
-    if (o.moonSprite) {
-      const S = (2 * R) / 0.9;
-      ctx.drawImage(o.moonSprite, x - S / 2, y - S / 2, S, S);
-    } else drawFlatMoon(ctx, x, y, R, sky.moon);
-    ctx.globalAlpha = 1;
-    label(ctx, "Moon", x + R + 6 * dpr, y, "rgba(255,255,255,.85)");
+  if (o.moon && at(sky.moon.dir, o.moon.radius / dpr + 30)) {
+    const x = p[0]!, y = p[1]!;
+    drawMoon(ctx, x, y, o.moon, sky.moon);
+    if (o.moon.labelAlpha > 0.01) label(ctx, "Moon", x + o.moon.radius + 6 * dpr, y, `rgba(255,255,255,${(0.85 * o.moon.labelAlpha).toFixed(3)})`);
     bodies.push({ kind: "moon", x, y });
   }
 

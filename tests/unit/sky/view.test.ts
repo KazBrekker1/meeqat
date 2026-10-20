@@ -63,6 +63,11 @@ describe("pan and zoom", () => {
     expect(angleBetween(before, after) / RAD).toBeLessThan(0.5);
   });
 
+  test("zooming in from wider than FOV_MAX is smooth, and it never widens further", () => {
+    expect(zoomAt({ alt: 0, az: 0, fovDeg: 200 }, 0.97, 500, 300, 500, 300, W, H).fovDeg).toBeCloseTo(194, 9);
+    expect(zoomAt({ alt: 0, az: 0, fovDeg: 200 }, 1.5, 500, 300, 500, 300, W, H).fovDeg).toBe(200);
+  });
+
   test("zoom is clamped", () => {
     expect(zoomAt({ alt: 0, az: 0, fovDeg: 30 }, 0.1, 500, 300, 500, 300, W, H).fovDeg).toBe(FOV_MIN);
     expect(zoomAt({ alt: 0, az: 0, fovDeg: 150 }, 3, 500, 300, 500, 300, W, H).fovDeg).toBe(FOV_MAX);

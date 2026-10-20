@@ -76,9 +76,12 @@ export function pan(v: ViewState, dx: number, dy: number, w: number): ViewState 
   };
 }
 
-/** Zoom by `factor` (< 1 zooms in) keeping the sky under pixel (x, y) where it is. */
+/**
+ * Zoom by `factor` (< 1 zooms in) keeping the sky under pixel (x, y) where it is. A view wider than
+ * FOV_MAX (explore starts at the home sky's scale) can zoom in smoothly but not out further.
+ */
 export function zoomAt(v: ViewState, factor: number, x: number, y: number, cx: number, cy: number, w: number, h: number): ViewState {
-  const fovDeg = clamp(v.fovDeg * factor, FOV_MIN, FOV_MAX);
+  const fovDeg = clamp(v.fovDeg * factor, FOV_MIN, Math.max(FOV_MAX, v.fovDeg));
   const want = altAzOf(unproject(camera(v.alt, v.az, kForFov(v.fovDeg, w), cx, cy, w, h), x, y));
   let next: ViewState = { alt: v.alt, az: v.az, fovDeg };
   for (let n = 0; n < 4; n++) {

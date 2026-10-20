@@ -12,13 +12,15 @@ const isOpen = ref(false);
 const available = ref(false);
 /** Where explore looks; replaced on every change so watchers fire. */
 const view = shallowRef<ViewState>({ alt: 0, az: 0, fovDeg: 100 });
-/** Where the view centre sits: 0 = on the orbit's Moon, 1 = the screen centre. */
-const centre = ref(0);
 /** The time slider's instant; null = now. */
 const time = shallowRef<Date | null>(null);
 const selection = shallowRef<SkyPick | null>(null);
 /** The constellation under the mouse (desktop hover), −1 for none. */
 const hoverFigure = ref(-1);
+/** The orbit's Moon is hidden: explore draws it (from opening until it has flown back on close). */
+const moonHidden = ref(false);
+/** Closing: the page stays hidden while the explore sky cross-fades back to the home sky. */
+const leaving = ref(false);
 /** Bumped by RealSky when the sky can no longer be drawn while exploring. */
 const closeRequests = ref(0);
 /** The home background's current view, kept by RealSky; explore starts from it. Plain, not reactive. */
@@ -27,10 +29,10 @@ const backdrop: ViewState = { alt: 0, az: 0, fovDeg: 100 };
 let glideFrame = 0;
 const ease = (t: number) => t * t * (3 - 2 * t);
 
-/** Animates the view (and the centre) to a target; a new glide, a drag or a flick cancels it. */
-function glide(to: Partial<ViewState> & { centre?: number }, ms = 500, done?: () => void) {
+/** Animates the view to a target; a new glide, a drag or a flick cancels it. */
+function glide(to: Partial<ViewState>, ms = 500, done?: () => void) {
   cancelAnimationFrame(glideFrame);
-  const from = view.value, c0 = centre.value, t0 = performance.now();
+  const from = view.value, t0 = performance.now();
   const dAz = wrapPi((to.az ?? from.az) - from.az);
   const step = (now: number) => {
     const t = ease(clamp((now - t0) / ms, 0, 1));
@@ -39,7 +41,6 @@ function glide(to: Partial<ViewState> & { centre?: number }, ms = 500, done?: ()
       az: from.az + dAz * t,
       fovDeg: from.fovDeg + ((to.fovDeg ?? from.fovDeg) - from.fovDeg) * t,
     };
-    centre.value = c0 + ((to.centre ?? c0) - c0) * t;
     if (t < 1) glideFrame = requestAnimationFrame(step);
     else {
       glideFrame = 0;
@@ -56,5 +57,5 @@ function stopGlide() {
 
 /** Explore mode's state for this window: RealSky draws it, sky/Explore.vue drives it. */
 export function useSkyExplore() {
-  return { isOpen, available, view, centre, time, selection, hoverFigure, closeRequests, backdrop, glide, stopGlide };
+  return { isOpen, available, view, time, selection, hoverFigure, moonHidden, leaving, closeRequests, backdrop, glide, stopGlide };
 }
