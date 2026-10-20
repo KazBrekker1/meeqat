@@ -85,9 +85,12 @@ Pure modules (no Vue, no DOM) under `app/utils/sky/`, a WebGL renderer, and two 
 | `utils/sky/planets.ts` | Mercury–Saturn from JPL's approximate Keplerian elements (valid 1800–2050), with magnitude from distance and phase angle. | — |
 | `utils/sky/view.ts` | View state (centre altitude/azimuth, field of view), the zenith-up camera, stereographic `project`/`unproject`, `pan`, `zoomAt`, and `pick` (nearest body, then star, then constellation segment). | — |
 | `utils/sky/search.ts` | Builds the search index and normalises queries (§3). | catalog |
-| `utils/sky/renderer.ts` | WebGL 1 renderer: uploads the catalogue once; `draw(frame)` per frame; handles context loss. Returns `null` without WebGL. | catalog |
+| `utils/sky/describe.ts` | The info card's text for a pick, the constellation to highlight, and where a pick or search result is. | astro, catalog |
+| `utils/sky/vec.ts` | Vector and 3×3 matrix helpers shared by the above. | — |
+| `utils/sky/shaders.ts`, `utils/sky/renderer.ts` | WebGL 1 renderer: uploads the catalogue once; `draw(frame)` per frame; handles context loss. Returns `null` without WebGL. | catalog |
+| `utils/sky/overlay.ts` | The 2D text layer: horizon and compass letters, planets, labels, Sun, Moon, Qibla marker or edge arrow; returns what can be tapped. | astro, catalog, view |
 | `components/celestial/RealSky.vue` | The WebGL canvas plus a 2D overlay canvas for text and markers. Owns render-on-demand scheduling, the minute tick and anchoring to the orbit. Interactive only while explore is open. | all of the above |
-| `components/sky/ExploreSky.vue` | Explore controls, teleported above the page: search, time slider, info card, Qibla edge arrow, close. | `useSkyExplore` |
+| `components/sky/Explore.vue` (+ `Search.vue`, `TimeSlider.vue`, `InfoCard.vue`) | Explore controls, teleported above the page: search, time slider, info card, Back to the Moon, close. (The Qibla edge arrow is drawn by the overlay.) | `useSkyExplore` |
 | `composables/useSkyExplore.ts` | Shared explore state: open/closed, view, time override, selection. | — |
 | `composables/useSkyAnchor.ts` | The orbit registers its Moon element; `RealSky` reads its on-screen centre. | — |
 
@@ -139,7 +142,7 @@ Changes to existing code:
   over it (home only, and only when explore is available). The tray's orbit registers its
   anchor but gets no button.
 - `MoonSphere.vue`: see §6.
-- `index.vue` mounts `ExploreSky`.
+- `index.vue` mounts `SkyExplore` (`components/sky/Explore.vue`).
 - Privacy page: credits for the sky data (§5).
 
 ## 5. Data
@@ -212,26 +215,28 @@ Changes to existing code:
 - 0 frames while idle (verified with a dev-only frame counter).
 - Under 2 ms of main-thread time per drag frame in desktop Chromium at 2×.
 - No change to first paint: the catalogue and Moon map load after it.
-- GPU memory for stars and lines under 100 KB.
+- GPU memory for stars and lines about 170 KB.
 
 ## 10. Testing
 
 The repo has no unit-test runner; add `bun test` (built into Bun) with a `test` script.
 
 - `astro`/`planets`: alt/az of a set of bright stars, the Moon, the Sun and the five
-  planets for Doha at four instants on 2026-10-20, against fixtures generated with astropy
-  (stars, Sun, Moon) and JPL Horizons (planets), committed under `tests/fixtures/sky/`.
+  planets for Doha at four instants on 2026-10-20, against fixtures generated with astropy's
+  built-in ephemerides (no network), committed under `tests/fixtures/sky/`.
   Tolerances: stars 0.1°, Moon and planets 0.3°.
 - `view`: project/unproject round trips; pan and zoom keep the point under the pointer;
   `pick` precedence.
 - `search`: English and Arabic normalisation and ranking.
+- `describe`: the info card's text, highlighted constellation and look direction.
 - `catalog`: the build script's output decodes back to its source within quantisation.
-- Visual (Playwright, the mockup recipe): home at 03:00, 10:00, 15:30 and 21:00 in Doha;
-  an explore run that drags, zooms, taps a star and a constellation, searches in Arabic,
-  moves the slider to a prayer stop and taps the Qibla arrow.
-- Performance: the idle frame count and drag frame time from §9.
-- Real builds: the macOS desktop app (WKWebView) and the Android emulator (WebView).
-  Linux (WebKitGTK) is not tested; the fallbacks in §8 cover it.
+- Visual and performance: one light Playwright run (`tests/e2e/sky.mjs`) in a single
+  visible Chromium window so the real GPU draws, at 1× density: the home screen, the idle
+  frame count and drag frame time from §9, then explore (open, drag, zoom, search in English
+  and Arabic, tap a star, Esc). Headless WebGL is emulated on the CPU and is too heavy for the
+  development laptop, so it is never used; the run is started only after asking.
+- Real builds, also only after asking (they are heavy): the macOS desktop app (WKWebView) and
+  the Android emulator (WebView). Linux (WebKitGTK) is not tested; the fallbacks in §8 cover it.
 
 ## 11. Release
 
