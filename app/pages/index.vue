@@ -1,6 +1,6 @@
 <template>
   <div class="h-screen w-full relative">
-    <CelestialSkyBackground class="h-full" :stars="70" :seed="11">
+    <CelestialSkyBackground class="h-full" :stars="70" :seed="11" :lat="activeCoords?.lat ?? null" :lng="activeCoords?.lng ?? null">
       <div class="h-full flex flex-col text-white">
         <!-- App bar -->
         <header class="flex items-center justify-between px-3 sm:px-4 min-h-12 shrink-0 border-b border-white/10 bg-black/20 backdrop-blur-sm pt-safe">

@@ -67,12 +67,14 @@ let loadToken = 0;
 let scratch: HTMLCanvasElement | null = null;
 let disposed = false;
 
-/** As seen from the chosen place (zenith up) while the Moon is up; north-up below the horizon or with no place. */
+/**
+ * As seen from the chosen place (zenith up) at every altitude, so it turns with the real sky
+ * behind it and never jumps at moonrise or moonset; north-up without a place.
+ */
 function currentView(now: Date): MoonView {
   const { lat, lng } = props;
   if (lat == null || lng == null) return moonView(now, 0, 0, { orientation: "north" });
-  const sky = moonView(now, lat, lng);
-  return sky.altitude > 0 ? sky : moonView(now, lat, lng, { orientation: "north" });
+  return moonView(now, lat, lng);
 }
 
 function draw(): void {
@@ -118,10 +120,15 @@ function safeDraw(): void {
   }
 }
 
-// The Moon moves ≲0.5° in 10 minutes: redraw on a slow timer, and whenever the page
-// becomes visible again (timers are throttled while hidden).
-const REDRAW_MS = 10 * 60 * 1000;
-let timer: ReturnType<typeof setInterval> | null = null;
+// Redraw at the top of every minute, in step with the real sky behind it (RealSky), and
+// whenever the page becomes visible again (timers are throttled while hidden).
+let timer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRedraw(): void {
+  timer = setTimeout(() => {
+    if (!document.hidden) safeDraw();
+    scheduleRedraw();
+  }, 60_000 - (getNow().getTime() % 60_000) + 20);
+}
 let lastDpr = 0;
 const onVisible = () => {
   if (!document.hidden) safeDraw();
@@ -151,16 +158,14 @@ onMounted(() => {
   lastDpr = window.devicePixelRatio || 1;
   // Load after the first paint so the SVG shows at once (the tray popover paints fast).
   requestAnimationFrame(() => setTimeout(loadAndDraw, 0));
-  timer = setInterval(() => {
-    if (!document.hidden) safeDraw();
-  }, REDRAW_MS);
+  scheduleRedraw();
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("resize", onResize);
 });
 
 onBeforeUnmount(() => {
   disposed = true;
-  if (timer) clearInterval(timer);
+  if (timer) clearTimeout(timer);
   document.removeEventListener("visibilitychange", onVisible);
   window.removeEventListener("resize", onResize);
 });

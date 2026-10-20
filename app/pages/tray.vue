@@ -2,7 +2,7 @@
   <!-- Height follows the content: fitWindowToContent() resizes the popover window, so
        nothing ever scrolls (Tauri has no native fit-to-content window option). -->
   <div ref="rootEl" class="w-full">
-    <CelestialSkyBackground :stars="34" :seed="11" scrim="top">
+    <CelestialSkyBackground :stars="34" :seed="11" scrim="top" :lat="coords.lat" :lng="coords.lng">
       <div class="flex flex-col gap-2 p-3 text-white">
         <!-- Header (draggable): place · Hijri date, close -->
         <div class="flex items-center gap-1.5 cursor-move select-none" @mousedown="startDrag">
@@ -25,11 +25,11 @@
             :lng="coords.lng"
           >
             <!-- Flat moon until the map is decoded (after first paint), then the real one -->
-            <CelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" />
+            <div ref="trayMoon"><CelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="108" :disc="(0.42 * 0.92) / 0.6" /></div>
           </OrbitBumps>
           <div v-else class="flex flex-col items-center gap-2 py-2 text-center">
             <!-- 112 px canvas (glow room) in the old 72 px box: same layout, same 66 px disc -->
-            <CelestialMoonSphere class="-m-5" :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="112" :disc="66 / 112" />
+            <div ref="trayMoon" class="-m-5"><CelestialMoonSphere :phase="moonPhase" :lat="coords.lat" :lng="coords.lng" :size="112" :disc="66 / 112" /></div>
             <p class="text-xs text-white/60 max-w-[200px]">Choose a location in Meeqat to see prayer times here.</p>
           </div>
         </div>
@@ -151,6 +151,18 @@ const orbitPrayers = computed(() =>
 
 // "Now" position for the orbit, from the local clock.
 const nowHHMM = computed(() => hhmm(Math.floor(nowSec.value / 60)));
+
+// The real sky behind the popover is pinned to the Moon (disc radius in CSS px: 108 × 0.644 / 2 in
+// the orbit, 66 / 2 without times).
+const trayMoon = ref<HTMLElement | null>(null);
+watch(
+  [trayMoon, () => orbitPrayers.value.length > 0],
+  ([el, inOrbit], prev) => {
+    if (prev?.[0] && prev[0] !== el) clearSkyAnchor(prev[0]);
+    setSkyAnchor(el, inOrbit ? (108 * (0.42 * 0.92)) / 0.6 / 2 : 33);
+  },
+  { immediate: true, flush: "post" },
+);
 
 // --- Pray Together call card ------------------------------------------------
 // Rust (src-tauri/src/together.rs) owns the realtime connection and sends the active
