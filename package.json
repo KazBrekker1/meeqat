@@ -6,6 +6,7 @@
 	"scripts": {
 		"dev": "nuxt dev",
 		"generate": "nuxt generate",
+		"test": "bun test tests/unit",
 		"together:types": "pocketbase-typegen --db services/together/pb_data/data.db --out app/types/together.ts",
 		"test:e2e": "node tests/e2e/web-smoke.mjs",
 		"test:e2e:together": "node tests/e2e/together-e2e.mjs",
