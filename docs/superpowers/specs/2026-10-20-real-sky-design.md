@@ -47,10 +47,13 @@ mode in the tray, and any change to the Android home-screen widget.
 ### Explore mode (home only)
 
 - **Open:** tap the Moon (a real button, labelled "Explore the sky", also reachable by
-  keyboard). The page UI fades out over ~250 ms and is then hidden; the sky stays where it
-  was and glides the Moon to the screen centre.
-- **Close:** ×, Esc or Android back. The view glides back to the Moon, the time resets to
-  now and the UI fades back in.
+  keyboard). The page fades out over ~250 ms and is then hidden. Explore opens on exactly the
+  home sky (the Moon stays where it is on screen), and a copy of the orbit's Moon shrinks in
+  place to its sky size. Only GPU-composited opacity and transforms move; nothing is redrawn
+  while it animates (a per-frame morph was tried and stuttered on a laptop).
+- **Close:** ×, Esc or Android back. The explore frame is frozen and cross-fades into the home
+  sky while the page is still hidden; then the page fades in as the Moon copy flies back and
+  grows into the orbit's Moon. The time resets to now.
 - **Move:** drag to look anywhere (with ~0.6 s of glide after a flick); pinch, wheel or
   trackpad, and +/− keys to zoom between a 20° and 180° field of view, zooming toward the
   pointer or pinch centre; arrow keys pan. "Back to the Moon" returns to it.
