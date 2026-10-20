@@ -88,8 +88,9 @@ function draw(): void {
   scratch ??= document.createElement("canvas");
   const sctx = scratch.getContext("2d");
   if (!ctx || !sctx) throw new Error("2d canvas unavailable");
-  if (cv.width !== W) cv.width = cv.height = W;
-  if (scratch.width !== W) scratch.width = scratch.height = W;
+  // Check both sides: a new canvas is 300×150, so a 300 px Moon would keep a 150 px height.
+  if (cv.width !== W || cv.height !== W) cv.width = cv.height = W;
+  if (scratch.width !== W || scratch.height !== W) scratch.width = scratch.height = W;
 
   const params = { subLon: v.libLon, subLat: v.libLat, poleAngle: v.poleAngle, phaseAngle: v.phaseAngle, limbAngle: v.limbAngle, disc: props.disc };
   const img = sctx.createImageData(W, W);
