@@ -188,6 +188,9 @@
         <PrayerQiblaCompass :lat="activeCoords?.lat ?? null" :lng="activeCoords?.lng ?? null" />
       </template>
     </UModal>
+
+    <!-- Explore the sky (opened by tapping the Moon; ?sky=1) -->
+    <SkyExplore v-if="activeCoords" :lat="activeCoords.lat" :lng="activeCoords.lng" :stops="exploreStops" />
   </div>
 </template>
 
@@ -240,6 +243,13 @@ const {
 
 // Moon/sun/Qibla chips, reminders and the next prayer for the Pray Together card.
 const { nowSecondsLive, stageMoon, sunTimes, qibla, shortPlace, reminders, nextMainPrayer } = useStageToday();
+
+// The time slider's stops in explore mode: today's five prayers.
+const exploreStops = computed(() =>
+  timingsList.value
+    .filter((t) => MAIN_PRAYER_KEYS_SET.has(t.key) && typeof t.minutes === "number")
+    .map((t) => ({ key: t.key, label: t.label, minutes: t.minutes! })),
+);
 
 function openLocation() {
   showLocationModal.value = true;
