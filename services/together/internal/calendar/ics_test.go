@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -107,6 +108,11 @@ func TestFailedRefreshServesStaleEntry(t *testing.T) {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	return newTestServerWith(t, newCache())
+}
+
+func newTestServerWith(t *testing.T, c *cache) *httptest.Server {
+	t.Helper()
 
 	app, err := tests.NewTestApp(t.TempDir())
 	if err != nil {
@@ -118,7 +124,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("NewRouter: %v", err)
 	}
-	Register(&core.ServeEvent{App: app, Router: router}, app)
+	register(&core.ServeEvent{App: app, Router: router}, c)
 
 	mux, err := router.BuildMux()
 	if err != nil {
@@ -239,6 +245,68 @@ func TestSunriseIsNotShifted(t *testing.T) {
 	for _, want := range []string{"DTSTART:20261013T023100Z\r\n", "DTEND:20261013T025100Z\r\n", "TRIGGER:-PT10M\r\n"} {
 		if !strings.Contains(ics, want) {
 			t.Errorf("feed is missing %q", want)
+		}
+	}
+}
+
+// A cache that answers without AlAdhan: every day of any month has all five prayers.
+func offlineCache() *cache {
+	c := newCache()
+	c.fetchTZ = func(*params) (string, error) { return "Asia/Qatar", nil }
+	c.fetch = func(_ *params, year, month int) ([]dayTimings, error) {
+		var days []dayTimings
+		for d := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC); int(d.Month()) == month; d = d.AddDate(0, 0, 1) {
+			days = append(days, dayTimings{year: year, month: month, day: d.Day(), timings: map[string]string{
+				"Fajr": "04:13", "Dhuhr": "11:20", "Asr": "14:35", "Maghrib": "17:01", "Isha": "18:31",
+			}})
+		}
+		return days, nil
+	}
+	return c
+}
+
+// The link can say how many days the feed covers, counting today.
+func TestLinkChoosesHowManyDaysTheFeedCovers(t *testing.T) {
+	srv := newTestServerWith(t, offlineCache())
+	const place = "/cal/25.285/51.531/4"
+
+	for path, wantDays := range map[string]int{
+		place + "/prayers.ics":                                    60, // the link older versions of the app hand out
+		place + "/1/prayers.ics":                                  1,
+		place + "/7/prayers.ics":                                  7,
+		place + "/30/prayers.ics":                                 30,
+		place + "/90/prayers.ics":                                 90,
+		"/cal/prayers.ics?lat=25.285&lng=51.531&method=4&days=14": 14,
+	} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("%s: expected 200, got %d", path, resp.StatusCode)
+		}
+		if got := strings.Count(string(body), "BEGIN:VEVENT"); got != wantDays*5 {
+			t.Errorf("%s: expected %d days of five prayers, got %d events", path, wantDays, got)
+		}
+	}
+
+	// The first day is today where the feed is for, not a day either side.
+	resp, err := http.Get(srv.URL + place + "/1/prayers.ics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	doha, _ := time.LoadLocation("Asia/Qatar")
+	if today := time.Now().In(doha).Format("2006-01-02"); !strings.Contains(string(body), "UID:"+today+"-fajr-") {
+		t.Errorf("a one-day feed should be today (%s) in the place's timezone", today)
+	}
+
+	for _, bad := range []string{"0", "91", "-3", "week", "7.5"} {
+		if got := status(t, srv.URL+place+"/"+bad+"/prayers.ics"); got != 400 {
+			t.Errorf("days=%s: expected 400, got %d", bad, got)
 		}
 	}
 }

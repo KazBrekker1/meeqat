@@ -5,6 +5,29 @@
       <p class="text-xs text-muted">
         Each prayer appears in your calendar as a 30-minute block starting 10 minutes after the athan, with a reminder 10 minutes before the athan, and stays up to date.
       </p>
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-sm">Days to include</p>
+        <div class="flex items-center gap-2">
+          <UInput
+            v-if="isCustom"
+            v-model="customDays"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            size="sm"
+            class="w-20"
+            :ui="{ base: 'tabular-nums', trailing: 'pointer-events-none' }"
+            :aria-label="`Number of days, ${CALENDAR_DAYS_MIN} to ${CALENDAR_DAYS_MAX}`"
+            @blur="tidyCustomDays"
+            @keydown.enter="tidyCustomDays"
+          >
+            <template #trailing>
+              <span class="text-xs text-muted">days</span>
+            </template>
+          </UInput>
+          <USelect v-model="selectedRange" :items="rangeOptions" size="sm" class="w-32" aria-label="Days to include" />
+        </div>
+      </div>
       <div class="flex flex-wrap gap-2">
         <UButton size="sm" variant="soft" icon="i-lucide-calendar-plus" @click="openApple">
           Apple Calendar
@@ -20,7 +43,8 @@
         </UButton>
       </div>
       <p class="text-[11px] text-muted">
-        Your calendar refreshes this every few hours; Google can take up to a day.
+        {{ rangeSummary }} Your calendar refreshes this every few hours; Google can take up to a day.
+        <template v-if="days < 7">A range this short can run out before the next refresh.</template>
       </p>
     </div>
   </section>
@@ -30,6 +54,16 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getPlatform } from "@/utils/platform";
 import { cue } from "@/utils/sounds";
+import { getSettingsStore } from "@/utils/store";
+import {
+  CALENDAR_DAYS_DEFAULT,
+  CALENDAR_DAYS_MAX,
+  CALENDAR_DAYS_MIN,
+  CALENDAR_RANGE_PRESETS,
+  calendarFeedPath,
+  clampCalendarDays,
+  isCalendarRangePreset,
+} from "@/utils/calendarRange";
 
 const props = defineProps<{
   lat: number;
@@ -41,16 +75,82 @@ const props = defineProps<{
 const toast = useToast();
 const config = useRuntimeConfig();
 
-function round3(n: number): number {
-  return Math.round(n * 1000) / 1000;
+// How many days the calendar covers, counting today. Remembered between visits.
+const PREF_KEY = "calendarDays";
+const CUSTOM = "custom";
+const days = ref(CALENDAR_DAYS_DEFAULT);
+const isCustom = ref(false);
+// What is typed in the custom box; `days` follows it whenever it is a usable number.
+const customDays = ref(String(CALENDAR_DAYS_DEFAULT));
+
+const rangeOptions = [
+  ...CALENDAR_RANGE_PRESETS.map((p) => ({ label: p.label, value: p.days as number | string })),
+  { label: "Custom…", value: CUSTOM },
+];
+
+const selectedRange = computed<number | string>({
+  get: () => (isCustom.value ? CUSTOM : days.value),
+  set: (value) => {
+    isCustom.value = value === CUSTOM;
+    if (typeof value === "number") setDays(value);
+    else customDays.value = String(days.value);
+  },
+});
+
+function setDays(value: number): void {
+  const next = clampCalendarDays(value);
+  if (next === days.value) return;
+  days.value = next;
+  void saveDays(next);
 }
 
-// Digits, dots and slashes only, ending in .ics: calendar services re-encode or
-// refuse links with a query string. The service works out the place's timezone.
+// A plain text box (digits only): a number input's stepper arrows sit on top of the "days" label.
+watch(customDays, (value) => {
+  const digits = String(value).replace(/\D/g, "");
+  if (digits !== value) {
+    customDays.value = digits;
+    return;
+  }
+  if (isCustom.value && digits !== "") setDays(Number(digits));
+});
+
+/** Leaving the box: show the number actually in use (an empty or out-of-range entry snaps to it). */
+function tidyCustomDays(): void {
+  customDays.value = String(days.value);
+}
+
+async function saveDays(value: number): Promise<void> {
+  try {
+    const store = await getSettingsStore();
+    await store.set(PREF_KEY, value);
+    if (store.save) await store.save();
+  } catch (e) {
+    console.warn("[calendar] Failed to save the range:", e);
+  }
+}
+
+onMounted(async () => {
+  try {
+    const saved = await (await getSettingsStore()).get<number>(PREF_KEY);
+    if (saved == null) return;
+    days.value = clampCalendarDays(saved);
+    customDays.value = String(days.value);
+    isCustom.value = !isCalendarRangePreset(days.value);
+  } catch (e) {
+    console.warn("[calendar] Failed to load the range:", e);
+  }
+});
+
+const rangeSummary = computed(() => {
+  if (days.value === 1) return "Covers today only.";
+  if (days.value === 2) return "Covers today and tomorrow.";
+  return `Covers today and the ${days.value - 1} days after it.`;
+});
+
+// The service works out the place's timezone.
 const feedUrl = computed(() => {
   const togetherUrl = config.public.togetherUrl as string;
-  const path = `/cal/${round3(props.lat)}/${round3(props.lng)}/${props.methodId}/prayers.ics`;
-  return new URL(path, togetherUrl).toString();
+  return new URL(calendarFeedPath(props.lat, props.lng, props.methodId, days.value), togetherUrl).toString();
 });
 
 const calendarName = computed(() => (props.name ? `Prayer times · ${props.name.slice(0, 40)}` : "Prayer times"));

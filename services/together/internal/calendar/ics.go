@@ -23,6 +23,12 @@ const (
 	maxCacheEntries = 5000
 	cacheTTL        = 24 * time.Hour
 	httpTimeout     = 10 * time.Second
+
+	// How many days ahead a feed covers, counting today. The app's "Add to
+	// calendar" picker offers the same range (app/utils/calendarRange.ts).
+	defaultDays = 60
+	minDays     = 1
+	maxDays     = 90
 )
 
 var prayerOrder = []string{"Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"}
@@ -32,8 +38,10 @@ var httpClient = &http.Client{Timeout: httpTimeout}
 // Register mounts GET /cal/prayers.ics on se.Router. No auth required; the
 // per-IP rate limit is the "/cal/" rule in the settings (migration 5).
 func Register(se *core.ServeEvent, app core.App) {
-	c := newCache()
+	register(se, newCache())
+}
 
+func register(se *core.ServeEvent, c *cache) {
 	se.Router.GET("/cal/prayers.ics", func(e *core.RequestEvent) error {
 		return handle(e, c)
 	})
@@ -42,6 +50,11 @@ func Register(se *core.ServeEvent, app core.App) {
 	// re-encoded "tz=Asia%2FQatar" used to come back as a 400, i.e. "not a
 	// calendar"), so the place is in the path and the timezone is worked out here.
 	se.Router.GET("/cal/{lat}/{lng}/{method}/prayers.ics", func(e *core.RequestEvent) error {
+		return handle(e, c)
+	})
+	// The same link with the number of days to cover, for a range other than
+	// the default.
+	se.Router.GET("/cal/{lat}/{lng}/{method}/{days}/prayers.ics", func(e *core.RequestEvent) error {
 		return handle(e, c)
 	})
 }
@@ -102,11 +115,11 @@ func parseParams(e *core.RequestEvent) (*params, error) {
 		}
 	}
 
-	days := 60
-	if v := q.Get("days"); v != "" {
+	days := defaultDays
+	if v := arg("days"); v != "" {
 		days, err = strconv.Atoi(v)
-		if err != nil || days < 7 || days > 90 {
-			return nil, fmt.Errorf("days must be an integer 7-90")
+		if err != nil || days < minDays || days > maxDays {
+			return nil, fmt.Errorf("days must be an integer %d-%d", minDays, maxDays)
 		}
 	}
 
