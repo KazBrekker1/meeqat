@@ -7,22 +7,34 @@
 //! which can't appear over another app's full-screen Space, and its placement mixed
 //! monitors with different scale factors.
 //!
-//! Now: the click is handled here, the popover is placed on the monitor that owns
-//! the clicked icon (in that monitor's pixels), and on macOS the window is an
-//! NSPanel that joins every Space — including full-screen ones — without
-//! activating the app or switching Spaces.
+//! Now: the click is handled here, the popover is placed under the clicked icon on
+//! that icon's screen (`geometry`), and on macOS the window is an NSPanel that
+//! joins every Space — including full-screen ones — without activating the app or
+//! switching Spaces.
+//!
+//! Placement on macOS is done in AppKit points, not through Tauri's "physical"
+//! positions: there, each screen's pixels are its points × its own scale, so with
+//! a Retina and a non-Retina display the pixel spaces overlap and a physical
+//! position doesn't name one spot (see `geometry::unscale_anchor`).
+
+mod geometry;
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Position, Rect, Size, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, Rect, WebviewWindow};
+#[cfg(not(target_os = "macos"))]
+use tauri::{PhysicalPosition, Position, Size};
 
 pub const TRAY_ID: &str = "meeqat-tray";
 const POPOVER: &str = "tray";
-/// Clicking the tray icon while the popover is open first blurs it (hiding it), then
-/// delivers the click — which would immediately reopen it. Ignore that click.
+/// Gap between the tray icon and the popover, in logical pixels.
+const MARGIN: f64 = 6.0;
+/// Pressing the tray icon while the popover is open can blur it (hiding it) before
+/// the press is delivered. A popover hidden this recently still counts as open for
+/// that press, so the click closes it instead of reopening it.
 const REOPEN_GUARD: Duration = Duration::from_millis(300);
 /// Windows can report a spurious blur right after an undecorated window is shown.
 #[cfg(not(target_os = "macos"))]
@@ -32,6 +44,8 @@ const BLUR_GRACE: Duration = Duration::from_millis(300);
 struct PopoverState {
     last_auto_hide: Option<Instant>,
     last_show: Option<Instant>,
+    /// The tray icon was pressed while the popover was open: releasing closes it.
+    press_closes: bool,
 }
 
 /// Latest tray data (prayer times, dates, place) from the main window. The popover
@@ -84,12 +98,15 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
+                button_state,
                 rect,
                 ..
             } = event
             {
-                toggle(tray.app_handle(), rect);
+                match button_state {
+                    MouseButtonState::Down => press(tray.app_handle()),
+                    MouseButtonState::Up => release(tray.app_handle(), rect),
+                }
             }
         });
 
@@ -106,18 +123,34 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn toggle(app: &AppHandle, rect: Rect) {
-    if is_visible(app) {
-        hide(app);
-        return;
-    }
-    let just_hidden = app
-        .state::<Mutex<PopoverState>>()
+fn recently_hidden(app: &AppHandle) -> bool {
+    app.state::<Mutex<PopoverState>>()
         .lock()
         .ok()
         .and_then(|s| s.last_auto_hide)
-        .is_some_and(|t| t.elapsed() < REOPEN_GUARD);
-    if !just_hidden {
+        .is_some_and(|t| t.elapsed() < REOPEN_GUARD)
+}
+
+/// Mouse-down on the tray icon: decide now whether this click closes the popover,
+/// so it doesn't matter how long the button is held before release.
+fn press(app: &AppHandle) {
+    let closes = is_visible(app) || recently_hidden(app);
+    if let Ok(mut s) = app.state::<Mutex<PopoverState>>().lock() {
+        s.press_closes = closes;
+    }
+}
+
+/// Mouse-up on the tray icon: a click toggles the popover.
+fn release(app: &AppHandle, rect: Rect) {
+    let press_closes = app
+        .state::<Mutex<PopoverState>>()
+        .lock()
+        .map(|mut s| std::mem::take(&mut s.press_closes))
+        .unwrap_or(false);
+    if is_visible(app) {
+        hide(app);
+    } else if !press_closes && !recently_hidden(app) {
+        // `recently_hidden` covers a release that arrives without its press.
         show_at(app, rect);
     }
 }
@@ -131,18 +164,17 @@ fn is_visible(app: &AppHandle) -> bool {
 }
 
 fn show_at(app: &AppHandle, rect: Rect) {
-    let Some(window) = popover(app) else { return };
-    if let Some(pos) = placement(app, &window, rect) {
-        let _ = window.set_position(pos);
-    }
     if let Ok(mut s) = app.state::<Mutex<PopoverState>>().lock() {
         s.last_show = Some(Instant::now());
     }
 
     #[cfg(target_os = "macos")]
-    macos::show(app);
+    macos::show_at(app, rect);
     #[cfg(not(target_os = "macos"))]
-    {
+    if let Some(window) = popover(app) {
+        if let Some(pos) = placement(app, &window, rect) {
+            let _ = window.set_position(pos);
+        }
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -172,66 +204,58 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-/// Where to put the popover: centred under the clicked icon (above it when the
-/// taskbar is at the bottom), on the monitor that contains the icon, clamped to
-/// that monitor's work area. Everything is in that monitor's physical pixels, so
-/// mixed-DPI setups don't shift it onto the wrong screen.
+/// Where to put the popover on Windows and Linux, whose monitors share one
+/// physical-pixel space: under (or above) the clicked icon, on the monitor that
+/// contains it.
+#[cfg(not(target_os = "macos"))]
 fn placement(app: &AppHandle, window: &WebviewWindow, rect: Rect) -> Option<PhysicalPosition<i32>> {
     let monitors = app.available_monitors().ok()?;
-    let (mut ax, mut ay, mut aw, mut ah) = rect_physical(&rect, &monitors);
+    let mut anchor = rect_physical(&rect, &monitors);
 
     // Some platforms (notably Linux) report an empty rect: anchor to the cursor.
-    let rect_empty = aw <= 0.0 && ah <= 0.0 && ax == 0.0 && ay == 0.0;
-    if rect_empty {
+    if anchor == geometry::Rect::new(0.0, 0.0, 0.0, 0.0) {
         let cursor = app.cursor_position().ok()?;
-        (ax, ay, aw, ah) = (cursor.x, cursor.y, 0.0, 0.0);
+        anchor = geometry::Rect::new(cursor.x, cursor.y, 0.0, 0.0);
     }
-    let (cx, cy) = (ax + aw / 2.0, ay + ah / 2.0);
 
     let monitor = monitors
         .iter()
-        .find(|m| contains(m, cx, cy))
+        .find(|m| monitor_rect(m).contains(anchor.center()))
         .or_else(|| monitors.first())?;
 
     // The window's logical size, rendered at the target monitor's scale.
     let scale = monitor.scale_factor();
     let current_scale = window.scale_factor().unwrap_or(scale);
     let outer = window.outer_size().ok()?;
-    let w = outer.width as f64 / current_scale * scale;
-    let h = outer.height as f64 / current_scale * scale;
+    let size = (outer.width as f64 / current_scale * scale, outer.height as f64 / current_scale * scale);
 
     let area = monitor.work_area();
-    let (left, top) = (area.position.x as f64, area.position.y as f64);
-    let (right, bottom) = (left + area.size.width as f64, top + area.size.height as f64);
-    let margin = 6.0 * scale;
-
-    let mut x = cx - w / 2.0;
-    // Below the icon (macOS menu bar, top-docked panels); above it when that
-    // wouldn't fit (bottom taskbar on Windows/Linux).
-    let mut y = ay + ah + margin;
-    if y + h > bottom {
-        y = ay - h - margin;
-    }
-    x = x.clamp(left + margin, (right - w - margin).max(left));
-    y = y.clamp(top, (bottom - h).max(top));
+    let work = geometry::Rect::new(
+        area.position.x as f64,
+        area.position.y as f64,
+        area.size.width as f64,
+        area.size.height as f64,
+    );
+    let (x, y) = geometry::place(anchor, work, size, MARGIN * scale);
     Some(PhysicalPosition::new(x.round() as i32, y.round() as i32))
 }
 
-fn contains(m: &tauri::Monitor, x: f64, y: f64) -> bool {
-    let p = m.position();
-    let s = m.size();
-    x >= p.x as f64 && x < p.x as f64 + s.width as f64 && y >= p.y as f64 && y < p.y as f64 + s.height as f64
+#[cfg(not(target_os = "macos"))]
+fn monitor_rect(m: &tauri::Monitor) -> geometry::Rect {
+    let (p, s) = (m.position(), m.size());
+    geometry::Rect::new(p.x as f64, p.y as f64, s.width as f64, s.height as f64)
 }
 
 /// The tray rect in physical pixels. Tray events are normally physical already; a
 /// logical rect is converted with the scale of the monitor it falls on.
-fn rect_physical(rect: &Rect, monitors: &[tauri::Monitor]) -> (f64, f64, f64, f64) {
+#[cfg(not(target_os = "macos"))]
+fn rect_physical(rect: &Rect, monitors: &[tauri::Monitor]) -> geometry::Rect {
     let scale_at = |x: f64, y: f64| {
         monitors
             .iter()
             .find(|m| {
                 let s = m.scale_factor();
-                contains(m, x * s, y * s)
+                monitor_rect(m).contains((x * s, y * s))
             })
             .map(|m| m.scale_factor())
             .unwrap_or(1.0)
@@ -244,7 +268,7 @@ fn rect_physical(rect: &Rect, monitors: &[tauri::Monitor]) -> (f64, f64, f64, f6
         Size::Physical(s) => (s.width as f64, s.height as f64),
         Size::Logical(s) => (s.width * pos_scale, s.height * pos_scale),
     };
-    (x * pos_scale, y * pos_scale, w, h)
+    geometry::Rect::new(x * pos_scale, y * pos_scale, w, h)
 }
 
 #[tauri::command]
@@ -267,7 +291,7 @@ pub fn get_tray_snapshot(state: tauri::State<'_, TraySnapshot>) -> Option<serde_
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use tauri::{AppHandle, WebviewWindow};
+    use tauri::{AppHandle, Rect, WebviewWindow};
     use tauri_nspanel::{tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt};
 
     tauri_panel! {
@@ -306,8 +330,25 @@ mod macos {
         Ok(())
     }
 
-    pub fn show(app: &AppHandle) {
+    pub fn show_at(app: &AppHandle, rect: Rect) {
+        // AppKit is main-thread only. Tray events arrive there already.
+        let Some(mtm) = MainThreadMarker::new() else {
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || show_at(&handle, rect));
+            return;
+        };
         if let Ok(panel) = app.get_webview_panel(super::POPOVER) {
+            // The status item's window, to tell which screen the click was on. It
+            // follows the menu bar that was clicked.
+            let status_item = app.tray_by_id(super::TRAY_ID).and_then(|tray| {
+                tray.with_inner_tray_icon(|inner| {
+                    let mtm = MainThreadMarker::new()?;
+                    Some(inner.ns_status_item()?.button(mtm)?.window()?.frame())
+                })
+                .ok()
+                .flatten()
+            });
+            place::under_icon(panel.as_panel(), rect, status_item, mtm);
             panel.show_and_make_key();
         }
     }
@@ -315,6 +356,67 @@ mod macos {
     pub fn hide(app: &AppHandle) {
         if let Ok(panel) = app.get_webview_panel(super::POPOVER) {
             panel.hide();
+        }
+    }
+
+    /// Kept apart from the panel macro above, which imports AppKit names of its own.
+    mod place {
+        use tauri::{Position, Rect, Size};
+        use tauri_nspanel::objc2::MainThreadMarker;
+        use tauri_nspanel::objc2_app_kit::{NSEvent, NSScreen, NSWindow};
+        use tauri_nspanel::{NSPoint, NSRect};
+
+        use crate::tray::geometry::{self, Screen};
+        use crate::tray::MARGIN;
+
+        /// Move the panel under the clicked menu-bar item, entirely in AppKit's global
+        /// point space (flipped to y-down for `geometry`), so no screen scale is involved.
+        pub fn under_icon(panel: &NSWindow, rect: Rect, status_item: Option<NSRect>, mtm: MainThreadMarker) {
+            let ns_screens = NSScreen::screens(mtm);
+            // AppKit's y axis points up from the bottom of the primary screen — the one
+            // at the origin, and the one the tray event's y is measured down from.
+            let Some(primary_height) = ns_screens
+                .iter()
+                .find(|s| s.frame().origin.x == 0.0 && s.frame().origin.y == 0.0)
+                .or_else(|| ns_screens.firstObject())
+                .map(|s| s.frame().size.height)
+            else {
+                return;
+            };
+            let flip = |r: NSRect| {
+                let top = primary_height - (r.origin.y + r.size.height);
+                geometry::Rect::new(r.origin.x, top, r.size.width, r.size.height)
+            };
+            let screens: Vec<Screen> = ns_screens
+                .iter()
+                .map(|s| Screen {
+                    frame: flip(s.frame()),
+                    work: flip(s.visibleFrame()),
+                    scale: s.backingScaleFactor(),
+                })
+                .collect();
+
+            let mouse = NSEvent::mouseLocation();
+            let cursor = (mouse.x, primary_height - mouse.y);
+            let hints: Vec<_> = status_item.map(|r| flip(r).center()).into_iter().chain([cursor]).collect();
+            let anchor = match (rect.position, rect.size) {
+                (Position::Physical(p), Size::Physical(s)) => geometry::unscale_anchor(
+                    geometry::Rect::new(p.x as f64, p.y as f64, s.width as f64, s.height as f64),
+                    &hints,
+                    &screens,
+                ),
+                _ => None,
+            };
+            // No usable rect: hang the popover from the cursor instead.
+            let (anchor, screen) = anchor.unwrap_or_else(|| {
+                let under_cursor = screens.iter().position(|s| s.frame.contains(cursor));
+                (geometry::Rect::new(cursor.0, cursor.1, 0.0, 0.0), under_cursor.unwrap_or(0))
+            });
+            let Some(screen) = screens.get(screen) else { return };
+
+            let size = panel.frame().size;
+            let (x, y) = geometry::place(anchor, screen.work, (size.width, size.height), MARGIN);
+            panel.setFrameTopLeftPoint(NSPoint::new(x, primary_height - y));
         }
     }
 }
